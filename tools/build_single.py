@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Bundle site/ into one self-contained HTML fragment (no doctype/html/head/body) for artifact hosting.
+Usage: build_single.py <out.html> [wx_snapshot.json]
+"""
+import json, re, sys, os
+ROOT = os.path.join(os.path.dirname(__file__), '..', 'site')
+out = sys.argv[1]
+snap = sys.argv[2] if len(sys.argv) > 2 else None
+def rd(p): return open(os.path.join(ROOT, p), encoding='utf-8').read()
+html = rd('index.html')
+# body markup between <body> and </body>, minus script tags
+body = html.split('<body>', 1)[1].split('</body>', 1)[0]
+body = re.sub(r'<script src="[^"]+"></script>\s*', '', body)
+style = html.split('<style>', 1)[1].split('</style>', 1)[0]
+leaflet_css = rd('vendor/leaflet/leaflet.css')
+leaflet_css = re.sub(r'url\(images/[^)]+\)', 'none', leaflet_css)
+leaflet_js = rd('vendor/leaflet/leaflet.min.js')
+parts = ['<title>Saily</title>',
+         '<style>\n' + leaflet_css + '\n' + style + '\n#app{font-size:15px}\n</style>',
+         body,
+         '<script>\n' + leaflet_js + '\n</script>',
+         '<script>\n' + rd('nav.js') + '\n</script>',
+         '<script>\n' + rd('weather.js') + '\n</script>',
+         '<script>\n' + rd('chart-data.js') + '\n</script>']
+if snap:
+    s = json.load(open(snap))
+    parts.append('<script>window.SAILY_SINGLE = true; window.EMBEDDED_WX = ' + json.dumps(s, separators=(',', ':')) + ';</script>')
+else:
+    parts.append('<script>window.SAILY_SINGLE = true;</script>')
+parts.append('<script>\n' + rd('app.js') + '\n</script>')
+doc = '\n'.join(parts).replace('</script>', '</script>')
+# guard: no literal "</script>" inside inlined sources other than our closers
+open(out, 'w', encoding='utf-8').write(doc)
+print('wrote', out, len(doc.encode()), 'bytes')

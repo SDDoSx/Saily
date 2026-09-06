@@ -104,6 +104,7 @@ label.field input[type=checkbox]{width:22px;height:22px}
 .vessel svg{overflow:visible}
 .wplabel{background:rgba(11,26,43,.85);color:#fff;border:1px solid var(--accent);border-radius:6px;padding:1px 5px;font-size:11px;font-weight:700;white-space:nowrap}
 .wplabel.dim{opacity:.6;border-color:#888}
+.plabel{font-size:11px;font-weight:600;color:#1b2a3a;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;white-space:nowrap;pointer-events:none}.plabel.sea{font-style:italic;color:#1d4e7a;font-weight:500}.plabel.cape{font-size:10px;font-weight:500}
 .aidlabel{font-size:10px;color:#111;background:rgba(255,255,255,.75);padding:0 3px;border-radius:3px;white-space:nowrap}
 .leaflet-popup-content{font-size:13px;line-height:1.35;-webkit-user-select:text;user-select:text}
 .leaflet-popup-content b{display:block;margin-bottom:3px}
@@ -146,7 +147,7 @@ label.field input[type=checkbox]{width:22px;height:22px}
           <p><b>Sotogrande → Tanja Marina Bay, Tangier</b><br>Offline passage guide for the Strait of Gibraltar crossing.</p>
           <p id="startInfo" class="muted"></p>
           <button id="btnStart" class="bigbtn">Start navigation</button>
-          <p class="muted" style="font-size:12px">Tap to enable GPS, sound and screen wake lock. Keep the phone on deck with a clear sky view. This app is an aid only: it does not replace a proper chart plotter, lookout and COLREGs.</p>
+          <p class="muted" style="font-size:12px">Tap to enable GPS, sound and the screen wake lock. iPhone: GPS only updates while this page is in front with the screen on, so keep it in the foreground (the wake lock keeps the screen on; on the Home Screen app this needs iOS 18.4 or later). Sound plays through the silent switch. This app is an aid only: it does not replace a chart plotter, a lookout and the COLREGs.</p>
           <div class="row"><button id="btnPlanOnly" class="btn">Just look around</button><button id="btnStartSim" class="btn">Demo (simulate)</button></div>
         </div>
         <div id="toast"></div>

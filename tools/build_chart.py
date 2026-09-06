@@ -335,6 +335,14 @@ for e in H['elements']:
     if e['type'] == 'way' and (t.get('seamark:type') == 'breakwater' or t.get('man_made') in ('breakwater', 'pier')) and e.get('geometry'):
         structures.append([[round(p['lat'], 5), round(p['lon'], 5)] for p in e['geometry']])
 
+labels = [
+    (35.95, -5.62, 'STRAIT OF GIBRALTAR', 'sea', 8), (36.288, -5.284, 'Sotogrande', 'town', 10), (36.14, -5.353, 'Gibraltar', 'town', 10),
+    (36.13, -5.455, 'Algeciras', 'town', 10), (36.013, -5.606, 'Tarifa', 'town', 10), (35.889, -5.32, 'Ceuta', 'town', 10),
+    (35.885, -5.505, 'Tanger-Med', 'town', 10), (35.772, -5.812, 'Tangier', 'town', 10), (35.84, -5.562, 'Ksar es-Seghir', 'town', 11),
+    (35.817, -5.750, 'Cap Malabata', 'cape', 11), (35.91, -5.483, 'Punta Cires', 'cape', 11), (36.077, -5.426, 'Punta Carnero', 'cape', 11),
+    (36.109, -5.346, 'Europa Point', 'cape', 11), (36.0, -5.61, 'Isla de Tarifa', 'cape', 12), (36.20, -5.40, 'BAY OF ALGECIRAS', 'sea', 11),
+    (35.80, -5.77, 'TANGIER BAY', 'sea', 12), (36.28, -5.20, 'ALBORAN SEA', 'sea', 9), (35.90, -6.0, 'ATLANTIC', 'sea', 9),
+]
 chart = {
     'meta': {
         'built': 'chart built by tools/build_chart.py',
@@ -349,6 +357,7 @@ chart = {
     'tss': {'lanes': lanes, 'zones': zones, 'precautionary': precautionary, 'itz': itz, 'free': free_area,
             'points': {str(k): [round(v[0], 5), round(v[1], 5)] for k, v in P.items()}},
     'anchorages': anchorages,
+    'labels': [{'lat': l[0], 'lon': l[1], 'name': l[2], 'kind': l[3], 'z': l[4]} for l in labels],
     'aids': aids,
     'hazards': hazards,
     'routes': routes,

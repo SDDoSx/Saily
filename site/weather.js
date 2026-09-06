@@ -85,6 +85,17 @@
     return out;
   }
 
+  /** build a weather data object from raw API responses {id: {fc, mar}} (used for embedded snapshots) */
+  function fromRaw(raw, fetchedAt) {
+    const out = { fetchedAt: fetchedAt || Date.now(), points: {}, errors: [], embedded: true };
+    for (const p of POINTS) {
+      const r = raw && raw[p.id]; if (!r || (!r.fc && !r.mar)) continue;
+      const fc = r.fc, mar = r.mar;
+      out.points[p.id] = { ...p, rows: mergeHourly(fc, mar), sunrise: fc && fc.daily ? fc.daily.sunrise : null, sunset: fc && fc.daily ? fc.daily.sunset : null, utcOffset: (fc || mar).utc_offset_seconds };
+    }
+    return out;
+  }
+
   function save(data) { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* quota */ } }
   function load() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 
@@ -178,5 +189,5 @@
 
   const WMO = { 0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 80: 'Showers', 81: 'Showers', 82: 'Violent showers', 95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Thunderstorm w/ hail' };
 
-  root.WX = { POINTS, DEFAULT_THRESHOLDS, fetchAll, load, save, rowAt, classify, passage, overall, nearestPoint, madridLocalIso, WMO, TZ };
+  root.WX = { POINTS, DEFAULT_THRESHOLDS, fetchAll, fromRaw, load, save, rowAt, classify, passage, overall, nearestPoint, madridLocalIso, WMO, TZ };
 })(typeof self !== 'undefined' ? self : this);

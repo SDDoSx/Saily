@@ -3,6 +3,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const C = window.CHART, N = window.NAV, W = window.WX;
+  const SINGLE = !!window.SAILY_SINGLE; // single-file build (hosted artifact): no service worker, no raster tiles, embedded forecast
   const TZ_ES = 'Europe/Madrid', TZ_MA = 'Africa/Casablanca';
   const KEY = 'saily.settings.v2', TRACK_KEY = 'saily.track.v1', LOG_KEY = 'saily.alertlog.v1';
   const MS_TO_KN = 1.943844;
@@ -37,7 +38,7 @@
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
-    zone: {}, hazard: {}, approached: {}, alertLast: {}, log: loadJson(LOG_KEY, []), wx: W.load(), solution: null, route: null, follow: true,
+    zone: {}, hazard: {}, approached: {}, alertLast: {}, log: loadJson(LOG_KEY, []), wx: W.load() || (window.EMBEDDED_WX ? W.fromRaw(window.EMBEDDED_WX.points, window.EMBEDDED_WX.fetchedAt) : null), solution: null, route: null, follow: true,
     lastWxAlert: 0, sunsetWarned: false, nightNoted: false, layers: {}, aidsShown: false,
   };
   function loadSettings() {
@@ -87,6 +88,7 @@
     try {
       if (!S.audio) S.audio = new (window.AudioContext || window.webkitAudioContext)();
       if (S.audio.state === 'suspended') S.audio.resume();
+      try { if ('audioSession' in navigator) navigator.audioSession.type = 'playback'; } catch (e) { } // iOS: play through the silent switch
       // unlock speech on iOS with an empty utterance
       if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
     } catch (e) { }
@@ -158,7 +160,7 @@
   function applyBase() {
     Object.values(BASES).forEach(l => map.removeLayer(l));
     if (map.hasLayer(SEAMARK)) map.removeLayer(SEAMARK);
-    if (!S.settings.chartOnly) {
+    if (!S.settings.chartOnly && !SINGLE) {
       (BASES[S.settings.base] || BASES.carto).addTo(map);
       if (S.settings.seamark) SEAMARK.addTo(map);
     }
@@ -232,6 +234,13 @@
   $('btnChartOnly').addEventListener('click', () => { S.settings.chartOnly = !S.settings.chartOnly; saveSettings(); applyBase(); toast(S.settings.chartOnly ? 'Vector chart only (works fully offline)' : 'Tiles on'); });
   $('btnNight').addEventListener('click', () => { S.settings.night = !S.settings.night; saveSettings(); applyBase(); });
   applyBase();
+  if (SINGLE) { $('btnLayers').style.display = 'none'; $('btnChartOnly').style.display = 'none'; }
+  // place labels for the vector chart
+  const labelGroup = L.layerGroup();
+  (C.labels || []).forEach(l => labelGroup.addLayer(L.marker([l.lat, l.lon], { pane: 'aids', interactive: false, icon: L.divIcon({ className: '', html: `<div class="plabel ${l.kind}" data-z="${l.z}">${l.name}</div>`, iconAnchor: [0, 8] }) })));
+  labelGroup.addTo(map);
+  function updateLabels() { const z = map.getZoom(); document.querySelectorAll('.plabel').forEach(el => { el.style.display = z >= +el.dataset.z ? '' : 'none'; }); }
+  map.on('zoomend', updateLabels); setTimeout(updateLabels, 0);
   map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [20, 20] });
 
   // ---------- GPS ----------
@@ -437,6 +446,7 @@
 
   // ---------- weather ----------
   async function refreshWeather(force) {
+    if (SINGLE && !navigator.onLine) { toast('Offline: using embedded forecast'); return; }
     if (!navigator.onLine) { toast('Offline: using stored forecast'); return; }
     if (!force && S.wx && Date.now() - S.wx.fetchedAt < 20 * 60000) return;
     toast('Fetching forecast…');
@@ -512,7 +522,7 @@
     let cum = 0;
     let h = `<div class="card"><h2>Route</h2><div class="row">${C.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${x.id}" ${x.id === r.id ? 'checked' : ''}> ${x.recommended ? 'Recommended' : 'Alternative'}</label>`).join('')}</div>
       <p><b>${r.name}</b></p><p>${r.summary}</p>
-      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA Tangier</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div></div></div>`;
+      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA Tangier</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * 75)} L at a planning burn of 75 L/h (Prestige 36 at 20-22 kn; tanks 2 x 400 L). Leave with full tanks.</div></div></div>`;
     h += `<div class="card"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
     r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
     h += `</table></div><p class="muted">Courses are true. Apply your compass variation (about 1° W here) and deviation if steering by compass.</p></div>`;
@@ -541,14 +551,15 @@
       <div>Traffic</div><div>Fast ferries from Tarifa and cruise ships use the north side of the outer harbour and a turning area in the middle. Give way, keep to the marina side. No anchoring within 500 m of the marina breakwaters (Moroccan law).</div>
       <div>Formalities</div><div>Q flag and Moroccan courtesy flag. Police, customs and port authority in one building by the reception pontoon: 15-90 min, no charge. Customs form D716 (temporary admission of the boat): keep the blue and white copies aboard and present them on departure. Declare alcohol, medicines, drones (drones are held until you leave). Visa-free 90 days for EU, UK, US, CA, AU, CH and most others.</div>
       <div>Cost</div><div>2026 rate for a 12 m x 4 m boat: 281 MAD per night in high season (to 30 Sep), about 26 EUR; access card deposit.</div>
-      <div>Time</div><div>Morocco is UTC+1: 1 hour behind Spain in September.</div></div></div>`;
+      <div>Time</div><div>Morocco is UTC+1 (1 h behind Spain) until 02:00 on Sunday 20 Sep 2026, when it moves to permanent UTC+0 (2 h behind Spain). The MA clock in this app uses your phone's time-zone database: check it against a local clock after 20 Sep.</div></div></div>`;
     h += `<div class="card"><h2>Emergency and radio</h2><div class="kv">
-      <div>Distress</div><div>VHF 16 (DSC 70): MAYDAY / PAN PAN with position from this app.</div>
-      <div>Salvamento Marítimo</div><div>+34 900 202 202 (24 h, free) · Spain 112</div>
-      <div>Tarifa Traffic</div><div>VTS for the Strait, radar and AIS: VHF <b>10</b> (67 alt), watch 16, MMSI 002240994, +34 956 684 757. Weather and traffic bulletins on VHF 10 at 00:15, 04:15, 08:15, 12:15, 16:15, 20:15 UTC (14:15 and 18:15 Spain time). Yachts need not file a GIBREP report, but announcing the crossing is advised and contact is mandatory in fog.</div>
-      <div>Tangier Traffic</div><div>VHF <b>69</b> (68 alt), MMSI 002424131; bulletins 02:15, 06:15, 10:15, 14:15, 18:15, 22:15 UTC.</div>
-      <div>Gibraltar</div><div>Gibraltar Port / Gibraltar Bay VTS VHF 12, watch 16.</div>
-      <div>Morocco</div><div>Tanger harbourmaster VHF 11/16 · Police 19 · Ambulance 15 · Gendarmerie 177 · MRCC Rabat via VHF 16 / Tangier Traffic 69.</div></div><p class="muted">Compiled from IMO MSC.300(87), NGA Pub 131, port and marina sources (Sep 2026). Confirm before departure and keep a paper copy.</p></div>`;
+      <div>Distress</div><div>VHF 16 (DSC 70): MAYDAY / PAN PAN with the position shown on the Navigate tab.</div>
+      <div>Salvamento Marítimo</div><div><b>+34 900 202 202</b> (24 h, free) · Spain 112</div>
+      <div>Tarifa Traffic</div><div>VTS for the Strait (radar, AIS): VHF <b>10</b> (67 alt), watch 16, MMSI 002240994, +34 956 684 740 / 684 757. Weather and traffic bulletins on VHF 10 at 00:15, 04:15, 08:15, 12:15, 16:15, 20:15 UTC (14:15 and 18:15 Spain time). A yacht need not file a GIBREP report, but announcing the crossing is advised and contact is mandatory in fog.</div>
+      <div>Algeciras Traffic</div><div>VHF 74 (15), MMSI 002241001, +34 956 580 930 (Bay of Algeciras).</div>
+      <div>Tangier Traffic</div><div>VHF <b>69</b> (68 alt); bulletins 02:15, 06:15, 10:15, 14:15, 18:15, 22:15 UTC.</div>
+      <div>Gibraltar</div><div>Gibraltar VTS VHF 12, watch 16, +350 200 46254 (24 h).</div>
+      <div>Morocco</div><div>MRCC Rabat +212 5 37 62 58 77 · MRSC Tanger +212 5 39 93 20 90 (currency unverified: use VHF 16 first) · Tanger harbourmaster VHF 11/16 · Police 19 · Gendarmerie 177 · Fire/ambulance 15 · 112 from a mobile.</div></div><p class="muted">Compiled from IMO MSC.300(87), NGA Pub 131, Salvamento Marítimo and port sources (Sep 2026). Confirm before departure and keep a paper copy.</p></div>`;
     h += `<div class="card"><h2>Sea and current notes (NGA Pub 131, Ifremer)</h2><ul>
       <li>Surface flow sets <b>east</b> into the Med, 1-2 kn mid-strait and up to 3 kn inshore; at Tarifa it is almost always eastward (3+ kn measured at HW+2). Mid-strait the east-going stream starts about <b>HW Gibraltar</b> and the west-going about 6 h later, earlier towards both shores.</li>
       <li><b>Punta Carnero</b>: strong NW-NE tidal set along the coast, "numerous accidents"; dangers to 0.2 nm off, La Perla rocks (4.7 m) 1.2 nm south. Keep the CARNERO offing.</li>
@@ -598,7 +609,7 @@
     h += `<div class="card"><h2>Preload for offline use</h2><p class="muted">Do this on wifi before leaving. Stores the app, the 3-day forecast and map tiles for the whole route (about 15 to 40 MB). The vector chart, route, TSS and hazards are built in and always work offline.</p>
       <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
       <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted">${preloadStatusText()}</div><div id="storeText" class="muted"></div></div>`;
-    h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online'}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Install</div><div>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon: fullscreen, and the cache is kept.</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div></div>`;
+    h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Install</div><div>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon: fullscreen, and the cache is kept.</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div></div>`;
     h += `<div class="card"><h2>Alert log</h2><div class="log">${S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}`).join('\n') || 'none yet'}</div><div class="row" style="margin-top:8px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button><button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
     h += `<div class="card"><h2>About</h2><p class="muted">Saily is a temporary passage aid built for one crossing. Data: ${C.meta.sources.join('; ')}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, CARTO, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). Not for navigation without official charts, a proper lookout and COLREGs.</p></div>`;
     el.innerHTML = h;
@@ -649,6 +660,7 @@
     return urls;
   }
   async function preload(wx, tiles) {
+    if (SINGLE) { toast('Single-file version: nothing to preload, the chart is built in'); return; }
     if (!navigator.onLine) { toast('You are offline'); return; }
     const prog = $('preProg'), txt = $('preText');
     const setP = (f, t) => { if (prog) prog.style.width = Math.round(f * 100) + '%'; if (txt) txt.textContent = t; };
@@ -677,7 +689,7 @@
   }
 
   // ---------- service worker ----------
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && !SINGLE) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').then(reg => {
         reg.addEventListener('updatefound', () => { const nw = reg.installing; nw && nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) toast('App updated: reload to use the new version', 5000); }); });
