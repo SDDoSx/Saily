@@ -66,7 +66,6 @@ main{flex:1;min-height:0;position:relative}
 #view-nav.active{display:flex}
 #mapWrap{flex:1;min-height:0;position:relative;background:var(--sea);overflow:hidden}
 #map{position:absolute;inset:0;background:var(--sea)}
-#map.night{filter:brightness(.55) saturate(.6)}
 .leaflet-container{font:inherit}
 #mapControls{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:5px;z-index:1000;align-items:flex-end}
 #mapControls .more{display:none;flex-direction:row;gap:5px}
@@ -142,6 +141,12 @@ body.day #bigpos{background:rgba(242,245,248,.98)}
 #tabs button{flex:1;padding:10px 4px 8px;border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:2px}
 #tabs button .ic{font-size:20px}
 #tabs button.active{color:var(--accent)}
+#tabs button{position:relative}
+.wxdot{position:absolute;top:6px;right:16px;width:9px;height:9px;border-radius:50%;display:none;box-shadow:0 0 0 2px var(--panel)}
+.wxdot.ok{background:var(--ok);display:block}.wxdot.caution{background:var(--warn);display:block}.wxdot.nogo{background:var(--danger);display:block}
+.wxdot.old{opacity:.45}
+.wxstale{background:#4a3200;border-left:4px solid var(--warn);padding:8px 10px;border-radius:6px}
+.seg{display:inline-flex;gap:0}.seg .btn{border-radius:0}.seg .btn:first-child{border-radius:8px 0 0 8px}.seg .btn:last-child{border-radius:0 8px 8px 0}.btn.on{background:var(--accent);color:#000}
 .page{padding:12px;max-width:900px;margin:0 auto;padding-bottom:calc(var(--sab) + 24px)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
 .card h2{margin:0 0 8px;font-size:16px}
@@ -200,6 +205,35 @@ label.field input[type=checkbox]{width:22px;height:22px}
   .page{padding:20px}
 }
 @media (max-height:640px){#hud .cell .v{font-size:22px}}
+/* night: red-amber on black, preserves dark adaptation; the chart tiles are tinted the same way */
+body.night{--bg:#000;--panel:#120600;--panel2:#1c0a00;--line:#4d2200;--text:#ff9a4d;--muted:#b5642a;--accent:#ff9a4d;--ok:#d0761f;--warn:#ffb020;--danger:#ff4a1a;--sea:#150800}
+body.night #map{filter:brightness(.45) sepia(1) hue-rotate(-25deg) saturate(2.4)}
+body.night #hud svg{filter:sepia(1) hue-rotate(-25deg) saturate(2.4)}
+body.night #hud .cell .v{color:#ffa64d}
+body.night #hud .steer.left,body.night #hud .steer.right{color:#ffc47a}
+body.night .verdict.ok,body.night .tag.ok{background:#5a2e00;color:#ffb070}
+body.night .verdict.caution,body.night .tag.caution{background:#8a4a00;color:#ffd9a8}
+body.night .verdict.nogo,body.night .tag.nogo{background:#8a1500;color:#ffc4b0}
+body.night .verdict.incomplete,body.night .tag.na,body.night .tag.incomplete{background:#3a1c00;color:#d09060}
+body.night #mapControls button{background:rgba(18,6,0,.92);color:#ff9a4d;border-color:#4d2200}
+body.night #toast{background:rgba(18,6,0,.95);color:#ffb070}
+body.night .wplabel{background:rgba(18,6,0,.85);color:#ffb070}
+body.night #alertBanner{background:#8a4a00;color:#ffe0b0}body.night #alertBanner.info{background:#4d2200;color:#ffd9a8}body.night #alertBanner.danger{background:#8a1500;color:#ffd0c0}
+body.night #startOverlay{background:rgba(0,0,0,.96)}
+body.night #bigpos{background:#000}
+body.night #dangerStrip{background:#8a1500}
+body.night .aislabel{background:rgba(40,16,0,.9);color:#ffb070}
+#dimmer{position:fixed;inset:0;background:#000;pointer-events:none;z-index:5000;opacity:0;transition:opacity .3s}
+/* big numbers: chart hidden, HUD fills the screen */
+body.bighud #mapWrap{display:none}
+body.bighud #view-nav.active{flex-direction:column}
+body.bighud #hud{width:auto;flex:1;overflow:auto;border-left:0;padding-top:12px}
+body.bighud #hud .grid,body.bighud #hud .row2{grid-template-columns:1fr 1fr}
+body.bighud #hud .cell .v{font-size:min(12vw,64px)}
+body.bighud #hud .row2 .v{font-size:min(9vw,48px)}
+body.bighud #hud .cell .l{font-size:13px}
+.bigonly{display:none}
+body.bighud .bigonly{display:block}
 @media print{
   body,html{background:#fff;color:#000;font-size:11pt}
   #topbar,#tabs,#view-nav,#alertBanner,#dangerStrip,.btn,button,#view-wx,#view-more{display:none!important}
@@ -260,7 +294,8 @@ setTimeout(function () {
             <button id="btnLayers" title="Base layer">▦</button>
             <button id="btnChartOnly" title="Chart only (no tiles)">⛵</button>
             <button id="btnDay" title="Daylight (glare) theme">☀</button>
-            <button id="btnNight" title="Night mode">☾</button>
+            <button id="btnNight" title="Night colours">☾</button>
+            <button id="btnBig" title="Big numbers (hide the chart)">A</button>
           </div>
         </div>
         <div id="startOverlay">
@@ -297,9 +332,9 @@ setTimeout(function () {
         </div>
         <div class="next" style="margin-top:6px"><span id="hudPos" class="pos" title="Tap for a big position display">--</span><span id="hudAcc"></span></div>
         <div class="strip" id="strip" title="Passage progress"><svg id="stripSvg" viewBox="0 0 400 22" preserveAspectRatio="none"></svg></div>
-        <div class="next"><span id="hudWx"></span><span id="hudSea"></span></div>
+        <div class="next"><span id="hudWx"></span><span id="hudSea"></span><span id="hudAis"></span></div>
         <div class="next"><span id="hudTrip"></span></div>
-        <div class="wpbtns"><button id="btnPrevWp">◀ Prev WP</button><button id="btnNextWp">Next WP ▶</button><button id="btnMute" title="Mute voice and beeps">🔊</button></div>
+        <div class="wpbtns"><button id="btnPrevWp">◀ Prev WP</button><button id="btnNextWp">Next WP ▶</button><button id="btnMute" title="Mute voice and beeps">🔊</button><button id="btnChartBack" class="bigonly" title="Show the chart again">Chart</button></div>
         <div class="wpbtns helm"><button id="btnMob" class="mob">MOB</button><button id="btnAnchor">Anchor</button><button id="btnRepeat">Repeat</button><button id="btnMark">Mark</button></div>
       </div>
     </section>
@@ -307,6 +342,7 @@ setTimeout(function () {
     <section id="view-plan" class="view"><div class="page" id="planPage"></div></section>
     <section id="view-more" class="view"><div class="page" id="morePage"></div></section>
   </main>
+  <div id="dimmer"></div>
   <nav id="tabs">
     <button data-view="nav" class="active"><span class="ic">🧭</span>Navigate</button>
     <button data-view="wx"><span class="ic">🌊</span>Weather</button>

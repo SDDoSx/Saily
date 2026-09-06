@@ -40,7 +40,7 @@
   const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ${TZL_FROM} · ${fmtMA(d)} ${TZL_TO}`;
 
   // ---------- state ----------
-  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, night: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false };
+  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, theme: 'auto', dim: 0, bigHud: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false };
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
@@ -52,6 +52,7 @@
     const s = loadJson(KEY, null);
     const merged = Object.assign({}, DEFAULTS, s || {});
     merged.th = Object.assign({}, W.DEFAULT_THRESHOLDS, (s && s.th) || {});
+    if (s && !s.theme) merged.theme = s.night ? 'night' : s.day ? 'day' : 'auto'; // settings v2 before the theme selector
     if (!s || !s.departure || new Date(s.departure).getTime() < Date.now() - 36 * 3600000) merged.departure = defaultDeparture();
     return merged;
   }
@@ -169,6 +170,7 @@
   const POLICY = [
     ['xte', { repeat: 'on-change', delta: 0.2, interval: 300, snooze: 600, speakLevel: 'warn' }],
     ['wxnow', { repeat: 'on-change', interval: 1800, snooze: 1800 }],
+    ['wxchange', { repeat: 'on-change', interval: 600, snooze: 1800 }],
     ['gpslost', { repeat: 'interval', interval: 300, speakDelay: 65 }],
     ['harbspeed', { repeat: 'once', snooze: 600 }],
     ['zoneout-', { repeat: 'interval', interval: 30, speak: 'first' }],
@@ -253,6 +255,7 @@
     if (S.started && !S.wakeLock) requestWakeLock();
     try { if (S.audio && S.audio.state === 'suspended') S.audio.resume(); } catch (e) { }
     S.lastFixAt = Date.now(); // grace period: no false 'GPS lost' right after coming back from background
+    if (navigator.onLine && (!S.wx || Date.now() - S.wx.fetchedAt > 20 * 60000)) refreshWeather(false);
     if (S.watchId !== null) { stopGps(); startGps(); } // iOS often leaves the old watch dead
     setTimeout(() => map.invalidateSize(), 50);
   });
@@ -285,10 +288,29 @@
       if (S.settings.seamark) SEAMARK.addTo(map);
     }
     $('btnChartOnly').classList.toggle('on', !!S.settings.chartOnly);
-    $('map').classList.toggle('night', !!S.settings.night);
-    $('btnNight').classList.toggle('on', !!S.settings.night);
-    document.body.classList.toggle('day', !!S.settings.day); $('btnDay').classList.toggle('on', !!S.settings.day);
+    applyTheme();
   }
+  /** day, dark or night colours. Auto: night from 20 min before sunset to 20 min after sunrise at the passage's sun point. */
+  function resolveTheme() {
+    const t = S.settings.theme || 'auto';
+    if (t !== 'auto') return t;
+    const now = new Date(); const st = N.sunTimes(now, P.sun.lat, P.sun.lon);
+    if (!st.sunrise || !st.sunset) return 'dark';
+    const m = 20 * 60000;
+    return (now < st.sunrise.getTime() + m || now > st.sunset.getTime() - m) ? 'night' : 'dark';
+  }
+  function applyTheme() {
+    const t = resolveTheme(); const prev = S.themeNow; S.themeNow = t;
+    document.body.classList.toggle('day', t === 'day'); document.body.classList.toggle('night', t === 'night');
+    document.body.classList.toggle('bighud', !!S.settings.bigHud);
+    $('btnDay').classList.toggle('on', S.settings.theme === 'day'); $('btnNight').classList.toggle('on', S.settings.theme === 'night');
+    const bb = $('btnBig'); if (bb) bb.classList.toggle('on', !!S.settings.bigHud);
+    const dim = $('dimmer'); if (dim) dim.style.opacity = t === 'night' ? String(Math.min(0.85, S.settings.dim || 0)) : '0';
+    const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.setAttribute('content', t === 'day' ? '#f2f5f8' : t === 'night' ? '#000000' : '#0b1a2b');
+    if (prev && prev !== t && (S.settings.theme || 'auto') === 'auto') toast(t === 'night' ? 'Night colours (sunset). Dimmer in Setup.' : 'Day colours (sunrise).', 8000, { label: 'Keep ' + (prev === 'night' ? 'night' : 'dark'), fn: () => { S.settings.theme = prev; saveSettings(); applyTheme(); } });
+    if (S.solution && map) setTimeout(() => map.invalidateSize(), 50);
+  }
+  setInterval(applyTheme, 60000);
   // land polygons (vector fallback under tiles)
   const landStyle = { pane: 'land', color: '#7d6b4a', weight: 1, fillColor: '#e9e2cd', fillOpacity: 1, interactive: false };
   C.land.forEach(r => L.polygon(r, landStyle).addTo(map));
@@ -363,8 +385,10 @@
   $('btnRoute').addEventListener('click', () => { S.follow = false; $('btnFollow').classList.remove('on'); S.userZoomAt = Date.now(); map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [30, 30] }); });
   $('btnLayers').addEventListener('click', () => { const order = ['carto', 'osm', 'sat']; S.settings.base = order[(order.indexOf(S.settings.base) + 1) % order.length]; S.settings.chartOnly = false; saveSettings(); applyBase(); toast('Base map: ' + { osm: 'OpenStreetMap', carto: 'CARTO light', sat: 'Satellite' }[S.settings.base]); });
   $('btnChartOnly').addEventListener('click', () => { S.settings.chartOnly = !S.settings.chartOnly; saveSettings(); applyBase(); toast(S.settings.chartOnly ? 'Vector chart only (works fully offline)' : 'Tiles on'); });
-  $('btnNight').addEventListener('click', () => { S.settings.night = !S.settings.night; if (S.settings.night) S.settings.day = false; saveSettings(); applyBase(); });
-  $('btnDay').addEventListener('click', () => { S.settings.day = !S.settings.day; if (S.settings.day) S.settings.night = false; saveSettings(); applyBase(); });
+  $('btnNight').addEventListener('click', () => { S.settings.theme = S.settings.theme === 'night' ? 'auto' : 'night'; saveSettings(); applyTheme(); toast(S.settings.theme === 'night' ? 'Night colours on' : 'Colours: automatic (night after sunset)'); });
+  $('btnDay').addEventListener('click', () => { S.settings.theme = S.settings.theme === 'day' ? 'auto' : 'day'; saveSettings(); applyTheme(); toast(S.settings.theme === 'day' ? 'Daylight colours on' : 'Colours: automatic (night after sunset)'); });
+  $('btnChartBack').addEventListener('click', () => { S.settings.bigHud = false; saveSettings(); applyTheme(); });
+  $('btnBig').addEventListener('click', () => { S.settings.bigHud = !S.settings.bigHud; saveSettings(); applyTheme(); toast(S.settings.bigHud ? 'Big numbers: chart hidden. Tap A again for the chart.' : 'Chart shown'); });
   applyBase();
   if (SINGLE) { $('btnLayers').style.display = 'none'; $('btnChartOnly').style.display = 'none'; }
   // place labels for the vector chart
@@ -466,7 +490,7 @@
       if (sol.k >= wps.length - 1) {
         if (!S.arrivedFinal) { S.arrivedFinal = true; alert('arrived', 'info', `Arrived at ${sol.wp.name}. ${sol.wp.note}`); }
       } else {
-        S.settings.wp = sol.k + 1; S.manualWp = false; saveSettings(); S.approached = {};
+        S.settings.wp = sol.k + 1; S.manualWp = false; saveSettings(); S.approached = {}; S.wpChangedAt = pos.t || Date.now();
         const nxt = N.solve(pos, wps, S.settings.wp);
         alert('wp' + sol.k, 'info', `Waypoint ${sol.wp.id} reached. New course ${N.fmtBrg(nxt.brg)}, ${N.fmtNm(nxt.dist)} miles to ${nxt.wp.id}. ${sol.wp.note}`);
         drawRoutes(); sol = nxt;
@@ -504,6 +528,7 @@
     $('hudAcc').textContent = sp.plan ? '* at plan speed ' + S.settings.speed + ' kn' : '';
     $('hudSim').textContent = S.sim ? 'SIMULATION' : '';
     $('hudRoute').textContent = S.route.short || S.route.id;
+    if (Date.now() - (S.wxDotAt || 0) > 30000) { S.wxDotAt = Date.now(); renderWxDot(); }
     const wxp = W.nearestPoint(S.wx, S.pos); const row = wxp ? W.rowAt(wxp, new Date()) : null;
     $('hudWx').textContent = row ? `wind ${Math.round(row.wind)}${row.gust ? '/' + Math.round(row.gust) : ''} kn ${N.compass16(row.windDir)} · sea ${row.wave != null ? row.wave.toFixed(1) + ' m' : '--'}${row.current != null ? ' · cur ' + row.current.toFixed(1) + ' kn ' + N.compass16(row.currentDir) : ''}` : '';
   }
@@ -525,7 +550,7 @@
       let thisLane = null;
       if (S.cog !== null) { const cur = lanes[0] || zones[0]; for (let d = 0.05; d <= 8; d += 0.05) { const q = N.destination(S.pos, sol.legBrg, d); if (!N.pointInRings(q, cur.rings)) { thisLane = d; break; } } }
       el.classList.remove('hidden');
-      const ships = window.AIS && AIS.targets.size ? AIS.ranked().filter(x => x.c && x.c.range < 6).slice(0, 2).map(x => `${x.t.name || x.t.mmsi} ${N.fmtNm(x.c.range)} nm ${N.compass16(x.c.brg)}${x.c.tcpa !== null && x.c.tcpa > 0 ? ', CPA ' + N.fmtNm(x.c.cpa) + ' in ' + Math.round(x.c.tcpa) + ' min' : ''}`).join(' · ') : '';
+      const ships = window.AIS && AIS.targets.size ? AIS.ranked().filter(x => x.c && x.c.range < 6 && Date.now() - x.t.t < 180000).slice(0, 2).map(x => `${x.t.name || x.t.mmsi} ${N.fmtNm(x.c.range)} nm ${N.compass16(x.c.brg)}${x.c.tcpa !== null && x.c.tcpa > 0 ? ', CPA ' + N.fmtNm(x.c.cpa) + ' in ' + Math.round(x.c.tcpa) + ' min' : ''}`).join(' · ') : '';
       el.innerHTML = (ships ? `<div style="margin-bottom:4px">🚢 ${ships}</div>` : '') + `<b>${lanes.length ? (lanes[0].flow === 'W' ? 'WESTBOUND LANE' : 'EASTBOUND LANE') : 'SEPARATION ZONE'}</b>${side ? ' · ships from your <b>' + side + '</b> (' + from + ')' : ''} · cross on <b>${N.fmtBrg(target)}</b>${err !== null ? ' (COG ' + (err > 0 ? '+' : '') + err + '°)' : ''}${thisLane !== null ? ' · this lane <b>' + N.fmtNm(thisLane) + ' nm</b>' : ''}${clear !== null ? ' · scheme clear <b>' + N.fmtNm(clear) + ' nm</b>' + (S.sog > 3 ? ' / ' + Math.round(clear / S.sog * 60) + ' min' : '') : ''}`;
       return;
     }
@@ -707,13 +732,21 @@
     const popup = `<b>${t.name || 'MMSI ' + t.mmsi}</b>${AIS.typeName(t.type) || 'ship'} · COG ${N.fmtBrg(t.cog)} · ${t.sog != null ? t.sog.toFixed(1) : '--'} kn${c ? '<br>range ' + N.fmtNm(c.range) + ' nm, bearing ' + N.fmtBrg(c.brg) + (c.tcpa !== null && c.tcpa > 0 ? '<br>CPA ' + N.fmtNm(c.cpa) + ' nm in ' + Math.round(c.tcpa) + ' min' : '<br>opening') : ''}<br>${Math.round((Date.now() - t.t) / 1000)} s ago`;
     if (!m) { m = L.marker([t.lat, t.lon], { pane: 'vessel', icon: aisIcon(t, risk) }).bindPopup(popup).bindTooltip(label, { permanent: true, direction: 'right', offset: [10, 0], className: 'aislabel' }); aisGroup.addLayer(m); aisMarkers.set(t.mmsi, m); }
     else { m.setLatLng([t.lat, t.lon]); m.setIcon(aisIcon(t, risk)); m.getPopup().setContent(popup); m.setTooltipContent(label); }
+    m.setOpacity(Date.now() - t.t > 120000 ? 0.35 : 1); // no report for 2 min: fade, the position is a guess
   }
   function aisTick() {
     if (!window.AIS) return;
     AIS.own = S.pos ? { lat: S.pos.lat, lon: S.pos.lon, cog: S.cog, sog: S.sog } : null;
     AIS.prune();
     for (const [mmsi, m] of aisMarkers) if (!AIS.targets.has(mmsi)) { aisGroup.removeLayer(m); aisMarkers.delete(mmsi); }
-    if (Date.now() - (S.aisDrawAt || 0) > 5000) { S.aisDrawAt = Date.now(); for (const t of AIS.targets.values()) aisDraw(t); }
+    if (Date.now() - (S.aisDrawAt || 0) > 5000) { S.aisDrawAt = Date.now(); for (const t of AIS.targets.values()) aisDraw(t); renderAisChip(); }
+  }
+  function renderAisChip() {
+    const el = $('hudAis'); if (!el) return;
+    if (!window.AIS || !AIS.targets.size || !AIS.own) { el.textContent = ''; return; }
+    const fresh = AIS.ranked().filter(x => x.c && Date.now() - x.t.t < 180000);
+    const near = fresh[0];
+    el.textContent = fresh.length ? `🚢 ${fresh.length} ship${fresh.length > 1 ? 's' : ''}` + (near ? `, nearest ${N.fmtNm(near.c.range)} nm ${N.compass16(near.c.brg)}` : '') : '';
   }
   function aisAlarm(t, c) {
     const rel = S.cog === null ? '' : (() => { const d = N.angleDiff(c.brg, S.cog); return Math.abs(d) < 30 ? 'ahead' : Math.abs(d) > 150 ? 'astern' : d > 0 ? 'on your RIGHT' : 'on your LEFT'; })();
@@ -859,19 +892,25 @@
     const onTrack = sol && Math.abs(sol.xte) < 0.1 && Math.abs(N.angleDiff(S.cog, sol.legBrg)) < 25;
     const harbourLeg = sol && (HARBOUR_WPS.has(sol.wp.id) || HARBOUR_WPS.has(sol.prev.id));
     if (onTrack && harbourLeg && Math.abs(sol.xte) < 0.05) return;
+    // turning onto a new leg: the smoothed COG still points down the old leg for a few fixes, and the old course often
+    // runs at the coast (that is why there is a waypoint). Wait up to 30 s for the COG to come round.
+    const turning = sol && S.wpChangedAt && (pos.t || Date.now()) - S.wpChangedAt < 30000 && Math.abs(N.angleDiff(S.cog, sol.legBrg)) >= 25;
+    if (turning) { S.landAheadPrev = undefined; S.landAheadHits = 0; return; }
     const nearHarbour = Object.values(P.places).some(pl => N.distanceNm(pos, pl) < 0.2);
     let look = nearHarbour || S.sog < 4 ? 0.08 : Math.min(1.5, Math.max(0.2, S.sog * 4 / 60)); // 4 minutes ahead at sea, 150 m in harbour
     if (onTrack) look = Math.min(look, sol.dist + 0.05);
-    // closing only: ignore land that is not getting nearer (skip when the previous check found it farther)
+    // closing only, confirmed by two consecutive fixes: ignore land that is not getting nearer and a single fix whose
+    // course sweeps over the coast mid-turn
     for (let d = 0.04; d <= look; d += 0.04) {
       const q = N.destination(pos, S.cog, d);
       if (landAt(q)) {
-        const prev = S.landAheadPrev; S.landAheadPrev = d;
+        const prev = S.landAheadPrev; S.landAheadPrev = d; S.landAheadHits = (S.landAheadHits || 0) + 1;
+        if (S.landAheadHits < 2) return; // first sighting: confirm on the next fix
         if (prev !== undefined && d >= prev - 0.001) return; // not closing
         alert('landahead', 'danger', `Land or rocks ahead, ${d < 0.1 ? Math.round(d * 1852) + ' metres' : N.fmtNm(d) + ' miles'} on this heading. Alter course.`, { cooldown: 30 }); return;
       }
     }
-    S.landAheadPrev = undefined;
+    S.landAheadPrev = undefined; S.landAheadHits = 0;
   }
   function checkHarbourSpeed(pos) {
     if (S.sog === null || S.sog < (P.harbourSpeedKn || 4)) return;
@@ -931,7 +970,7 @@
     ensureAudio(); S.started = true; requestWakeLock();
     $('startOverlay').classList.add('hidden');
     S.arrivedFinal = false;
-    if (mode === 'nav') { S.navigating = true; if (!S.trip) { S.trip = loadJson('saily.trip.v1', null); if (!S.trip || Date.now() - S.trip.startedAt > 12 * 3600000) S.trip = { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 }; } startGps(); speak('Navigation started. Route ' + (S.route.short || S.route.id) + '.', 'info'); }
+    if (mode === 'nav') { S.navigating = true; if (Math.abs(Date.now() - new Date(S.settings.departure).getTime()) > 30 * 60000) { S.settings.departure = new Date().toISOString(); saveSettings(); } if (!S.trip) { S.trip = loadJson('saily.trip.v1', null); if (!S.trip || Date.now() - S.trip.startedAt > 12 * 3600000) S.trip = { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 }; } startGps(); speak('Navigation started. Route ' + (S.route.short || S.route.id) + '.', 'info'); }
     else if (mode === 'sim') { S.navigating = true; startSim(S.settings.wp); }
     else { S.navigating = false; startGps(); }
     renderMore();
@@ -940,7 +979,7 @@
   $('btnPlanOnly').addEventListener('click', () => begin('look'));
   $('btnStartSim').addEventListener('click', () => begin('sim'));
   function setWp(k, why) {
-    const before = S.settings.wp; S.settings.wp = Math.max(1, Math.min(WPS().length - 1, k)); S.manualWp = true; S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix();
+    const before = S.settings.wp; S.settings.wp = Math.max(1, Math.min(WPS().length - 1, k)); S.manualWp = true; S.approached = {}; S.arrivedFinal = false; S.wpChangedAt = (S.pos && S.pos.t) || Date.now(); saveSettings(); drawRoutes(); if (S.pos) processFix();
     toast((why || 'Active waypoint') + ': ' + WPS()[S.settings.wp].id, 6000, { label: 'Undo', fn: () => { S.settings.wp = before; S.manualWp = true; saveSettings(); drawRoutes(); if (S.pos) processFix(); } });
   }
   holdButton($('btnPrevWp'), 500, () => setWp(S.settings.wp - 1, 'Back to'), 'Hold to go back a waypoint');
@@ -949,49 +988,102 @@
   $('startInfo').textContent = `${S.route.total} nm · about ${N.fmtDur(S.route.total / S.settings.speed * 3600)} at ${S.settings.speed} kn · planned departure ${bothTimes(new Date(S.settings.departure))}`;
 
   // ---------- weather ----------
+  /** verdict for the passage as it stands: rest of the route from here while navigating, planned departure otherwise */
+  function wxVerdictNow() {
+    if (!S.wx) return null;
+    const live = !!(S.navigating && S.solution && S.solution.remaining != null);
+    const doneNm = live ? Math.max(0, S.route.total - S.solution.remaining) : 0;
+    const pass = live ? W.remainingPassage(S.wx, S.route.waypoints, doneNm, new Date(), S.sog, S.settings.speed, S.settings.th)
+      : W.passage(S.wx, new Date(S.settings.departure), S.settings.speed, S.settings.th, S.route.waypoints);
+    return Object.assign(W.overall(pass), { live, doneNm, pass });
+  }
+  const WX_BACKOFF = [60, 300, 900]; // seconds after 1, 2, 3+ consecutive failures
   async function refreshWeather(force) {
-    if (SINGLE && !navigator.onLine) { toast('Offline: using embedded forecast'); return; }
-    if (!navigator.onLine) { toast('Offline: using stored forecast'); return; }
+    if (SINGLE && !navigator.onLine) { if (force) toast('Offline: using embedded forecast'); return; }
+    if (!navigator.onLine) { if (force) toast('Offline: using stored forecast'); return; }
     if (!force && S.wx && Date.now() - S.wx.fetchedAt < 20 * 60000) return;
-    toast('Fetching forecast…');
-    try {
-      const d = await W.fetchAll(3, null, S.wx);
-      if (Object.keys(d.points).length) { S.wx = d; toast(d.stale ? 'Offline: showing the stored forecast' : 'Forecast updated' + (d.errors.length ? ' (some points kept from the previous fetch)' : '')); }
-      else toast('Forecast fetch failed');
-    } catch (e) { toast('Forecast fetch failed: ' + e.message); }
+    if (!force && Date.now() < (S.wxBackoffUntil || 0)) return;
+    if (S.wxInflight) return S.wxInflight; // one fetch at a time; callers share it
+    const loud = force || !S.navigating; // under way, only the Weather tab dot and the verdict alert change
+    if (loud) toast('Fetching forecast…');
+    const before = wxVerdictNow();
+    S.wxInflight = (async () => {
+      try {
+        const d = await W.fetchAll(5, null, S.wx);
+        if (Object.keys(d.points).length) {
+          S.wx = d;
+          if (d.stale) S.wxFails = (S.wxFails || 0) + 1; else if (!d.errors.length) S.wxFails = 0;
+          if (loud) toast(d.stale ? 'Offline: showing the stored forecast' : 'Forecast updated' + (d.errors.length ? ' (some points kept from the previous fetch)' : ''));
+        } else { S.wxFails = (S.wxFails || 0) + 1; if (loud) toast('Forecast fetch failed'); }
+      } catch (e) { S.wxFails = (S.wxFails || 0) + 1; if (loud) toast('Forecast fetch failed: ' + e.message); }
+      S.wxBackoffUntil = S.wxFails ? Date.now() + WX_BACKOFF[Math.min(S.wxFails, WX_BACKOFF.length) - 1] * 1000 : 0;
+    })();
+    try { await S.wxInflight; } finally { S.wxInflight = null; }
+    const after = wxVerdictNow();
+    if (before && after && S.navigating && before.level !== after.level && after.level !== 'incomplete') {
+      alert('wxchange', after.level === 'nogo' ? 'danger' : 'warn', `Forecast update: the rest of the passage is now ${LEVELNAME[after.level]}${after.governing ? ', ' + after.governing.text : ''}.`, { value: after.level });
+    }
     if ($('view-wx').classList.contains('active')) renderWx();
     if (S.solution) updateHud(S.solution);
-    renderWxOverlay(); renderSeaLine();
+    renderWxOverlay(); renderSeaLine(); renderWxDot();
   }
+  function wxAgeInfo() {
+    const d = S.wx; if (!d) return { level: 'bad', text: 'no forecast', min: null, stale: false };
+    const min = Math.round((Date.now() - d.fetchedAt) / 60000);
+    return { level: min > 180 ? 'bad' : min > 60 ? 'warn' : 'ok', min, stale: !!d.stale, text: min < 1 ? 'just now' : min < 60 ? min + ' min ago' : (min / 60).toFixed(1) + ' h ago' };
+  }
+  /** coloured dot on the Weather tab: verdict for the passage as it stands, dimmed when the forecast is old */
+  function renderWxDot() {
+    const b = document.querySelector('#tabs button[data-view=wx]'); if (!b) return;
+    let dot = b.querySelector('.wxdot'); if (!dot) { dot = document.createElement('span'); dot.className = 'wxdot'; b.appendChild(dot); }
+    const v = wxVerdictNow(); const age = wxAgeInfo();
+    const cls = !v || v.level === 'incomplete' ? 'na' : v.level;
+    dot.className = 'wxdot ' + cls + (age.level !== 'ok' ? ' old' : '');
+    dot.title = (v ? LEVELNAME[v.level] : 'no forecast') + ', fetched ' + age.text;
+  }
+  setInterval(renderWxDot, 60000);
   const arrow = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) + 90}deg)">➤</span>`; // wind FROM d blows towards d+180; glyph points east (090)
   const arrowTo = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) - 90}deg)">➤</span>`;
   const LEVELNAME = { ok: 'OK', caution: 'CAUTION', nogo: 'NO-GO', incomplete: 'INCOMPLETE', na: 'NO DATA' };
   const tagFor = v => v ? `<span class="tag ${v.level}">${LEVELNAME[v.level] || v.level.toUpperCase()}</span>` : '<span class="tag na">no data</span>';
   function renderWx() {
     const el = $('wxPage'); const d = S.wx;
-    const age = d ? Math.round((Date.now() - d.fetchedAt) / 60000) : null;
-    let h = `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Forecast along the route</h2><button class="btn" id="btnWxRefresh">Refresh</button></div>
-      <p class="muted">${d ? `Open-Meteo, fetched ${age} min ago (${N.fmtTime(new Date(d.fetchedAt), TZ_ES)} ES).` : 'No forecast stored yet. Go online and tap Refresh.'} Wind at 10 m in knots, waves = significant height, current = surface (includes tide). Thresholds in Setup.</p></div>`;
+    const age = wxAgeInfo(); const cov = d ? W.coverageEnd(d) : null;
+    const live = !!(S.navigating && S.solution && S.solution.remaining != null);
+    const mode = live && S.wxMode !== 'plan' ? 'now' : 'plan';
+    let h = `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Forecast along the route</h2><span class="row" style="gap:6px"><span class="tag ${age.level === 'ok' ? 'ok' : age.level === 'warn' ? 'caution' : 'nogo'}">${d ? 'fetched ' + age.text : 'NO FORECAST'}</span><button class="btn" id="btnWxRefresh">Refresh</button></span></div>
+      <p class="muted">${d ? `Open-Meteo, ${N.fmtTime(new Date(d.fetchedAt), TZ_ES)} ES${cov ? ', hourly data to ' + cov.slice(5, 10).replace('-', '/') + ' ' + cov.slice(11) + ' ES' : ''}.` : 'No forecast stored yet. Go online and tap Refresh.'} Wind at 10 m in knots, waves = significant height, current = surface (includes tide). Thresholds in Setup.</p>
+      ${d && (age.stale || age.level === 'bad') ? `<p class="wxstale">${age.stale ? 'Offline: this is the stored forecast.' : 'This forecast is more than 3 hours old.'}${P.weatherVhf ? ' Check the VHF bulletin: ' + P.weatherVhf : ''}</p>` : ''}</div>`;
     if (d) {
       const dep = new Date(S.settings.departure);
-      const pass = W.passage(d, dep, S.settings.speed, S.settings.th, S.route.waypoints);
+      const doneNm = live ? Math.max(0, S.route.total - S.solution.remaining) : 0;
+      const useKn = live && S.sog > 3 ? Math.round(S.sog) : S.settings.speed;
+      const pass = mode === 'now' ? W.remainingPassage(d, S.route.waypoints, doneNm, new Date(), S.sog, S.settings.speed, S.settings.th) : W.passage(d, dep, S.settings.speed, S.settings.th, S.route.waypoints);
       const ov = W.overall(pass);
-      h += `<div class="card"><h2>Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn</h2>
+      const title = mode === 'now' ? `Rest of the passage: ${N.fmtNm(S.route.total - doneNm, 1)} nm from here at ${useKn} kn` : `Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn`;
+      h += `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${title}</h2>${live ? `<span class="seg"><button class="btn ${mode === 'now' ? 'on' : ''}" data-wxmode="now">Now</button><button class="btn ${mode === 'plan' ? 'on' : ''}" data-wxmode="plan">Planned</button></span>` : ''}</div>
         <div class="verdict ${ov.level}"><div class="vlabel">${LEVELNAME[ov.level] || ov.level}</div><div class="vgov">${ov.governing ? ov.governing.text : (ov.level === 'incomplete' ? 'Forecast missing for part of the passage' : 'Nothing over your thresholds at any route point')}</div></div>`;
       if (ov.groups.length) h += `<ul>${ov.groups.map(g => `<li><span class="tag ${g.level === 2 ? 'nogo' : 'caution'}">${g.level === 2 ? 'NO-GO' : 'CAUTION'}</span> ${g.text}</li>`).join('')}</ul>`;
       if (ov.missing.length) h += `<p class="muted">No forecast for ${ov.missing.map(m => m.point + (m.field === 'all' ? '' : ' (' + m.field + ')')).join(', ')}: refresh online or change the departure time.</p>`;
+      if (mode === 'now') {
+        const ab = W.abortCompare(d, S.route.waypoints, doneNm, S.route.total, new Date(), S.sog, S.settings.speed, S.settings.th);
+        const line = (label, v, min, n) => `<b>${label}:</b> ${n ? tagFor(v) + ' ' + N.fmtDur(min * 60) + (v.governing ? ', ' + v.governing.text : '') : 'no forecast point that way'}`;
+        h += `<p>${line('Carry on to ' + (P.destinationShort || 'destination'), ab.on, ab.onMin, ab.onPass.length)}<br>${line('Turn back', ab.back, ab.backMin, ab.backPass.length)}</p>`;
+      }
       h += `<div class="tbl"><table><tr><th>Point</th><th>Pass at</th><th>Wind</th><th>Gust</th><th>Waves</th><th>Swell</th><th>Current</th><th>Wind/cur</th><th>Vis</th><th></th></tr>`;
       for (const s of pass) {
         const r = s.row;
         h += `<tr class="${s.verdict ? s.verdict.level : ''}"><td>${s.point.name}</td><td>${N.fmtTime(s.when, TZ_ES)}</td>` + (r ? `<td>${Math.round(r.wind)} kn ${N.compass16(r.windDir)} ${arrow(r.windDir)}</td><td>${Math.round(r.gust)}</td><td>${r.wave != null ? r.wave.toFixed(1) + ' m ' + Math.round(r.wavePeriod) + 's' : '--'}</td><td>${r.swell != null ? r.swell.toFixed(1) + ' m ' + N.compass16(r.swellDir) : '--'}</td><td>${r.current != null ? r.current.toFixed(1) + ' kn ' + arrowTo(r.currentDir) + ' ' + N.compass16(r.currentDir) : '--'}</td><td>${r.current != null && r.current >= 0.8 ? N.windVsCurrent(r.windDir, r.currentDir) : '-'}</td><td>${r.vis != null ? (r.vis / 1000).toFixed(0) + ' km' : '--'}</td><td>${tagFor(s.verdict)}</td>` : '<td colspan="8">no data for this hour</td>') + '</tr>';
       }
       h += '</table></div></div>';
-      // departure-window scan
+      // departure-window scan (planning only)
+      if (mode === 'plan') {
       const scan = W.departureScan(d, new Date(Math.max(Date.now(), new Date(S.settings.departure).getTime() - 12 * 3600000)), 36, S.settings.speed, S.settings.th, S.route.waypoints);
       const okOnes = scan.filter(s => s.overall.level === 'ok');
       h += `<div class="card"><h2>Departure windows (next 36 h)</h2><p class="muted">Same passage check run for every hour of departure. Green rows are windows with nothing over your thresholds. Tap "Use" to plan on that hour.</p><div class="tbl"><table><tr><th>Depart (ES)</th><th>Verdict</th><th>Max wind</th><th>Max gust</th><th>Max wave</th><th></th></tr>`;
       for (const s of scan) h += `<tr class="${s.overall.level === 'ok' ? 'best' : s.overall.level}"><td>${s.dep.toDateString().slice(0, 3)} ${N.fmtTime(s.dep, TZ_ES)}</td><td>${tagFor(s.overall)}</td><td>${s.maxWind != null && s.maxWind >= 0 ? Math.round(s.maxWind) + ' kn' : '--'}</td><td>${s.maxGust != null && s.maxGust >= 0 ? Math.round(s.maxGust) : '--'}</td><td>${s.maxWave != null && s.maxWave >= 0 ? s.maxWave.toFixed(1) + ' m' : '--'}</td><td><button class="btn" data-dep="${s.dep.toISOString()}" style="padding:4px 8px">Use</button></td></tr>`;
       h += `</table></div>${okOnes.length ? '' : '<p><b>No clean window in the next 36 hours</b> at these thresholds.</p>'}</div>`;
+      }
       // hourly table for a selected point
       const sel = S.wxSel || 'tarifa'; const pt = d.points[sel];
       h += `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Hourly</h2><select id="wxSel">${W.POINTS.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${p.name}</option>`).join('')}</select></div>`;
@@ -1008,9 +1100,10 @@
       h += '</div>';
       h += P.weatherNotes || '';
     }
-    el.innerHTML = h;
+    el.innerHTML = h; renderWxDot();
     $('btnWxRefresh').addEventListener('click', () => refreshWeather(true));
     const s = $('wxSel'); if (s) s.addEventListener('change', () => { S.wxSel = s.value; renderWx(); });
+    el.querySelectorAll('button[data-wxmode]').forEach(b => b.addEventListener('click', () => { S.wxMode = b.dataset.wxmode; renderWx(); }));
     el.querySelectorAll('button[data-dep]').forEach(b => b.addEventListener('click', () => { S.settings.departure = b.dataset.dep; saveSettings(); toast('Departure set to ' + bothTimes(new Date(b.dataset.dep))); renderWx(); }));
   }
   function tideSummary(pt) {
@@ -1072,6 +1165,9 @@
       <label class="field"><span>Planned departure (Spain time)</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
       <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${r.id}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${r.short || r.id})</option>`).join('')}</select></label>
       <label class="field"><span>Auto-zoom the chart to the next waypoint</span><input type="checkbox" id="setAutoZoom" ${s.autoZoom !== false ? 'checked' : ''}></label>
+      <label class="field"><span>Colours</span><select id="setTheme"><option value="auto" ${(s.theme || 'auto') === 'auto' ? 'selected' : ''}>Automatic (night after sunset)</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option><option value="day" ${s.theme === 'day' ? 'selected' : ''}>Daylight (glare)</option><option value="night" ${s.theme === 'night' ? 'selected' : ''}>Night (red)</option></select></label>
+      <label class="field"><span>Night dimmer (${Math.round((s.dim || 0) * 100)}%)</span><input type="range" id="setDim" min="0" max="85" step="5" value="${Math.round((s.dim || 0) * 100)}"></label>
+      <label class="field"><span>Big numbers (hide the chart on the Navigate tab)</span><input type="checkbox" id="setBigHud" ${s.bigHud ? 'checked' : ''}></label>
       <label class="field"><span>Spoken alerts</span><input type="checkbox" id="setVoice" ${s.voice ? 'checked' : ''}></label>
       <label class="field"><span>Alert beeps</span><input type="checkbox" id="setSound" ${s.sound ? 'checked' : ''}></label>
       <label class="field"><span>OpenSeaMap buoys/lights overlay</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
@@ -1104,6 +1200,9 @@
     $('setRoute').addEventListener('change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = P.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
     $('setVoice').addEventListener('change', () => { s.voice = $('setVoice').checked; saveSettings(); });
     $('setAutoZoom').addEventListener('change', () => { s.autoZoom = $('setAutoZoom').checked; saveSettings(); });
+    $('setTheme').addEventListener('change', () => { s.theme = $('setTheme').value; saveSettings(); applyTheme(); });
+    $('setDim').addEventListener('input', () => { s.dim = Number($('setDim').value) / 100; saveSettings(); applyTheme(); $('setDim').previousElementSibling.textContent = `Night dimmer (${Math.round(s.dim * 100)}%)`; });
+    $('setBigHud').addEventListener('change', () => { s.bigHud = $('setBigHud').checked; saveSettings(); applyTheme(); });
     $('setAisOn').addEventListener('change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); setTimeout(() => { const el = $('aisStatus'); if (el) el.textContent = aisStatusText(); }, 1500); });
     $('setAisKey').addEventListener('change', () => { s.aisKey = $('setAisKey').value.trim(); saveSettings(); aisApply(); });
     $('setAisDemo').addEventListener('change', () => { s.aisDemo = $('setAisDemo').checked; saveSettings(); });
@@ -1271,7 +1370,7 @@
   $('tzFrom').textContent = TZL_FROM; $('tzTo').textContent = TZL_TO;
   $('hudEtaLabel').textContent = 'ETA ' + (P.destinationShort || 'destination');
   $('startTitle').innerHTML = `<b>${P.name}</b><br>${P.description || ''}`;
-  setNet(); renderWxOverlay(); renderSeaLine(); aisApply();
+  setNet(); renderWxOverlay(); renderSeaLine(); aisApply(); renderWxDot();
   if (!SINGLE) tryResume();
   renderReady();
   if (S.pos === null) { updateHudIdle(); }
@@ -1281,7 +1380,7 @@
     $('hudRoute').textContent = S.route.short || S.route.id;
     $('hudDtg').innerHTML = S.route.total + '<small> nm</small>';
   }
-  window.SAILY = { S, map, processFix, startSim, stopSim, alert, preload, refreshWeather, onFix };
+  window.SAILY = { S, map, processFix, startSim, stopSim, alert, preload, refreshWeather, onFix, wxVerdictNow, applyTheme, resolveTheme };
   } catch (err) {
     const o = document.getElementById('startOverlay');
     if (o) o.innerHTML = '<h1>Saily</h1><p><b>The app failed to start.</b></p><p class="muted">' + String(err && err.message || err) + '</p><button class="bigbtn" onclick="location.reload()">Reload</button>';

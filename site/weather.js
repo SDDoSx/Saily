@@ -23,10 +23,10 @@
   }, PZ.thresholds || {});
 
   function fcUrl(p, days) {
-    return `https://api.open-meteo.com/v1/forecast?latitude=${p.lat}&longitude=${p.lon}&hourly=${FC_VARS}&daily=sunrise,sunset&wind_speed_unit=kn&timezone=${encodeURIComponent(TZ)}&forecast_days=${days}`;
+    return `https://api.open-meteo.com/v1/forecast?latitude=${p.lat}&longitude=${p.lon}&hourly=${FC_VARS}&daily=sunrise,sunset&wind_speed_unit=kn&timezone=${encodeURIComponent(TZ)}&forecast_days=${days || 5}`;
   }
   function marineUrl(p, days) {
-    return `https://marine-api.open-meteo.com/v1/marine?latitude=${p.lat}&longitude=${p.lon}&hourly=${MARINE_VARS}&cell_selection=sea&timezone=${encodeURIComponent(TZ)}&forecast_days=${days}`;
+    return `https://marine-api.open-meteo.com/v1/marine?latitude=${p.lat}&longitude=${p.lon}&hourly=${MARINE_VARS}&cell_selection=sea&timezone=${encodeURIComponent(TZ)}&forecast_days=${days || 5}`;
   }
 
   async function fetchJson(url, timeoutMs) {
@@ -73,14 +73,15 @@
 
   /** fetch every point; keeps previous data for points that fail; detects stale (offline) responses */
   async function fetchAll(days, onProgress, previous) {
-    days = days || 3;
+    days = days || 5;
     const now = Date.now();
     const out = { fetchedAt: now, points: {}, errors: [], stale: false };
     let n = 0, fresh = 0, staleCount = 0;
     for (const p of POINTS) {
       let fc = null, mar = null;
-      try { fc = await fetchJson(fcUrl(p, days)); } catch (e) { out.errors.push(p.id + ' wind: ' + e.message); }
-      try { mar = await fetchJson(marineUrl(p, days)); } catch (e) { out.errors.push(p.id + ' marine: ' + e.message); }
+      const [fr, mr] = await Promise.all([fetchJson(fcUrl(p, days)).catch(e => ({ __err: e.message })), fetchJson(marineUrl(p, days)).catch(e => ({ __err: e.message }))]);
+      if (fr && fr.__err) out.errors.push(p.id + ' wind: ' + fr.__err); else fc = fr;
+      if (mr && mr.__err) out.errors.push(p.id + ' marine: ' + mr.__err); else mar = mr;
       if (fc && !mar) { try { mar = await fetchJson(marineUrl(p, days)); } catch (e) { } } // one retry for the failed half
       if (mar && !fc) { try { fc = await fetchJson(fcUrl(p, days)); } catch (e) { } }
       const stale = !!((fc && fc.__stale) || (mar && mar.__stale));
@@ -188,6 +189,38 @@
     }
     return out;
   }
+  /** remaining passage from the current position: points ahead of doneNm, sampled when we reach them */
+  function remainingPassage(data, wps, doneNm, now, sogKn, planKn, th) {
+    const out = [];
+    if (!data) return out;
+    const v = Math.max((sogKn && sogKn > 3) ? sogKn : (planKn || 10), 5);
+    for (const p of POINTS) {
+      if (p.routeNm <= doneNm) continue;
+      const pt = data.points[p.id]; if (!pt) continue;
+      const when = new Date(now.getTime() + (p.routeNm - doneNm) / v * 3600000);
+      const row = rowAt(pt, when);
+      const course = wps ? root.NAV.courseAtNm(wps, p.routeNm) : null;
+      out.push({ point: pt, when, row, course, verdict: row ? classify(row, th, course) : null });
+    }
+    return out;
+  }
+  /** turn back or carry on: verdicts for the way back (points behind, reversed) and the way on */
+  function abortCompare(data, wps, doneNm, totalNm, now, sogKn, planKn, th) {
+    const v = Math.max((sogKn && sogKn > 3) ? sogKn : (planKn || 10), 5);
+    const on = remainingPassage(data, wps, doneNm, now, sogKn, planKn, th);
+    const back = [];
+    for (const p of POINTS.slice().reverse()) {
+      if (p.routeNm >= doneNm) continue;
+      const pt = data && data.points[p.id]; if (!pt) continue;
+      const when = new Date(now.getTime() + (doneNm - p.routeNm) / v * 3600000);
+      const row = rowAt(pt, when);
+      const course = wps ? root.NAV.norm360(root.NAV.courseAtNm(wps, p.routeNm) + 180) : null;
+      back.push({ point: pt, when, row, course, verdict: row ? classify(row, th, course) : null });
+    }
+    return { on: overall(on), back: overall(back), onMin: Math.round((totalNm - doneNm) / v * 60), backMin: Math.round(doneNm / v * 60), onPass: on, backPass: back };
+  }
+  /** forecast coverage: last hour available (local ISO) */
+  function coverageEnd(data) { let end = null; for (const pt of Object.values((data && data.points) || {})) { const t = pt.rows.length ? pt.rows[pt.rows.length - 1].time : null; if (t && (!end || t < end)) end = t; } return end; }
   /** scan departure times every hour over the next `hours`, return [{dep, overall, maxWind, maxGust, maxWave}] */
   function departureScan(data, fromDate, hours, speedKn, th, routeWps) {
     const out = [];
@@ -247,5 +280,5 @@
 
   const WMO = { 0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 80: 'Showers', 81: 'Showers', 82: 'Violent showers', 95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Thunderstorm w/ hail' };
 
-  root.WX = { POINTS, DEFAULT_THRESHOLDS, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, overall, nearestPoint, madridLocalIso, WMO, TZ };
+  root.WX = { POINTS, DEFAULT_THRESHOLDS, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, remainingPassage, abortCompare, coverageEnd, overall, nearestPoint, madridLocalIso, WMO, TZ };
 })(typeof self !== 'undefined' ? self : this);

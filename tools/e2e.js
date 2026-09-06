@@ -20,6 +20,7 @@ const OUT = path.join(__dirname, 'out');
   const errors = [];
   async function run(name, ctxOpts, steps) {
     const ctx = await browser.newContext(Object.assign({ permissions: ['geolocation'], geolocation: { latitude: 36.2882, longitude: -5.2703, accuracy: 10 }, locale: 'en-GB', timezoneId: 'Europe/Madrid' }, ctxOpts));
+    await ctx.addInitScript(() => { try { const k = 'saily.settings.v2'; const s = JSON.parse(localStorage.getItem(k) || '{}'); if (!s.theme) { s.theme = 'dark'; localStorage.setItem(k, JSON.stringify(s)); } } catch (e) { } });
     const page = await ctx.newPage();
     // external services are stubbed with recorded fixtures (the sandbox browser has no egress)
     await page.route(u => /^https:\/\//.test(u.href), r => {
@@ -52,6 +53,13 @@ const OUT = path.join(__dirname, 'out');
     console.log('Log during crossing:', JSON.stringify(log2, null, 1));
     await page.screenshot({ path: path.join(OUT, 'iphone-crossing.png') });
     for (const v of ['wx', 'plan', 'more']) { await page.click(`#tabs button[data-view=${v}]`); await page.waitForTimeout(1200); await page.screenshot({ path: path.join(OUT, `iphone-${v}.png`), fullPage: false }); }
+    // night colours and big numbers
+    await page.click('#tabs button[data-view=nav]'); await page.click('#btnMore'); await page.click('#btnNight'); await page.waitForTimeout(400);
+    const themeState = await page.evaluate(() => ({ theme: window.SAILY.S.settings.theme, resolved: window.SAILY.resolveTheme(), night: document.body.classList.contains('night') }));
+    console.log('Night mode:', JSON.stringify(themeState)); if (!themeState.night) errors.push('night theme not applied');
+    await page.screenshot({ path: path.join(OUT, 'iphone-night.png') });
+    await page.click('#btnBig'); await page.waitForTimeout(400); await page.screenshot({ path: path.join(OUT, 'iphone-bighud.png') }); await page.click('#btnChartBack'); await page.waitForTimeout(300);
+    await page.click('#btnNight'); await page.evaluate(() => { window.SAILY.S.settings.theme = 'dark'; window.SAILY.applyTheme(); }); await page.click('#btnMore');
     const wxState = await page.evaluate(() => ({ hasWx: !!window.SAILY.S.wx, pts: window.SAILY.S.wx ? Object.keys(window.SAILY.S.wx.points) : [], errors: window.SAILY.S.wx ? window.SAILY.S.wx.errors : null }));
     console.log('Weather state:', JSON.stringify(wxState));
     // service worker + offline reload
