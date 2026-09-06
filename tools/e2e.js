@@ -13,16 +13,25 @@ const server = http.createServer((req, res) => {
 const OUT = path.join(__dirname, 'out');
 (async () => {
   await new Promise(r => server.listen(8123, r));
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'], proxy: process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY, bypass: 'localhost,127.0.0.1' } : undefined });
+  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+  const FIX = path.join(__dirname, 'fixtures');
+  const fixtures = { tile: fs.readFileSync(path.join(FIX, 'tile.png')), fc: fs.readFileSync(path.join(FIX, 'fc.json')), marine: fs.readFileSync(path.join(FIX, 'marine.json')) };
   const errors = [];
   async function run(name, ctxOpts, steps) {
-    const ctx = await browser.newContext(Object.assign({ permissions: ['geolocation'], geolocation: { latitude: 36.2869, longitude: -5.2701, accuracy: 10 }, locale: 'en-GB', timezoneId: 'Europe/Madrid' }, ctxOpts));
+    const ctx = await browser.newContext(Object.assign({ permissions: ['geolocation'], geolocation: { latitude: 36.2882, longitude: -5.2703, accuracy: 10 }, locale: 'en-GB', timezoneId: 'Europe/Madrid' }, ctxOpts));
     const page = await ctx.newPage();
+    // external services are stubbed with recorded fixtures (the sandbox browser has no egress)
+    await page.route(u => /^https:\/\//.test(u.href), r => {
+      const u = r.request().url();
+      if (/api\.open-meteo\.com/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: fixtures.fc });
+      if (/marine-api\.open-meteo\.com/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: fixtures.marine });
+      return r.fulfill({ status: 200, contentType: 'image/png', body: fixtures.tile });
+    });
     page.on('console', m => { if (m.type() === 'error') errors.push(`[${name}] console: ${m.text()}`); });
     page.on('pageerror', e => errors.push(`[${name}] pageerror: ${e.message}`));
     page.on('requestfailed', r => { const u = r.url(); if (u.startsWith('http://localhost')) errors.push(`[${name}] requestfailed: ${u}`); });
     await page.goto('http://localhost:8123/index.html', { waitUntil: 'domcontentloaded' });
-    await steps(page, ctx);
+    try { await steps(page, ctx); } catch (e) { errors.push(`[${name}] step failed: ${e.message}`); await page.screenshot({ path: path.join(OUT, name + '-failure.png') }).catch(() => {}); }
     await ctx.close();
   }
   // 1. iPhone viewport: start overlay, simulation, HUD, alerts
@@ -68,6 +77,8 @@ const OUT = path.join(__dirname, 'out');
   await run('desktop', { viewport: { width: 1400, height: 900 } }, async (page, ctx) => {
     await page.waitForSelector('#btnStart');
     await page.click('#btnStart');
+    await page.waitForTimeout(2500);
+    await ctx.setGeolocation({ latitude: 36.2856, longitude: -5.2710, accuracy: 8 });
     await page.waitForTimeout(2500);
     await ctx.setGeolocation({ latitude: 36.2825, longitude: -5.2630, accuracy: 8 });
     await page.waitForTimeout(2500);

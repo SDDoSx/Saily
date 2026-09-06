@@ -33,7 +33,7 @@
   const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ES · ${N.fmtTime(d, TZ_MA)} MA`;
 
   // ---------- state ----------
-  const DEFAULTS = { speed: 22, routeId: 'tarifa', departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'osm', seamark: true, chartOnly: false, night: false, wp: 1, checklist: {} };
+  const DEFAULTS = { speed: 22, routeId: 'tarifa', departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, night: false, wp: 1, checklist: {} };
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
@@ -159,7 +159,7 @@
     Object.values(BASES).forEach(l => map.removeLayer(l));
     if (map.hasLayer(SEAMARK)) map.removeLayer(SEAMARK);
     if (!S.settings.chartOnly) {
-      (BASES[S.settings.base] || BASES.osm).addTo(map);
+      (BASES[S.settings.base] || BASES.carto).addTo(map);
       if (S.settings.seamark) SEAMARK.addTo(map);
     }
     $('btnChartOnly').classList.toggle('on', !!S.settings.chartOnly);
@@ -228,7 +228,7 @@
   map.on('dragstart', () => { S.follow = false; $('btnFollow').classList.remove('on'); });
   $('btnFollow').addEventListener('click', () => { S.follow = !S.follow; $('btnFollow').classList.toggle('on', S.follow); if (S.follow && S.pos) map.panTo([S.pos.lat, S.pos.lon]); });
   $('btnRoute').addEventListener('click', () => { S.follow = false; $('btnFollow').classList.remove('on'); map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [30, 30] }); });
-  $('btnLayers').addEventListener('click', () => { const order = ['osm', 'carto', 'sat']; S.settings.base = order[(order.indexOf(S.settings.base) + 1) % order.length]; S.settings.chartOnly = false; saveSettings(); applyBase(); toast('Base map: ' + { osm: 'OpenStreetMap', carto: 'CARTO light', sat: 'Satellite' }[S.settings.base]); });
+  $('btnLayers').addEventListener('click', () => { const order = ['carto', 'osm', 'sat']; S.settings.base = order[(order.indexOf(S.settings.base) + 1) % order.length]; S.settings.chartOnly = false; saveSettings(); applyBase(); toast('Base map: ' + { osm: 'OpenStreetMap', carto: 'CARTO light', sat: 'Satellite' }[S.settings.base]); });
   $('btnChartOnly').addEventListener('click', () => { S.settings.chartOnly = !S.settings.chartOnly; saveSettings(); applyBase(); toast(S.settings.chartOnly ? 'Vector chart only (works fully offline)' : 'Tiles on'); });
   $('btnNight').addEventListener('click', () => { S.settings.night = !S.settings.night; saveSettings(); applyBase(); });
   applyBase();
@@ -251,12 +251,12 @@
     const c = p.coords;
     const fix = { lat: c.latitude, lon: c.longitude, t: p.timestamp || Date.now(), acc: c.accuracy };
     const prev = S.fixes.length ? S.fixes[S.fixes.length - 1] : null;
-    let sog = (typeof c.speed === 'number' && isFinite(c.speed) && c.speed >= 0) ? c.speed * MS_TO_KN : null;
+    let sog = (typeof c.speed === 'number' && isFinite(c.speed) && c.speed >= 0 && c.speed * MS_TO_KN < 80) ? c.speed * MS_TO_KN : null;
     let cog = (typeof c.heading === 'number' && isFinite(c.heading) && sog !== null && sog > 1.5) ? c.heading : null;
     if (prev) {
       const d = N.deltaSpeedCourse(prev, fix);
       if (d && d.dt >= 0.8) {
-        if (sog === null) sog = d.dt < 30 ? d.sog : null;
+        if (sog === null) sog = (d.dt < 30 && d.sog < 60) ? d.sog : null; // >60 kn = GPS jump, ignore
         if (cog === null && d.d * 1852 > Math.max(8, (fix.acc || 10) * 0.6) && (sog === null || sog > 1.5)) cog = d.cog;
       }
     }
@@ -525,14 +525,37 @@
       <li>You are the give-way vessel to anyone in a lane if you are crossing under 20 m LOA (rule 10j): do not impede them. Slow down or speed up early, never cut close ahead.</li>
       <li>Keep VHF 16 on. Tarifa Traffic (VTS) works VHF 10 and watches the whole Strait on radar and AIS. If in doubt, call them: "Tarifa Traffic, this is motor yacht [name], position ..., crossing southbound, request traffic information."</li>
       <li>Precautionary areas (magenta dotted) have no lanes but ships turn and converge there. The eastern one (Gibraltar to Ceuta) is the busiest water in the Strait.</li></ul></div>`;
-    h += `<div class="card"><h2>Sotogrande (departure)</h2><div class="kv"><div>Marina</div><div>${C.places.sotogrande.name} · VHF ${C.places.sotogrande.vhf} · ${C.places.sotogrande.phone}</div><div>Entrance</div><div>${N.fmtDM(C.places.sotogrande.lat, C.places.sotogrande.lon)} opens SW; keep 3 kn inside the port</div><div>Hazard</div><div>Shoal at 36°16.890'N 5°16.276'W (marina notice Feb 2026) 0.25 nm S of the entrance, plus the Guadiaro river bar to the SW. Leave the entrance, turn to port early and head ESE to SOTO-OUT.</div><div>Before leaving</div><div>Tell the marina office you are bound for Morocco. Spain has no formal exit clearance for EU boats, but carry ship registration, insurance, skipper licence, passports, and a crew list. Non-EU crew must have their Schengen exit stamped: ask the marina or the Guardia Civil where the nearest border post is (Algeciras / La Línea).</div></div></div>`;
-    h += `<div class="card"><h2>Tangier (arrival)</h2><div class="kv"><div>Marina</div><div>${C.places.tangier.name} · VHF ${C.places.tangier.vhf}</div><div>Entrance</div><div>${N.fmtDM(C.places.tangier.lat, C.places.tangier.lon)} opens SOUTH, 140 m wide. Red mole to port, green breakwater tip to starboard. Approach from the E/SE (MAR-APP); the water south of the entrance is beach shallows.</div><div>Traffic</div><div>Fast ferries from Tarifa use the main port entrance immediately north of the marina: give way, keep to the marina side.</div><div>Formalities</div><div>Q flag up, Moroccan courtesy flag. Berth at the reception/customs pontoon; police (DGSN), customs (Douane) and port authority come to the boat or the marina office. Documents: passports, boat registration, insurance, skipper licence, crew list (several copies). Declare drones, satellite phones and any alcohol on board. Expect 30 to 90 minutes.</div><div>Time</div><div>Morocco is 1 hour behind Spain (UTC+1 vs UTC+2 in September).</div></div></div>`;
-    h += `<div class="card"><h2>Emergency and contacts</h2><div class="kv">
-      <div>Distress</div><div>VHF 16 (and DSC 70). "MAYDAY" or "PAN PAN" with position from this app.</div>
-      <div>Salvamento Marítimo</div><div>+34 900 202 202 (free, 24 h) · MRCC Tarifa +34 956 684 740 · Tarifa Traffic VHF 10</div>
-      <div>Gibraltar</div><div>Gibraltar Port VHF 12 / 16 · +350 200 46254</div>
-      <div>Morocco</div><div>MRCC Rabat +212 537 74 21 05 (verify on the day) · Tangier Port VHF 12 / 16 · Police 19 · Ambulance 15 · Gendarmerie 177</div>
-      <div>Spain</div><div>Emergency 112</div></div><p class="muted">Numbers compiled from official sources; confirm before departure and write them on paper. Save this page offline.</p></div>`;
+    h += `<div class="card"><h2>Sotogrande (departure)</h2><div class="kv">
+      <div>Marina</div><div>${C.places.sotogrande.name} · VHF 9 (office 09:00-21:00) · +34 956 790 000 · WhatsApp +34 639 347 807</div>
+      <div>Layout</div><div>Inner mouth 80 m wide (4.5 m) opens SOUTH at 36°17.29'N 5°16.22'W; a 250 m channel runs south between the breakwater (east) and the beach to the breakwater head with its green light at 36°17.15'N 5°16.19'W. Leaving: go south down the channel, round the head to port, then turn ESE to SOTO-OUT. Speed limit 3 kn near the mouth and inside (port rules art. 37).</div>
+      <div>Hazard</div><div>Marina safety notice of 20 Feb 2026: dangerous shoaling at 36°16.890'N 5°16.276'W, 500 m south of the head (bearing 195°), and a voluntary exclusion zone off the Guadiaro river mouth. No notice lifting it was found. Ask the Capitanía on VHF 9 before leaving; do not run south or south-west from the head.</div>
+      <div>Sea at entrance</div><div>Swell at the mouth with E/SE winds; noticeable ebb current at the entrance; recurrent silting.</div>
+      <div>Leaving Spain</div><div>Spanish-flag private boats without professional crew need no "despacho" (RD 186/2023). Sotogrande is not a Schengen border post: EU/EEA/Swiss crew need nothing; non-EU passport holders (UK, US...) should get their Schengen exit recorded (EES) at La Línea, Algeciras or Tarifa police, or accept the overstay risk on return. Morocco does not ask for a Spanish exit stamp.</div>
+      <div>Carry</div><div>Passports, boat registration, insurance certificate valid for Morocco, skipper licence (ICC or national), radio licence, crew list ×4, a sheet with the boat's technical data.</div></div></div>`;
+    h += `<div class="card"><h2>Tangier (arrival)</h2><div class="kv">
+      <div>Marina</div><div>${C.places.tangier.name} · VHF <b>11</b> (harbourmaster 11/16) · Tangier Traffic (VTS) VHF 69, alt 68 · port pilots VHF 12</div>
+      <div>Contact</div><div>Capitainerie 24 h: +212 539 372 424 · Office: +212 539 33 17 17 · info@tanjamarinabay.ma (send registration, insurance, passports and crew list ahead; reservation advised, a berth is not guaranteed on arrival)</div>
+      <div>Hours</div><div>Office Mon-Fri 09:00-19:00, Sat 10:00-14:00 (2026 guide), <b>closed Sunday</b>; capitainerie, marineros and fuel 24/7; police and customs posts on site. Arrive before 18:00 Morocco time and clear in daylight; departure clearance is daytime only.</div>
+      <div>Approach</div><div>Tangier Bay opens NE. Keep at least 1 nm off Cap Malabata (Almirante Rock 6.3 m, 0.5 nm north of it, breaks in heavy seas). Do not cut across the bay: shoals lie in its east and south (Sevil du Burj 3.6 m, Gandouri 5.5 m, Buoree Rock 0.9 m about 1 nm east of the main jetty head, a wreck 0.5 nm ENE of it). Come in from the NE on the ferry line towards the jetty head Fl(3) 12s, then follow the marked marina channel. Buoys are reported off station or missing: rely on bearings and daylight.</div>
+      <div>Entrance</div><div>${N.fmtDM(C.places.tangier.lat, C.places.tangier.lon)}, 140 m wide at the SE corner of the basin, between the Jetée Est head Fl(3)G 10s (starboard) and the Jetée Ouest head Fl(3)R 10s (port). Enter heading N/NW. Shoal 0.9-2 m immediately south of the red head and along the beach: never approach from the beach side. Fuel dock just inside, reception pontoon beyond it (high concrete edge, 1.7-2 m tidal range: fenders high).</div>
+      <div>Traffic</div><div>Fast ferries from Tarifa and cruise ships use the north side of the outer harbour and a turning area in the middle. Give way, keep to the marina side. No anchoring within 500 m of the marina breakwaters (Moroccan law).</div>
+      <div>Formalities</div><div>Q flag and Moroccan courtesy flag. Police, customs and port authority in one building by the reception pontoon: 15-90 min, no charge. Customs form D716 (temporary admission of the boat): keep the blue and white copies aboard and present them on departure. Declare alcohol, medicines, drones (drones are held until you leave). Visa-free 90 days for EU, UK, US, CA, AU, CH and most others.</div>
+      <div>Cost</div><div>2026 rate for a 12 m x 4 m boat: 281 MAD per night in high season (to 30 Sep), about 26 EUR; access card deposit.</div>
+      <div>Time</div><div>Morocco is UTC+1: 1 hour behind Spain in September.</div></div></div>`;
+    h += `<div class="card"><h2>Emergency and radio</h2><div class="kv">
+      <div>Distress</div><div>VHF 16 (DSC 70): MAYDAY / PAN PAN with position from this app.</div>
+      <div>Salvamento Marítimo</div><div>+34 900 202 202 (24 h, free) · Spain 112</div>
+      <div>Tarifa Traffic</div><div>VTS for the Strait, radar and AIS: VHF <b>10</b> (67 alt), watch 16, MMSI 002240994, +34 956 684 757. Weather and traffic bulletins on VHF 10 at 00:15, 04:15, 08:15, 12:15, 16:15, 20:15 UTC (14:15 and 18:15 Spain time). Yachts need not file a GIBREP report, but announcing the crossing is advised and contact is mandatory in fog.</div>
+      <div>Tangier Traffic</div><div>VHF <b>69</b> (68 alt), MMSI 002424131; bulletins 02:15, 06:15, 10:15, 14:15, 18:15, 22:15 UTC.</div>
+      <div>Gibraltar</div><div>Gibraltar Port / Gibraltar Bay VTS VHF 12, watch 16.</div>
+      <div>Morocco</div><div>Tanger harbourmaster VHF 11/16 · Police 19 · Ambulance 15 · Gendarmerie 177 · MRCC Rabat via VHF 16 / Tangier Traffic 69.</div></div><p class="muted">Compiled from IMO MSC.300(87), NGA Pub 131, port and marina sources (Sep 2026). Confirm before departure and keep a paper copy.</p></div>`;
+    h += `<div class="card"><h2>Sea and current notes (NGA Pub 131, Ifremer)</h2><ul>
+      <li>Surface flow sets <b>east</b> into the Med, 1-2 kn mid-strait and up to 3 kn inshore; at Tarifa it is almost always eastward (3+ kn measured at HW+2). Mid-strait the east-going stream starts about <b>HW Gibraltar</b> and the west-going about 6 h later, earlier towards both shores.</li>
+      <li><b>Punta Carnero</b>: strong NW-NE tidal set along the coast, "numerous accidents"; dangers to 0.2 nm off, La Perla rocks (4.7 m) 1.2 nm south. Keep the CARNERO offing.</li>
+      <li><b>Tarifa</b>: races off the island; Bajo de los Cabezos race 5 nm NW (off route) can extend across the strait in heavy weather.</li>
+      <li><b>Banco de Fenix</b> (15 m, 3 nm NNE of Malabata) and the banks between Malabata and Hejar Lesfar: the most violent races on the Moroccan side at max stream. The route passes just north of it; at springs (10-14 Sep 2026) with wind against stream expect breaking overfalls there and north of Tangier.</li>
+      <li>Wind at Tarifa and Punta Carnero is commonly <b>2-3 Beaufort above</b> the area forecast. The local whale-boat operator stays in port from 21 kn of Levante. Fog forms in the early morning when a Levante dies and can last into the afternoon.</li>
+      <li>Tunny nets up to 7 nm offshore in season (white flag with black A by day, red over white lights at night). Whale speed limit 13 kn applies April to August only.</li></ul></div>`;
     h += `<div class="card"><h2>Departure checklist</h2><div class="check">${CHECKLIST.map((c, i) => `<label><input type="checkbox" data-ck="${i}" ${S.settings.checklist[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>`;
     const sun = N.sunTimes(new Date(), 35.78, -5.80);
     h += `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at Tangier. Plan to be berthed with daylight to spare: the marina entrance and the port traffic are much harder at night.</p></div>`;
@@ -620,8 +643,9 @@
     const sat = t => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${t.z}/${t.y}/${t.x}`;
     const carto = t => `https://a.basemaps.cartocdn.com/rastertiles/voyager/${t.z}/${t.x}/${t.y}.png`;
     const urls = [];
-    for (let z = 8; z <= 13; z++) tileRange(corridor, z).forEach(t => { urls.push(osm(t)); if (z >= 10) urls.push(sea(t)); if (z <= 12) urls.push(carto(t)); });
-    for (const b of harb) for (let z = 14; z <= 16; z++) tileRange(b, z).forEach(t => { urls.push(osm(t)); urls.push(sea(t)); urls.push(sat(t)); });
+    // corridor: CARTO base (light, permissive terms) + OpenSeaMap seamarks; OSM standard only for the two harbours (small, within OSM policy)
+    for (let z = 8; z <= 13; z++) tileRange(corridor, z).forEach(t => { urls.push(carto(t)); if (z >= 10) urls.push(sea(t)); });
+    for (const b of harb) for (let z = 14; z <= 16; z++) tileRange(b, z).forEach(t => { urls.push(carto(t)); urls.push(osm(t)); urls.push(sea(t)); urls.push(sat(t)); });
     return urls;
   }
   async function preload(wx, tiles) {

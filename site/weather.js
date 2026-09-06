@@ -14,11 +14,11 @@
   const KEY = 'saily.weather.v1';
 
   const DEFAULT_THRESHOLDS = {
-    windCaution: 18, windNoGo: 25,      // kn sustained
-    gustCaution: 25, gustNoGo: 32,      // kn
-    waveCaution: 1.2, waveNoGo: 2.0,    // m significant wave height
+    windCaution: 14, windNoGo: 20,      // kn sustained at 10 m (expect +2-3 Bft at Tarifa / Punta Carnero)
+    gustCaution: 22, gustNoGo: 30,      // kn
+    waveCaution: 1.0, waveNoGo: 1.6,    // m significant wave height (36 ft planing hull)
     currentCaution: 2.0,                // kn
-    visCaution: 2000,                   // m
+    visCaution: 5000,                   // m (authority minimum 5 nm for strait crossings)
   };
 
   function fcUrl(p, days) {
@@ -43,22 +43,24 @@
     const rows = [];
     const fh = fc && fc.hourly, mh = mar && mar.hourly;
     const times = (fh && fh.time) || (mh && mh.time) || [];
+    const v = (arr, i) => (arr && arr[i] !== undefined) ? arr[i] : null;
     for (let i = 0; i < times.length; i++) {
       const row = { time: times[i] };
       if (fh) {
-        row.wind = fh.wind_speed_10m[i]; row.windDir = fh.wind_direction_10m[i]; row.gust = fh.wind_gusts_10m[i];
-        row.vis = fh.visibility ? fh.visibility[i] : null; row.rain = fh.precipitation[i]; row.temp = fh.temperature_2m[i];
-        row.code = fh.weather_code ? fh.weather_code[i] : null; row.cloud = fh.cloud_cover ? fh.cloud_cover[i] : null;
+        row.wind = v(fh.wind_speed_10m, i); row.windDir = v(fh.wind_direction_10m, i); row.gust = v(fh.wind_gusts_10m, i);
+        row.vis = v(fh.visibility, i); row.rain = v(fh.precipitation, i); row.temp = v(fh.temperature_2m, i);
+        row.code = v(fh.weather_code, i); row.cloud = v(fh.cloud_cover, i);
       }
-      if (mh) {
+      if (mh && mh.time) {
         const j = mh.time.indexOf(times[i]);
         if (j >= 0) {
-          row.wave = mh.wave_height[j]; row.waveDir = mh.wave_direction[j]; row.wavePeriod = mh.wave_period[j];
-          row.swell = mh.swell_wave_height[j]; row.swellDir = mh.swell_wave_direction[j]; row.swellPeriod = mh.swell_wave_period[j];
-          row.windWave = mh.wind_wave_height[j];
-          row.current = mh.ocean_current_velocity ? mh.ocean_current_velocity[j] / 1.852 : null; // km/h -> kn
-          row.currentDir = mh.ocean_current_direction ? mh.ocean_current_direction[j] : null;
-          row.seaLevel = mh.sea_level_height_msl ? mh.sea_level_height_msl[j] : null;
+          row.wave = v(mh.wave_height, j); row.waveDir = v(mh.wave_direction, j); row.wavePeriod = v(mh.wave_period, j);
+          row.swell = v(mh.swell_wave_height, j); row.swellDir = v(mh.swell_wave_direction, j); row.swellPeriod = v(mh.swell_wave_period, j);
+          row.windWave = v(mh.wind_wave_height, j);
+          const cur = v(mh.ocean_current_velocity, j);
+          row.current = cur === null ? null : cur / 1.852; // km/h -> kn
+          row.currentDir = v(mh.ocean_current_direction, j);
+          row.seaLevel = v(mh.sea_level_height_msl, j);
         }
       }
       rows.push(row);

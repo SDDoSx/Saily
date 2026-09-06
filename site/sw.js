@@ -12,6 +12,7 @@ const SHELL_FILES = [
 ];
 const TILE_HOSTS = ['tile.openstreetmap.org', 'tiles.openseamap.org', 't1.openseamap.org', 'basemaps.cartocdn.com', 'server.arcgisonline.com'];
 const DATA_HOSTS = ['api.open-meteo.com', 'marine-api.open-meteo.com'];
+const BLANK_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
@@ -47,7 +48,8 @@ self.addEventListener('fetch', e => {
         if (res && (res.ok || res.type === 'opaque')) c.put(req, res.clone());
         return res;
       } catch (err) {
-        return new Response('', { status: 504 });
+        // offline and not cached: transparent tile, so Leaflet shows the vector chart underneath without errors
+        return new Response(Uint8Array.from(atob(BLANK_PNG), c => c.charCodeAt(0)), { status: 200, headers: { 'Content-Type': 'image/png', 'X-Saily': 'blank' } });
       }
     }));
     return;
