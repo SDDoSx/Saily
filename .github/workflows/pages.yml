@@ -1,0 +1,37 @@
+name: Deploy Saily to GitHub Pages
+
+on:
+  push:
+    branches: [main, "claude/marine-nav-app-yacht-erflpd"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Pages (enables Pages for the repo if needed)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Stamp build id into service worker
+        run: |
+          sed -i "s/const VERSION = 'saily-v1';/const VERSION = 'saily-${GITHUB_SHA::8}';/" site/sw.js
+          echo "<!-- build ${GITHUB_SHA} -->" >> site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

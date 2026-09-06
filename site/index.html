@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Saily">
+<meta name="theme-color" content="#0b1a2b">
+<title>Saily · Sotogrande → Tangier</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+:root{--bg:#0b1a2b;--panel:#122a44;--panel2:#183654;--line:#274a6e;--text:#eaf2fb;--muted:#9db4cc;--accent:#43b3ff;--ok:#2ecc71;--warn:#f5b400;--danger:#ff4757;--sea:#a9cde6;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:15px;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+button{font:inherit;color:inherit}
+#app{position:fixed;inset:0;display:flex;flex-direction:column}
+#topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:calc(var(--sat) + 6px) 12px 6px;background:var(--panel);border-bottom:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+#topbar .tb{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.dot{width:10px;height:10px;border-radius:50%;background:#666;display:inline-block;flex:none}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--danger)}
+#alertBanner{display:flex;align-items:center;gap:10px;padding:10px 12px;font-weight:600;background:var(--warn);color:#111;cursor:pointer}
+#alertBanner.danger{background:var(--danger);color:#fff}#alertBanner.info{background:var(--accent);color:#031}
+#alertBanner.hidden{display:none}
+#alertBanner span{flex:1}
+#alertBanner button{background:transparent;border:0;font-size:18px;padding:4px 8px}
+main{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0;display:none;overflow:auto;-webkit-overflow-scrolling:touch}
+.view.active{display:block}
+#view-nav{display:none;flex-direction:column}
+#view-nav.active{display:flex}
+#mapWrap{flex:1;min-height:0;position:relative;background:var(--sea)}
+#map{position:absolute;inset:0;background:var(--sea)}
+#map.night{filter:brightness(.55) saturate(.6)}
+.leaflet-container{font:inherit}
+#mapControls{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px;z-index:1000}
+#mapControls button,.mbtn{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:rgba(18,42,68,.92);color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+#mapControls button.on{background:var(--accent);color:#031;border-color:var(--accent)}
+#hud{background:var(--panel);border-top:1px solid var(--line);padding:8px 12px calc(var(--sab) + 6px);font-variant-numeric:tabular-nums}
+#hud .next{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;color:var(--muted);margin-bottom:4px}
+#hud .next b{color:var(--text);font-size:15px}
+#hud .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+#hud .cell{background:var(--panel2);border-radius:10px;padding:6px 8px;min-width:0}
+#hud .cell .l{font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+#hud .cell .v{font-size:26px;font-weight:700;line-height:1.1;white-space:nowrap}
+#hud .cell .v small{font-size:12px;font-weight:500;color:var(--muted)}
+#hud .row2{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px;margin-top:6px}
+#hud .row2 .v{font-size:18px}
+#hud .steer{display:flex;align-items:center;gap:6px}
+#hud .steer.left{color:#ff9f43}#hud .steer.right{color:#54d5ff}
+#hud .wpbtns{display:flex;gap:6px;margin-top:6px}
+#hud .wpbtns button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+#hud .sim{color:var(--danger);font-weight:700}
+#startOverlay{position:absolute;inset:0;z-index:1500;background:rgba(11,26,43,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}
+#startOverlay.hidden{display:none}
+#startOverlay h1{margin:0;font-size:26px}
+#startOverlay p{margin:0;color:var(--muted);max-width:420px;line-height:1.4}
+.bigbtn{padding:16px 28px;border-radius:14px;border:0;background:var(--accent);color:#031;font-size:20px;font-weight:700;box-shadow:0 4px 14px rgba(67,179,255,.35)}
+.btn{padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-weight:600}
+.btn.primary{background:var(--accent);color:#031;border-color:var(--accent)}
+.btn.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn:disabled{opacity:.5}
+#tabs{display:flex;background:var(--panel);border-top:1px solid var(--line);padding-bottom:var(--sab)}
+#tabs button{flex:1;padding:10px 4px 8px;border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:2px}
+#tabs button .ic{font-size:20px}
+#tabs button.active{color:var(--accent)}
+.page{padding:12px;max-width:900px;margin:0 auto;padding-bottom:calc(var(--sab) + 24px)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.card h2{margin:0 0 8px;font-size:16px}
+.card h3{margin:10px 0 6px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.card p{margin:6px 0;line-height:1.45;-webkit-user-select:text;user-select:text}
+.card ul,.card ol{margin:6px 0;padding-left:20px;line-height:1.45;-webkit-user-select:text;user-select:text}
+.card li{margin:3px 0}
+.muted{color:var(--muted)}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.tag.ok{background:var(--ok);color:#041}.tag.caution{background:var(--warn);color:#210}.tag.nogo{background:var(--danger);color:#fff}.tag.na{background:#555;color:#eee}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:12px}
+.tbl{overflow-x:auto}
+tr.caution td{background:rgba(245,180,0,.14)}tr.nogo td{background:rgba(255,71,87,.18)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv div:nth-child(odd){color:var(--muted)}
+label.field{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+label.field span{flex:1}
+label.field input[type=number],label.field input[type=datetime-local],label.field select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit;max-width:190px;width:100%}
+label.field input[type=checkbox]{width:22px;height:22px}
+.progress{height:10px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:8px 0}
+.progress div{height:100%;background:var(--accent);width:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.wxgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.wxcell{background:var(--panel2);border-radius:10px;padding:8px}
+.wxcell .t{font-size:12px;color:var(--muted)}
+.wxcell .b{font-size:18px;font-weight:700}
+.arrow{display:inline-block;transform-origin:center}
+.check label{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line);line-height:1.35}
+.check input{width:20px;height:20px;flex:none;margin-top:2px}
+.log{font-size:12px;font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap;-webkit-user-select:text;user-select:text}
+.vessel{width:0;height:0}
+.vessel svg{overflow:visible}
+.wplabel{background:rgba(11,26,43,.85);color:#fff;border:1px solid var(--accent);border-radius:6px;padding:1px 5px;font-size:11px;font-weight:700;white-space:nowrap}
+.wplabel.dim{opacity:.6;border-color:#888}
+.aidlabel{font-size:10px;color:#111;background:rgba(255,255,255,.75);padding:0 3px;border-radius:3px;white-space:nowrap}
+.leaflet-popup-content{font-size:13px;line-height:1.35;-webkit-user-select:text;user-select:text}
+.leaflet-popup-content b{display:block;margin-bottom:3px}
+#toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;z-index:2000;pointer-events:none;opacity:0;transition:opacity .3s}
+#toast.show{opacity:1}
+@media (min-width:900px){
+  #view-nav.active{flex-direction:row}
+  #mapWrap{flex:1}
+  #hud{width:360px;border-top:0;border-left:1px solid var(--line);overflow:auto;padding-top:12px}
+  #hud .grid{grid-template-columns:1fr 1fr}
+  #hud .cell .v{font-size:34px}
+  #hud .row2{grid-template-columns:1fr 1fr}
+  #tabs button{flex-direction:row;gap:8px;padding:10px}
+  .page{padding:20px}
+}
+@media (max-height:640px){#hud .cell .v{font-size:22px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="tb"><span id="gpsDot" class="dot"></span><span id="gpsText">GPS off</span></div>
+    <div class="tb"><span id="clockES">--:--</span>&nbsp;ES&nbsp;·&nbsp;<span id="clockMA">--:--</span>&nbsp;MA</div>
+    <div class="tb"><span id="netText">online</span><span id="netDot" class="dot ok"></span></div>
+  </header>
+  <div id="alertBanner" class="hidden"><span id="alertText"></span><button id="alertDismiss" aria-label="dismiss">✕</button></div>
+  <main>
+    <section id="view-nav" class="view active">
+      <div id="mapWrap">
+        <div id="map"></div>
+        <div id="mapControls">
+          <button id="btnFollow" class="on" title="Follow vessel">◎</button>
+          <button id="btnRoute" title="Zoom to route">⤢</button>
+          <button id="btnLayers" title="Base layer">▦</button>
+          <button id="btnChartOnly" title="Chart only (no tiles)">⛵</button>
+          <button id="btnNight" title="Night mode">☾</button>
+        </div>
+        <div id="startOverlay">
+          <h1>Saily</h1>
+          <p><b>Sotogrande → Tanja Marina Bay, Tangier</b><br>Offline passage guide for the Strait of Gibraltar crossing.</p>
+          <p id="startInfo" class="muted"></p>
+          <button id="btnStart" class="bigbtn">Start navigation</button>
+          <p class="muted" style="font-size:12px">Tap to enable GPS, sound and screen wake lock. Keep the phone on deck with a clear sky view. This app is an aid only: it does not replace a proper chart plotter, lookout and COLREGs.</p>
+          <div class="row"><button id="btnPlanOnly" class="btn">Just look around</button><button id="btnStartSim" class="btn">Demo (simulate)</button></div>
+        </div>
+        <div id="toast"></div>
+      </div>
+      <div id="hud">
+        <div class="next"><span>NEXT <b id="hudWpId">--</b> <span id="hudWpName"></span></span><span id="hudSim" class="sim"></span><span id="hudRoute"></span></div>
+        <div class="grid">
+          <div class="cell"><div class="l">Brg to WP</div><div class="v" id="hudBrg">---°</div></div>
+          <div class="cell"><div class="l">Dist to WP</div><div class="v" id="hudDist">--<small> nm</small></div></div>
+          <div class="cell"><div class="l">SOG</div><div class="v" id="hudSog">--<small> kn</small></div></div>
+          <div class="cell"><div class="l">COG</div><div class="v" id="hudCog">---°</div></div>
+        </div>
+        <div class="row2">
+          <div class="cell"><div class="l">XTE / steer</div><div class="v steer" id="hudXte">--</div></div>
+          <div class="cell"><div class="l">TTG WP</div><div class="v" id="hudTtg">--:--</div></div>
+          <div class="cell"><div class="l">ETA Tangier</div><div class="v" id="hudEta">--:--</div></div>
+          <div class="cell"><div class="l">To go</div><div class="v" id="hudDtg">--<small> nm</small></div></div>
+        </div>
+        <div class="next" style="margin-top:6px"><span id="hudPos">--</span><span id="hudAcc"></span><span id="hudWx"></span></div>
+        <div class="wpbtns"><button id="btnPrevWp">◀ Prev WP</button><button id="btnNextWp">Next WP ▶</button><button id="btnMute">🔊</button></div>
+      </div>
+    </section>
+    <section id="view-wx" class="view"><div class="page" id="wxPage"></div></section>
+    <section id="view-plan" class="view"><div class="page" id="planPage"></div></section>
+    <section id="view-more" class="view"><div class="page" id="morePage"></div></section>
+  </main>
+  <nav id="tabs">
+    <button data-view="nav" class="active"><span class="ic">🧭</span>Navigate</button>
+    <button data-view="wx"><span class="ic">🌊</span>Weather</button>
+    <button data-view="plan"><span class="ic">📋</span>Plan</button>
+    <button data-view="more"><span class="ic">⚙️</span>Setup</button>
+  </nav>
+</div>
+<script src="vendor/leaflet/leaflet.min.js"></script>
+<script src="nav.js"></script>
+<script src="weather.js"></script>
+<script src="chart-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
