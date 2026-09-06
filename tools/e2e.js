@@ -23,8 +23,8 @@ const OUT = path.join(__dirname, 'out');
     // external services are stubbed with recorded fixtures (the sandbox browser has no egress)
     await page.route(u => /^https:\/\//.test(u.href), r => {
       const u = r.request().url();
-      if (/api\.open-meteo\.com/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: fixtures.fc });
       if (/marine-api\.open-meteo\.com/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: fixtures.marine });
+      if (/\/\/api\.open-meteo\.com/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: fixtures.fc });
       return r.fulfill({ status: 200, contentType: 'image/png', body: fixtures.tile });
     });
     page.on('console', m => { if (m.type() === 'error') errors.push(`[${name}] console: ${m.text()}`); });

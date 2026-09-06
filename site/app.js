@@ -38,7 +38,7 @@
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
-    zone: {}, hazard: {}, approached: {}, alertLast: {}, log: loadJson(LOG_KEY, []), wx: W.load() || (window.EMBEDDED_WX ? W.fromRaw(window.EMBEDDED_WX.points, window.EMBEDDED_WX.fetchedAt) : null), solution: null, route: null, follow: true,
+    zone: {}, hazard: {}, hazardNear: {}, manualWp: false, approached: {}, alertLast: {}, log: loadJson(LOG_KEY, []), wx: W.load() || (window.EMBEDDED_WX ? W.fromRaw(window.EMBEDDED_WX.points, window.EMBEDDED_WX.fetchedAt) : null), solution: null, route: null, follow: true,
     lastWxAlert: 0, sunsetWarned: false, nightNoted: false, layers: {}, aidsShown: false,
   };
   function loadSettings() {
@@ -48,7 +48,7 @@
     if (!s || !s.departure || new Date(s.departure).getTime() < Date.now() - 36 * 3600000) merged.departure = defaultDeparture();
     return merged;
   }
-  function saveSettings() { try { localStorage.setItem(KEY, JSON.stringify(S.settings)); } catch (e) { } }
+  function saveSettings() { try { const s = S.sim ? Object.assign({}, S.settings, { wp: S.simSavedWp }) : S.settings; localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { } }
   function loadJson(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function saveJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
 
@@ -264,8 +264,8 @@
     let cog = (typeof c.heading === 'number' && isFinite(c.heading) && sog !== null && sog > 1.5) ? c.heading : null;
     if (prev) {
       const d = N.deltaSpeedCourse(prev, fix);
-      if (d && d.dt >= 0.8) {
-        if (sog === null) sog = (d.dt < 30 && d.sog < 60) ? d.sog : null; // >60 kn = GPS jump, ignore
+      if (d && d.dt >= 0.8 && d.sog < 60) { // >60 kn between fixes = GPS jump: ignore for both speed and course
+        if (sog === null) sog = d.dt < 30 ? d.sog : null;
         if (cog === null && d.d * 1852 > Math.max(8, (fix.acc || 10) * 0.6) && (sog === null || sog > 1.5)) cog = d.cog;
       }
     }
@@ -280,7 +280,7 @@
   }
   setInterval(() => {
     if (S.navigating && !S.sim && S.lastFixAt && Date.now() - S.lastFixAt > 25000) { setGps('bad', 'GPS lost'); alert('gpslost', 'danger', 'GPS signal lost. Check sky view.', { cooldown: 60 }); }
-    if (S.track.length) saveJson(TRACK_KEY, S.track.slice(-3000));
+    if (S.track.length && !S.sim) saveJson(TRACK_KEY, S.track.slice(-3000));
   }, 5000);
 
   // ---------- navigation processing ----------
@@ -289,13 +289,14 @@
     const pos = S.pos; if (!pos) return;
     const wps = WPS();
     let sol = N.solve(pos, wps, S.settings.wp);
-    if (S.navigating && sol.arrived) {
+    const arrived = sol.inRadius || (!S.manualWp && sol.passedPerp);
+    if (S.navigating && arrived) {
       if (sol.k >= wps.length - 1) {
         if (!S.arrivedFinal) { S.arrivedFinal = true; alert('arrived', 'info', `Arrived at ${sol.wp.name}. ${sol.wp.note}`); }
       } else {
-        S.settings.wp = sol.k + 1; saveSettings(); S.approached = {};
+        S.settings.wp = sol.k + 1; S.manualWp = false; saveSettings(); S.approached = {};
         const nxt = N.solve(pos, wps, S.settings.wp);
-        alert('wp' + sol.k, 'info', `Waypoint ${sol.wp.id} reached. New course ${N.fmtBrg(nxt.brg)}, ${N.fmtNm(nxt.dist)} miles to ${nxt.wp.id}. ${nxt.wp.note}`);
+        alert('wp' + sol.k, 'info', `Waypoint ${sol.wp.id} reached. New course ${N.fmtBrg(nxt.brg)}, ${N.fmtNm(nxt.dist)} miles to ${nxt.wp.id}. ${sol.wp.note}`);
         drawRoutes(); sol = nxt;
       }
     }
@@ -316,8 +317,8 @@
     const sp = speedForEta();
     const ttg = N.ttgSeconds(sol.dist, sp.v), ttgAll = N.ttgSeconds(sol.remaining, sp.v);
     $('hudTtg').textContent = N.fmtDur(ttg) + (sp.plan ? '*' : '');
-    $('hudEta').textContent = ttgAll === null ? '--:--' : N.fmtTime(new Date(Date.now() + ttgAll * 1000), TZ_ES) + (sp.plan ? '*' : '');
-    $('hudEta').title = ttgAll === null ? '' : bothTimes(new Date(Date.now() + ttgAll * 1000));
+    if (ttgAll === null) $('hudEta').textContent = '--:--';
+    else { const eta = new Date(Date.now() + ttgAll * 1000); $('hudEta').innerHTML = N.fmtTime(eta, TZ_ES) + (sp.plan ? '*' : '') + '<small> ES</small><br><small>' + N.fmtTime(eta, TZ_MA) + ' MA</small>'; }
     $('hudDtg').innerHTML = N.fmtNm(sol.remaining, 1) + '<small> nm ' + N.fmtDur(ttgAll) + '</small>';
     $('hudPos').textContent = N.fmtDM(S.pos.lat, S.pos.lon);
     $('hudAcc').textContent = sp.plan ? '* at plan speed ' + S.settings.speed + ' kn' : '';
@@ -337,11 +338,14 @@
   }
   function checkNavAlerts(sol) {
     const ax = Math.abs(sol.xte);
-    if (ax > 0.3 && sol.legDist > 0.5 && sol.dist > 0.3) alert('xte', 'warn', `Off track ${N.fmtNm(ax)} miles. Steer ${sol.xte > 0 ? 'left' : 'right'} to ${N.fmtBrg(sol.brg)}.`, { cooldown: 90 });
-    if (sol.dist < Math.max(0.5, sol.wp.radius * 3) && !S.approached[sol.k] && sol.k < WPS().length - 1) {
+    if (ax > 0.3 && sol.legDist > 0.5 && sol.dist > 0.3) {
+      const away = S.cog !== null && Math.abs(N.angleDiff(S.cog, sol.legBrg)) > 90;
+      alert('xte', 'warn', away ? `Off track ${N.fmtNm(ax)} miles and heading away from the route. Come round to ${N.fmtBrg(sol.brg)}.` : `Off track ${N.fmtNm(ax)} miles. Steer ${sol.xte > 0 ? 'left' : 'right'} to ${N.fmtBrg(sol.brg)}.`, { cooldown: 90 });
+    }
+    if (sol.legDist >= 0.6 && sol.dist < Math.max(0.5, sol.wp.radius * 3) && !S.approached[sol.k] && sol.k < WPS().length - 1) {
       S.approached[sol.k] = true;
       const nb = N.bearingDeg(sol.wp, WPS()[sol.k + 1]);
-      alert('appr' + sol.k, 'info', `Waypoint ${sol.wp.id} in ${N.fmtNm(sol.dist)} miles. Next course ${N.fmtBrg(nb)}. ${sol.wp.note}`);
+      alert('appr' + sol.k, 'info', `Waypoint ${sol.wp.id} in ${N.fmtNm(sol.dist)} miles. Next course ${N.fmtBrg(nb)}.`);
     }
     // in-lane heading check
     for (const l of C.tss.lanes) {
@@ -374,16 +378,28 @@
       if (inside !== was) {
         S.zone[z.id] = inside;
         const t = ZONE_TEXT[z.id]; if (!t) continue;
-        if (inside) alert('zone-' + z.id, t[0], t[1], { cooldown: 30 });
+        if (inside && z.flow) { // traffic lane: say which side the ships come from relative to our heading
+          const from = z.flow === 'W' ? 90 : 270, fromName = z.flow === 'W' ? 'east' : 'west';
+          const side = S.cog === null ? (z.flow === 'W' ? 'LEFT' : 'RIGHT') : (N.angleDiff(from, S.cog) > 0 ? 'RIGHT' : 'LEFT');
+          alert('zone-' + z.id, 'danger', `Entering the ${z.flow === 'W' ? 'WESTBOUND' : 'EASTBOUND'} traffic lane. Ships come from your ${side}, from the ${fromName}. Keep crossing at right angles, do not slow down.`, { cooldown: 30 });
+        }
+        else if (inside) alert('zone-' + z.id, t[0], t[1], { cooldown: 30 });
         else if (t[2]) alert('zoneout-' + z.id, 'info', t[2], { cooldown: 30 });
       }
     }
   }
   function checkHazards(pos) {
+    S.hazardNear = S.hazardNear || {};
     for (const h of C.hazards) {
-      const inside = N.distanceNm(pos, h) < h.radius;
+      const d = N.distanceNm(pos, h);
+      const inside = d < h.radius;
       const was = !!S.hazard[h.id];
       if (inside && !was) alert('haz-' + h.id, h.level === 'danger' ? 'danger' : h.level === 'caution' ? 'warn' : 'info', `${h.level === 'danger' ? 'DANGER' : 'Caution'}: ${h.name}. ${h.note}`, { cooldown: 120 });
+      else if (!inside && h.level === 'danger' && d < h.radius + 0.15 && !S.hazardNear[h.id]) {
+        S.hazardNear[h.id] = true;
+        alert('hazn-' + h.id, 'warn', `${h.name}: ${N.fmtNm(d)} miles to the ${N.compass16(N.bearingDeg(pos, h))}.`, { cooldown: 120 });
+      }
+      if (d > h.radius + 0.4) S.hazardNear[h.id] = false;
       S.hazard[h.id] = inside;
     }
   }
@@ -409,6 +425,8 @@
   // ---------- simulation ----------
   function startSim(fromWp) {
     stopSim();
+    S.simSavedWp = S.settings.wp; S.simSavedTrack = S.track.slice();
+    S.track = []; track.setLatLngs([]); S.zone = {}; S.hazard = {}; S.hazardNear = {}; S.approached = {}; S.arrivedFinal = false;
     const wps = WPS();
     S.settings.wp = Math.max(1, Math.min(fromWp || 1, wps.length - 1)); saveSettings(); drawRoutes();
     let cur = { lat: wps[S.settings.wp - 1].lat, lon: wps[S.settings.wp - 1].lon };
@@ -424,7 +442,15 @@
     }, 1000);
     $('hudSim').textContent = 'SIMULATION';
   }
-  function stopSim() { if (S.sim) { clearInterval(S.sim); S.sim = null; } $('hudSim').textContent = ''; }
+  function stopSim() {
+    if (S.sim) { clearInterval(S.sim); S.sim = null; }
+    if (S.simSavedWp !== undefined) { // restore the real passage state the demo replaced
+      S.settings.wp = S.simSavedWp; S.track = S.simSavedTrack || []; S.simSavedWp = undefined; S.simSavedTrack = undefined;
+      track.setLatLngs(S.track.map(p => [p[0], p[1]])); saveSettings(); saveJson(TRACK_KEY, S.track);
+      S.zone = {}; S.hazard = {}; S.hazardNear = {}; S.approached = {}; S.arrivedFinal = false; S.manualWp = false; drawRoutes(); updateHudIdle();
+    }
+    $('hudSim').textContent = '';
+  }
 
   // ---------- start ----------
   function begin(mode) {
@@ -439,8 +465,8 @@
   $('btnStart').addEventListener('click', () => begin('nav'));
   $('btnPlanOnly').addEventListener('click', () => begin('look'));
   $('btnStartSim').addEventListener('click', () => begin('sim'));
-  $('btnPrevWp').addEventListener('click', () => { S.settings.wp = Math.max(1, S.settings.wp - 1); S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Active waypoint: ' + WPS()[S.settings.wp].id); });
-  $('btnNextWp').addEventListener('click', () => { S.settings.wp = Math.min(WPS().length - 1, S.settings.wp + 1); S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Active waypoint: ' + WPS()[S.settings.wp].id); });
+  $('btnPrevWp').addEventListener('click', () => { S.settings.wp = Math.max(1, S.settings.wp - 1); S.manualWp = true; S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Active waypoint: ' + WPS()[S.settings.wp].id); });
+  $('btnNextWp').addEventListener('click', () => { S.settings.wp = Math.min(WPS().length - 1, S.settings.wp + 1); S.manualWp = true; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Active waypoint: ' + WPS()[S.settings.wp].id); });
   $('btnMute').addEventListener('click', () => { S.muted = !S.muted; $('btnMute').textContent = S.muted ? '🔇' : '🔊'; if (S.muted) try { speechSynthesis.cancel(); } catch (e) { } });
   $('startInfo').textContent = `${S.route.total} nm · about ${N.fmtDur(S.route.total / S.settings.speed * 3600)} at ${S.settings.speed} kn · planned departure ${bothTimes(new Date(S.settings.departure))}`;
 
@@ -458,7 +484,7 @@
     if ($('view-wx').classList.contains('active')) renderWx();
     if (S.solution) updateHud(S.solution);
   }
-  const arrow = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) + 180}deg)">➤</span>`; // wind FROM: arrow points where it blows to
+  const arrow = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) + 90}deg)">➤</span>`; // wind FROM d blows towards d+180; glyph points east (090)
   const arrowTo = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) - 90}deg)">➤</span>`;
   const tagFor = v => v ? `<span class="tag ${v.level}">${v.level === 'nogo' ? 'NO-GO' : v.level.toUpperCase()}</span>` : '<span class="tag na">no data</span>';
   function renderWx() {

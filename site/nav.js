@@ -87,8 +87,10 @@
     for (let i = k; i < wps.length - 1; i++) remaining += distanceNm(wps[i], wps[i + 1]);
     const radius = wp.radius || 0.1;
     // arrived: inside the arrival circle, or passed the perpendicular through the WP while within 0.5 nm laterally
-    const arrived = dist <= radius || (along >= legDist && Math.abs(xte) < 0.5 && dist < 1.0);
-    return { k, wp, prev, brg, dist, xte, along, legDist, legBrg: bearingDeg(prev, wp), remaining, arrived };
+    const inRadius = dist <= radius;
+    const passedPerp = along >= legDist && Math.abs(xte) < Math.max(0.5, radius * 3) && dist < 1.0;
+    const arrived = inRadius || passedPerp;
+    return { k, wp, prev, brg, dist, xte, along, legDist, legBrg: bearingDeg(prev, wp), remaining, arrived, inRadius, passedPerp };
   }
 
   /** ETA helpers: speed in knots, distance in nm -> seconds */

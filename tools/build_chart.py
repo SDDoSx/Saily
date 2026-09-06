@@ -149,15 +149,18 @@ def centre(poly):
 def shift(points, dy):
     return [(p[0] + dy / KY, p[1]) for p in points]
 
+def clip_arrows(arr, poly):
+    return [a for a in arr if poly.contains(Point(to_xy((a[0], a[1]))))]
+
 lanes = [
     {'id': 'west_wb', 'name': 'Westbound lane (west)', 'flow': 'W', 'rings': geom_to_latlon(lane_d),
-     'arrows': arrows(shift([P[3], P[4], P[5]], 1.2), 'fwd')},
+     'arrows': clip_arrows(arrows(shift([P[3], P[4], P[5]], 1.2), 'fwd', 4), lane_d)},
     {'id': 'west_eb', 'name': 'Eastbound lane (west)', 'flow': 'E', 'rings': geom_to_latlon(lane_e),
-     'arrows': arrows(shift([P[5], P[4], P[3]], -1.3), 'fwd')},
+     'arrows': clip_arrows(arrows(shift([P[5], P[4], P[3]], -1.3), 'fwd', 4), lane_e)},
     {'id': 'east_wb', 'name': 'Westbound lane (east)', 'flow': 'W', 'rings': geom_to_latlon(lane_c),
-     'arrows': arrows(shift([P[1], P[2]], 1.1), 'fwd', 4)},
+     'arrows': clip_arrows(arrows(shift([P[1], P[2]], 1.1), 'fwd', 4), lane_c)},
     {'id': 'east_eb', 'name': 'Eastbound lane (east)', 'flow': 'E', 'rings': geom_to_latlon(lane_f),
-     'arrows': arrows(shift([P[2], P[1]], -1.0), 'fwd', 4)},
+     'arrows': clip_arrows(arrows(shift([P[2], P[1]], -1.0), 'fwd', 4), lane_f)},
 ]
 zones = [
     {'id': 'zone_b', 'name': 'Separation zone (west)', 'rings': geom_to_latlon(zone_b)},
@@ -185,7 +188,7 @@ ROUTE_TARIFA = [
     (36.0400, -5.4400, 'CARNERO', 'Punta Carnero offing', 'Algeciras Bay entrance: ships cross your track. Strong NW-NE tidal set along the Carnero shore; La Perla rocks (4.7 m, race close E of them) 1.2 nm S of the point are 0.5 nm N of this leg: hold the offing.', 0.2),
     (35.9845, -5.6130, 'TARIFA', 'Tarifa Island offing', 'Narrow corridor: island 0.8 nm N, westbound lane 0.7 nm S. Overfalls and race off the island, worst with wind against tide. Tarifa-Tangier ferries cross here.', 0.2),
     (35.9800, -5.7000, 'X-NORTH', 'Crossing point north', 'Turn to 180 T. Cross the TSS at right angles, do not slow down. First the WESTBOUND lane: ships come from your LEFT (east).', 0.15),
-    (35.8740, -5.7000, 'X-SOUTH', 'Crossing point south', 'Clear of the eastbound lane (ships came from your RIGHT). Now in the Moroccan inshore zone. Anchorage Alpha 1.4 nm E. Banco de Fenix (races at max stream) 0.5 nm ahead to the SW.', 0.15),
+    (35.8740, -5.7000, 'X-SOUTH', 'Crossing point south', 'Clear of the eastbound lane. Now in the Moroccan inshore zone. Anchorage Alpha 1.4 nm E. Banco de Fenix (15 m) lies on this leg: overfalls at max stream, slow down if the sea steepens.', 0.15),
     (35.8350, -5.7650, 'MALABATA', 'Cap Malabata offing', 'Cap Malabata light 1.1 nm SE; Almirante Rock (6.3 m, breaks) 0.9 nm SE. Tangier Bay opens ahead. Ferries from Tarifa come down from the N at 30 kn.', 0.2),
     (35.8020, -5.7870, 'TANG-N', 'Tangier port approach (ferry line)', 'Call Tanja Marina Bay on VHF 11 now. Jetty head light Fl(3) 12s 0.7 nm SSW. Stay on the deep-water ferry line; charted wreck (buoyed) and Buoree Rock (0.9 m) lie E of it. Buoys may be missing.', 0.15),
     (35.7880, -5.7845, 'TANG-E', 'Marina access channel, point E', 'Start of the marked TMBI access channel (12 m), beside the ferry turning area. Follow it SW towards the marina entrance. Ferries turn here: keep clear.', 0.08),
@@ -202,7 +205,7 @@ ROUTE_EAST = [
     (35.9420, -5.4250, 'G-SOUTH', 'South edge of precautionary area', 'Crossed the eastern precautionary area (no lanes, but converging ships). Enter the south-eastern inshore zone just S of point 16.', 0.2),
     (35.9250, -5.4600, 'CIRES', 'Punta Cires offing', 'Small race off Punta Cires. Leaving the SE inshore zone into the Tanger-Med free area. Ferries and container ships turning into Tanger-Med ahead.', 0.2),
     (35.9000, -5.5450, 'TMED-OFF', 'Off Tanger-Med', 'Passing 1 nm N of Tanger-Med breakwaters. Keep clear of ships manoeuvring. Enter the SW inshore zone.', 0.2),
-    (35.8600, -5.6500, 'KSAR', 'Off Ksar es-Seghir', 'SW inshore zone. Anchorage Alpha (ships) 1 nm SW: pass N of it.', 0.2),
+    (35.8680, -5.6500, 'KSAR', 'Off Ksar es-Seghir', 'SW inshore zone. Anchorage Alpha (ships at anchor) 1.3 nm SW: this leg passes 0.6 nm N of it.', 0.2),
     wp('MALABATA'), wp('TANG-N'), wp('TANG-E'), wp('TANG-F'), wp('MAR-APP'), wp('TANJA'),
 ]
 
@@ -305,8 +308,8 @@ hazards = [
      'name': 'Tangier beach shallows', 'note': 'Shoal water along the beach S of the marina. Stay in the marked channel.'},
     {'id': 'tmed_port', 'lat': 35.8880, 'lon': -5.5000, 'radius': 1.5, 'level': 'caution',
      'name': 'Tanger-Med port approaches', 'note': 'Container ships and ferries manoeuvring; port control on VHF 12/16.'},
-    {'id': 'gib_anch', 'lat': 36.1350, 'lon': -5.3200, 'radius': 0.9, 'level': 'info',
-     'name': 'Gibraltar eastern anchorage', 'note': 'Large ships at anchor east of the Rock. Pass between them with care; bunkering barges alongside.'},
+    {'id': 'gib_anch', 'lat': 36.1400, 'lon': -5.3220, 'radius': 0.7, 'level': 'info',
+     'name': 'Gibraltar eastern anchorage', 'note': 'Ships at anchor around you east of the Rock: pass between them, watch for bunker barges alongside and anchor chains ahead of their bows.'},
 ]
 
 places = {
