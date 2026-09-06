@@ -81,6 +81,8 @@
       let fc = null, mar = null;
       try { fc = await fetchJson(fcUrl(p, days)); } catch (e) { out.errors.push(p.id + ' wind: ' + e.message); }
       try { mar = await fetchJson(marineUrl(p, days)); } catch (e) { out.errors.push(p.id + ' marine: ' + e.message); }
+      if (fc && !mar) { try { mar = await fetchJson(marineUrl(p, days)); } catch (e) { } } // one retry for the failed half
+      if (mar && !fc) { try { fc = await fetchJson(fcUrl(p, days)); } catch (e) { } }
       const stale = !!((fc && fc.__stale) || (mar && mar.__stale));
       if ((fc || mar) && !stale) {
         out.points[p.id] = { ...p, rows: mergeHourly(fc, mar), sunrise: fc && fc.daily ? fc.daily.sunrise : null, sunset: fc && fc.daily ? fc.daily.sunset : null, utcOffset: (fc || mar).utc_offset_seconds, fetchedAt: now };
@@ -136,37 +138,40 @@
   }
 
   /** classify one row against thresholds -> {level: 'ok'|'caution'|'nogo', reasons:[]} */
+  /** classify one hour: returns {level, reasons: [text], items: [{key, level 1|2, value, threshold, text}]} */
   function classify(row, th, course) {
     th = th || DEFAULT_THRESHOLDS;
-    const reasons = [];
+    const items = [];
     let level = 0; // 0 ok, 1 caution, 2 nogo
-    const bump = (l, msg) => { level = Math.max(level, l); reasons.push(msg); };
+    const bump = (l, key, value, threshold, text) => { level = Math.max(level, l); items.push({ key, level: l, value, threshold, text }); };
     if (row.wind != null) {
-      if (row.wind >= th.windNoGo) bump(2, `wind ${Math.round(row.wind)} kn`);
-      else if (row.wind >= th.windCaution) bump(1, `wind ${Math.round(row.wind)} kn`);
+      if (row.wind >= th.windNoGo) bump(2, 'wind', row.wind, th.windNoGo, `wind ${Math.round(row.wind)} kn`);
+      else if (row.wind >= th.windCaution) bump(1, 'wind', row.wind, th.windCaution, `wind ${Math.round(row.wind)} kn`);
     }
     if (row.gust != null) {
-      if (row.gust >= th.gustNoGo) bump(2, `gusts ${Math.round(row.gust)} kn`);
-      else if (row.gust >= th.gustCaution) bump(1, `gusts ${Math.round(row.gust)} kn`);
+      if (row.gust >= th.gustNoGo) bump(2, 'gust', row.gust, th.gustNoGo, `gusts ${Math.round(row.gust)} kn`);
+      else if (row.gust >= th.gustCaution) bump(1, 'gust', row.gust, th.gustCaution, `gusts ${Math.round(row.gust)} kn`);
     }
     if (row.wave != null) {
-      if (row.wave >= th.waveNoGo) bump(2, `waves ${row.wave.toFixed(1)} m`);
-      else if (row.wave >= th.waveCaution) bump(1, `waves ${row.wave.toFixed(1)} m`);
+      if (row.wave >= th.waveNoGo) bump(2, 'wave', row.wave, th.waveNoGo, `waves ${row.wave.toFixed(1)} m`);
+      else if (row.wave >= th.waveCaution) bump(1, 'wave', row.wave, th.waveCaution, `waves ${row.wave.toFixed(1)} m`);
     }
-    if (row.current != null && row.current >= th.currentCaution) bump(1, `current ${row.current.toFixed(1)} kn`);
-    if (row.vis != null && row.vis < th.visCaution) bump(1, `visibility ${(row.vis / 1000).toFixed(1)} km`);
+    if (row.current != null && row.current >= th.currentCaution) bump(1, 'current', row.current, th.currentCaution, `current ${row.current.toFixed(1)} kn`);
+    if (row.vis != null && row.vis < th.visCaution) bump(1, 'vis', row.vis, th.visCaution, `visibility ${(row.vis / 1000).toFixed(1)} km`);
     if (row.wind != null && row.windDir != null && row.currentDir != null && row.current != null && row.current >= 1.0 && row.wind >= 12) {
       const rel = root.NAV.windVsCurrent(row.windDir, row.currentDir);
-      if (rel === 'against') bump(1, 'wind against current: steep seas');
+      if (rel === 'against') bump(1, 'windcur', row.current, 1.0, 'wind against current: steep seas');
     }
-    if (row.wavePeriod != null && row.wave != null && row.wave >= 0.8 && row.wavePeriod <= 4.5) bump(1, 'short steep waves');
-    if (row.rain != null && row.rain >= 2) bump(1, `rain ${row.rain} mm/h`);
+    if (row.wavePeriod != null && row.wave != null && row.wave >= 0.8 && row.wavePeriod <= 4.5) bump(1, 'steep', row.wavePeriod, 4.5, 'short steep waves');
+    if (row.rain != null && row.rain >= 2) bump(1, 'rain', row.rain, 2, `rain ${row.rain} mm/h`);
+    if (row.code != null && (row.code === 45 || row.code === 48)) bump(1, 'fog', row.code, 0, 'fog forecast');
+    if (row.code != null && row.code >= 95) bump(2, 'thunder', row.code, 0, 'thunderstorm forecast');
     if (course != null && row.wave != null && row.waveDir != null && row.wave >= 0.8) {
       const asp = root.NAV.seaAspect(row.waveDir, course);
-      if (asp === 'beam') bump(1, `beam sea ${row.wave.toFixed(1)} m (rolling)`);
-      else if (asp === 'head' && row.wave >= 1.0) bump(1, `head sea ${row.wave.toFixed(1)} m (slamming, slow down)`);
+      if (asp === 'beam') bump(1, 'beam', row.wave, 0.8, `beam sea ${row.wave.toFixed(1)} m (rolling)`);
+      else if (asp === 'head' && row.wave >= 1.0) bump(1, 'head', row.wave, 1.0, `head sea ${row.wave.toFixed(1)} m (slamming, slow down)`);
     }
-    return { level: ['ok', 'caution', 'nogo'][level], reasons };
+    return { level: ['ok', 'caution', 'nogo'][level], reasons: items.map(i => i.text), items };
   }
 
   /** passage plan: for departure time + speed, row at each point when passing it */
@@ -198,16 +203,34 @@
     return out;
   }
 
+  const KEYNAME = { wind: 'Wind', gust: 'Gusts', wave: 'Waves', current: 'Current', vis: 'Visibility', windcur: 'Wind against current', steep: 'Short steep waves', rain: 'Rain', fog: 'Fog', thunder: 'Thunderstorm', beam: 'Beam sea', head: 'Head sea' };
+  const UNIT = { wind: ' kn', gust: ' kn', wave: ' m', current: ' kn', vis: ' m', beam: ' m', head: ' m', rain: ' mm/h', windcur: ' kn', steep: ' s' };
+  /** passage verdict: {level ok|caution|nogo|incomplete, governing, groups, missing, reasons} */
   function overall(pass) {
-    let level = 'ok'; const reasons = [];
-    if (!pass.length || pass.some(s => !s.row)) { level = 'na'; reasons.push('no forecast data for part of the planned passage: refresh online or change the departure time'); }
+    const missing = [];
+    for (const s of pass) { if (!s.row) missing.push({ point: s.point.name, field: 'all' }); else { if (s.row.wind == null) missing.push({ point: s.point.name, field: 'wind' }); if (s.row.wave == null) missing.push({ point: s.point.name, field: 'waves' }); } }
+    if (!pass.length) missing.push({ point: 'route', field: 'all' });
+    const byKey = {};
     for (const s of pass) {
       if (!s.verdict) continue;
-      if (s.verdict.level === 'nogo') level = 'nogo';
-      else if (s.verdict.level === 'caution' && level !== 'nogo') level = 'caution';
-      for (const r of s.verdict.reasons) reasons.push(`${s.point.name}: ${r}`);
+      for (const it of s.verdict.items) {
+        const g = byKey[it.key] || (byKey[it.key] = { key: it.key, level: 0, min: Infinity, max: -Infinity, threshold: it.threshold, points: [] });
+        g.level = Math.max(g.level, it.level); g.min = Math.min(g.min, it.value); g.max = Math.max(g.max, it.value); g.threshold = it.level >= g.level ? it.threshold : g.threshold;
+        g.points.push({ name: s.point.name, value: it.value, level: it.level, when: s.when, text: it.text });
+      }
     }
-    return { level, reasons };
+    const fmt = (k, v) => k === 'vis' ? (v / 1000).toFixed(1) + ' km' : (k === 'wave' || k === 'beam' || k === 'head' || k === 'current' ? v.toFixed(1) : Math.round(v)) + (UNIT[k] || '');
+    const groups = Object.values(byKey).map(g => {
+      const worst = g.points.slice().sort((a, b) => b.level - a.level || b.value - a.value)[0];
+      const range = g.min === g.max ? fmt(g.key, g.max) : fmt(g.key, g.min) + ' to ' + fmt(g.key, g.max);
+      const where = g.points.length === pass.length ? 'at all points' : 'at ' + g.points.map(p => p.name).join(', ');
+      const thr = ['windcur', 'steep', 'fog', 'thunder'].includes(g.key) ? '' : (g.level === 2 ? ' (no-go from ' : ' (caution from ') + fmt(g.key, g.threshold) + ')';
+      return { ...g, worst, margin: g.max - g.threshold, text: `${KEYNAME[g.key] || g.key} ${range} ${where}${thr}` };
+    }).sort((a, b) => b.level - a.level || b.margin - a.margin);
+    let level = groups.some(g => g.level === 2) ? 'nogo' : missing.length ? 'incomplete' : groups.length ? 'caution' : 'ok';
+    const governing = groups[0] ? { key: groups[0].key, level: groups[0].level, value: groups[0].worst.value, threshold: groups[0].threshold, point: groups[0].worst.name, when: groups[0].worst.when, text: `${KEYNAME[groups[0].key] || groups[0].key} ${fmt(groups[0].key, groups[0].worst.value)} at ${groups[0].worst.name}` + (['windcur', 'steep', 'fog', 'thunder'].includes(groups[0].key) ? '' : `, ${groups[0].level === 2 ? 'no-go' : 'caution'} from ${fmt(groups[0].key, groups[0].threshold)}`) } : null;
+    const reasons = groups.map(g => g.text); if (missing.length) reasons.push('no forecast for ' + missing.map(m => m.point + (m.field === 'all' ? '' : ' (' + m.field + ')')).join(', '));
+    return { level, governing, groups, missing, reasons };
   }
 
   /** nearest forecast point to a position */

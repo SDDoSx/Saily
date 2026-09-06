@@ -27,6 +27,29 @@ button{font:inherit;color:inherit}
 #alertBanner #alertText{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
 #alertBanner.expanded #alertText{-webkit-line-clamp:unset;display:block}
 #alertBanner #alertRest{font-weight:500}
+#alertBanner .snooze{font-size:12px;font-weight:700;padding:4px 8px;border-radius:8px;border:1px solid rgba(0,0,0,.3);background:rgba(255,255,255,.35);color:inherit}
+#resumeBar,#completeBar{position:absolute;left:8px;right:8px;top:8px;z-index:1450;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:10px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.4);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#resumeBar span,#completeBar span{flex:1}
+#resumeBar.hidden,#completeBar.hidden{display:none}
+#anchorSheet{position:absolute;inset:0;z-index:1600;background:rgba(11,26,43,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;text-align:center}
+#anchorSheet.hidden{display:none}
+#anchorSheet .big{font-size:30px;font-weight:800;min-width:110px}
+#anchorSheet .med{font-size:20px;color:var(--muted)}
+.hold{position:relative;overflow:hidden}
+.hold::after{content:'';position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(255,255,255,.35);transition:none}
+.hold.holding::after{width:100%;transition:width var(--hold,700ms) linear}
+#hud .wpbtns button{min-height:48px}
+.ready{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:14px}
+.ready .dot{width:12px;height:12px}
+.rdot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px}
+#updateBar{position:absolute;left:8px;right:8px;bottom:8px;z-index:1450;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:8px 10px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+#updateBar span{flex:1}
+#updateBar.hidden{display:none}
+#dangerStrip{position:absolute;bottom:0;left:0;right:0;z-index:1390;background:var(--danger);color:#fff;font-weight:800;font-size:12px;letter-spacing:.06em;text-align:center;padding:3px 8px;pointer-events:none}
+#dangerStrip.hidden{display:none}
+body.flash::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:3000;box-shadow:inset 0 0 0 10px var(--danger);animation:flash .4s ease-out 3}
+@keyframes flash{0%,100%{opacity:0}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){body.flash::after{animation:none;opacity:.6}}
 #alertBanner .age{font-weight:500;font-size:12px;opacity:.8;white-space:nowrap}
 #alertBanner.danger{animation:slidein .25s ease-out,pulse 1.2s ease-in-out 3}
 @keyframes slidein{from{transform:translateY(-100%)}to{transform:translateY(0)}}
@@ -128,7 +151,12 @@ body.day #bigpos{background:rgba(242,245,248,.98)}
 .card li{margin:3px 0}
 .muted{color:var(--muted)}
 .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
-.tag.ok{background:var(--ok);color:#041}.tag.caution{background:var(--warn);color:#210}.tag.nogo{background:var(--danger);color:#fff}.tag.na{background:#555;color:#eee}
+.tag.ok{background:#0f8a3c;color:#fff}.tag.caution{background:#f2a900;color:#000}.tag.nogo{background:#c8102e;color:#fff}.tag.na,.tag.incomplete{background:#6b7280;color:#fff}
+.verdict{display:flex;align-items:center;gap:14px;min-height:64px;border-radius:10px;padding:10px 14px;margin:6px 0 10px}
+.verdict .vlabel{font-size:26px;font-weight:900;letter-spacing:.04em;white-space:nowrap}
+.verdict .vgov{font-size:15px;font-weight:600;line-height:1.3}
+.verdict.ok{background:#0f8a3c;color:#fff}.verdict.caution{background:#f2a900;color:#000}.verdict.nogo{background:#c8102e;color:#fff}.verdict.incomplete,.verdict.na{background:#6b7280;color:#fff}
+tr.incomplete td{background:rgba(107,114,128,.25)}
 table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
 th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 th{color:var(--muted);font-weight:600;font-size:12px}
@@ -172,6 +200,21 @@ label.field input[type=checkbox]{width:22px;height:22px}
   .page{padding:20px}
 }
 @media (max-height:640px){#hud .cell .v{font-size:22px}}
+@media print{
+  body,html{background:#fff;color:#000;font-size:11pt}
+  #topbar,#tabs,#view-nav,#alertBanner,#dangerStrip,.btn,button,#view-wx,#view-more{display:none!important}
+  #app{position:static;display:block}
+  main{position:static}
+  .view{position:static;display:none;overflow:visible}
+  #view-plan{display:block!important}
+  .page{max-width:none;padding:0}
+  .card{border:1px solid #999;border-radius:0;background:#fff;color:#000;page-break-inside:avoid;margin:0 0 8pt}
+  .card h2,.card h3{color:#000}
+  .muted{color:#333}
+  th,td{border-bottom:1px solid #bbb;color:#000}
+  .kv div:nth-child(odd){color:#333}
+  .check label{border-color:#ccc}
+}
 @media (orientation:landscape) and (max-height:520px){
   #view-nav.active{flex-direction:row}
   #mapWrap{flex:1}
@@ -187,6 +230,14 @@ label.field input[type=checkbox]{width:22px;height:22px}
 </style>
 </head>
 <body>
+<script>
+window.__bootErrors = []; window.addEventListener('error', function (e) { window.__bootErrors.push(String(e.message || e)); });
+setTimeout(function () {
+  if (window.SAILY && window.CHART && window.PASSAGE) return;
+  var o = document.getElementById('startOverlay'); if (!o) return;
+  o.innerHTML = '<h1>Saily</h1><p><b>The app did not load completely.</b></p><p class="muted">Chart or passage data is missing, probably because you are offline before the first install' + (window.__bootErrors.length ? ', or a script failed: ' + window.__bootErrors[0] : '') + '. Reload when you have signal.</p><button class="bigbtn" onclick="location.reload()">Reload</button>';
+}, 3500);
+</script>
 <div id="app">
   <header id="topbar">
     <div class="tb"><span id="gpsDot" class="dot"></span><span id="gpsText">GPS off</span></div>
@@ -194,7 +245,8 @@ label.field input[type=checkbox]{width:22px;height:22px}
     <div class="tb"><span id="netText">online</span><span id="netDot" class="dot ok"></span></div>
   </header>
   <main>
-  <div id="alertBanner" class="hidden"><span id="alertText"><b id="alertMain"></b> <span id="alertRest"></span></span><span class="age" id="alertAge"></span><button id="alertDismiss" aria-label="dismiss">✕</button></div>
+  <div id="alertBanner" class="hidden"><span id="alertText"><b id="alertMain"></b> <span id="alertRest"></span></span><span class="age" id="alertAge"></span><button id="alertSnooze" class="snooze" style="display:none">Quiet</button><button id="alertDismiss" aria-label="dismiss">✕</button></div>
+  <div id="dangerStrip" class="hidden"></div>
     <section id="view-nav" class="view active">
       <div id="mapWrap">
         <div id="map"></div>
@@ -215,11 +267,15 @@ label.field input[type=checkbox]{width:22px;height:22px}
           <h1>Saily</h1>
           <p id="startTitle"><b>Passage</b></p>
           <p id="startInfo" class="muted"></p>
+          <div id="readyDots" class="row" style="justify-content:center;gap:10px;font-size:12px"></div>
           <button id="btnStart" class="bigbtn">Start navigation</button>
           <p class="muted" style="font-size:12px">Tap to enable GPS, sound and the screen wake lock. iPhone: GPS only updates while this page is in front with the screen on, so keep it in the foreground (the wake lock keeps the screen on; on the Home Screen app this needs iOS 18.4 or later). Sound plays through the silent switch. This app is an aid only: it does not replace a chart plotter, a lookout and the COLREGs.</p>
           <div class="row"><button id="btnPlanOnly" class="btn">Just look around</button><button id="btnStartSim" class="btn">Demo (simulate)</button></div>
         </div>
         <div id="toast"></div>
+        <div id="resumeBar" class="hidden"></div>
+        <div id="completeBar" class="hidden"></div>
+        <div id="anchorSheet" class="hidden"><div class="med">Anchor watch</div><div class="row" style="justify-content:center"><button class="btn" id="anchMinus">−</button><div class="big" id="anchRadius">45 m</div><button class="btn" id="anchPlus">+</button></div><p class="muted">Chain out plus swing, plus GPS error. iPhone: screen on, app in front, plugged in. Alarm needs two fixes outside the circle.</p><div class="row"><button class="btn primary" id="anchSet">Set here</button><button class="btn" id="anchClose">Cancel</button></div></div>
         <div id="bigpos" class="hidden"><div class="med">Position for VHF / MAYDAY</div><div class="big" id="bigposText">--</div><div class="med" id="bigposSub"></div><div class="row"><button class="btn primary" id="btnSayPos">Read aloud</button><button class="btn" id="btnSharePos">Share</button><button class="btn" id="btnClosePos">Close</button></div></div>
       </div>
       <div id="hud">

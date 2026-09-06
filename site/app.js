@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);
+  try {
   const C = window.CHART, N = window.NAV, W = window.WX, P = window.PASSAGE;
   const SINGLE = !!window.SAILY_SINGLE; // single-file build (hosted artifact): no service worker, no raster tiles, embedded forecast
   const TZ_ES = P.tz.from.zone, TZ_MA = P.tz.to.zone, TZL_FROM = P.tz.from.label, TZL_TO = P.tz.to.label;
@@ -87,7 +88,7 @@
 
   function setNet() {
     const on = navigator.onLine;
-    $('netText').textContent = on ? 'online' : 'OFFLINE';
+    $('netText').textContent = (on ? 'online' : 'OFFLINE') + (S.started ? (S.wakeLock ? ' 🔆' : ' ⚠︎') : '');
     $('netDot').className = 'dot ' + (on ? 'ok' : 'warn');
     if (on && (!S.wx || Date.now() - S.wx.fetchedAt > 45 * 60000)) refreshWeather(false);
   }
@@ -116,55 +117,137 @@
       }
     } catch (e) { }
   }
-  // speech queue with priorities: danger interrupts, info is dropped when the queue is busy
-  const speech = { q: [], busy: false, timer: null };
-  function speak(text, level) {
+  // Speech: sentence-level queue. Priority 2 (danger) interrupts lower priority speech only; danger behind danger queues
+  // (max 2, deduplicated by id). The first sentence of an item is its action and is always spoken when its turn comes;
+  // the remaining sentences yield to anything of equal or higher priority waiting. Watchdog per sentence.
+  const speech = { q: [], cur: null, busy: false, timer: null };
+  const splitSentences = t => (String(t).match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) || [String(t)]).map(x => x.trim()).filter(Boolean);
+  function speak(text, level, id) {
     if (S.muted || !S.settings.voice || !('speechSynthesis' in window)) return;
     const pr = level === 'danger' ? 2 : level === 'warn' ? 1 : 0;
-    if (pr === 2) { speech.q = speech.q.filter(x => x.pr === 2); try { speechSynthesis.cancel(); } catch (e) { } speech.busy = false; }
-    else if (speech.q.length >= 2) { if (pr === 0) return; speech.q = speech.q.filter(x => x.pr >= 1).slice(-1); }
-    speech.q.push({ text, pr }); pumpSpeech();
+    const item = { id: id || text.slice(0, 24), pr, sentences: splitSentences(text) };
+    if (pr === 2) {
+      if (speech.cur && speech.cur.pr < 2) { try { speechSynthesis.cancel(); } catch (e) { } speech.busy = false; if (speech.cur.sentences.length) speech.q.unshift(speech.cur); speech.cur = null; }
+      speech.q = speech.q.filter(x => x.pr === 2 && x.id !== item.id).slice(-1);
+      speech.q.push(item);
+    } else {
+      if (speech.q.length >= 3 && pr === 0) return; // busy: drop info
+      speech.q = speech.q.filter(x => x.id !== item.id);
+      speech.q.push(item);
+      speech.q.sort((x, y) => y.pr - x.pr);
+    }
+    S.lastHeadline = pr >= 1 ? item.sentences[0] : S.lastHeadline;
+    pumpSpeech();
   }
   function pumpSpeech() {
-    if (speech.busy || !speech.q.length) return;
-    const it = speech.q.shift();
+    if (speech.busy) return;
+    if (speech.cur && speech.cur.sentences.length) {
+      // trailing sentences of the current item yield to anything of equal or higher priority
+      if (speech.q.some(x => x.pr >= speech.cur.pr)) speech.cur = null;
+    }
+    if (!speech.cur || !speech.cur.sentences.length) { speech.cur = speech.q.shift() || null; if (!speech.cur) return; }
+    const sentence = speech.cur.sentences.shift();
     try {
-      const u = new SpeechSynthesisUtterance(it.text); u.lang = 'en-GB'; u.rate = 1.0; u.volume = 1;
-      const done = () => { clearTimeout(speech.timer); speech.busy = false; setTimeout(pumpSpeech, 150); };
+      const u = new SpeechSynthesisUtterance(sentence); u.lang = 'en-GB'; u.rate = 1.0; u.volume = 1;
+      const done = () => { clearTimeout(speech.timer); speech.busy = false; setTimeout(pumpSpeech, 120); };
       u.onend = done; u.onerror = done;
-      speech.busy = true; clearTimeout(speech.timer); speech.timer = setTimeout(done, 4000 + it.text.length * 80); // Safari sometimes never fires onend
+      speech.busy = true; clearTimeout(speech.timer); speech.timer = setTimeout(done, Math.min(12000, 2000 + sentence.length * 60));
       speechSynthesis.speak(u);
     } catch (e) { speech.busy = false; }
   }
   let bannerTimer = null, bannerAt = 0;
-  function showBanner(level, text, ms) {
+  function showBanner(level, text, ms, snoozeId) {
     const b = $('alertBanner'); b.className = level; b.classList.remove('hidden');
+    const sn = $('alertSnooze'); if (sn) { sn.style.display = snoozeId ? '' : 'none'; sn.dataset.id = snoozeId || ''; }
     const m = /^(.*?[.!?])\s+(.*)$/s.exec(text); $('alertMain').textContent = m ? m[1] : text; $('alertRest').textContent = m ? m[2] : '';
     bannerAt = Date.now(); $('alertAge').textContent = '';
     clearTimeout(bannerTimer); if (ms) bannerTimer = setTimeout(() => b.classList.add('hidden'), ms);
   }
   setInterval(() => { if (!$('alertBanner').classList.contains('hidden') && bannerAt) { const m = Math.round((Date.now() - bannerAt) / 60000); $('alertAge').textContent = m >= 1 ? m + ' min ago' : ''; } }, 15000);
-  $('alertBanner').addEventListener('click', e => { if (e.target.id === 'alertDismiss') $('alertBanner').classList.add('hidden'); else $('alertBanner').classList.toggle('expanded'); });
-  /** level: info | warn | danger */
+  $('alertBanner').addEventListener('click', e => { if (e.target.id === 'alertDismiss') $('alertBanner').classList.add('hidden'); else if (e.target.id === 'alertSnooze') { const id = e.target.dataset.id; const pol = policyFor(id); S.snooze = S.snooze || {}; S.snooze[id] = Date.now() + (pol.snooze || 600) * 1000; $('alertBanner').classList.add('hidden'); toast('Quiet for ' + Math.round((pol.snooze || 600) / 60) + ' min: ' + id); } else $('alertBanner').classList.toggle('expanded'); });
+  /** Alert policy by id prefix. repeat: 'interval' (seconds), 'on-change' (value delta or interval), 'once', 'first-spoken'. */
+  const POLICY = [
+    ['xte', { repeat: 'on-change', delta: 0.2, interval: 300, snooze: 600, speakLevel: 'warn' }],
+    ['wxnow', { repeat: 'on-change', interval: 1800, snooze: 1800 }],
+    ['gpslost', { repeat: 'interval', interval: 300, speakDelay: 65 }],
+    ['harbspeed', { repeat: 'once', snooze: 600 }],
+    ['zoneout-', { repeat: 'interval', interval: 30, speak: 'first' }],
+    ['zone-itz', { repeat: 'interval', interval: 30, speak: 'first' }],
+    ['zone-', { repeat: 'interval', interval: 30 }],
+    ['haz-', { repeat: 'interval', interval: 120 }],
+    ['hazn-', { repeat: 'interval', interval: 120 }],
+    ['ais-', { repeat: 'interval', interval: 180 }],
+    ['landahead', { repeat: 'interval', interval: 30 }],
+    ['lanehdg', { repeat: 'interval', interval: 60 }],
+    ['anchordrag', { repeat: 'interval', interval: 30 }],
+    ['wp', { speakLevel: 'warn' }], ['appr', { speakLevel: 'warn' }],
+  ];
+  const policyFor = id => { for (const [k, p] of POLICY) if (id.startsWith(k)) return p; return {}; };
+  /** level: info | warn | danger. opt: {cooldown, speak, value} */
   function alert(id, level, text, opt) {
     opt = opt || {};
     const now = Date.now();
-    if (opt.cooldown && S.alertLast[id] && now - S.alertLast[id] < opt.cooldown * 1000) return false;
-    S.alertLast[id] = now; S.lastAlertText = text; S.lastAlertAt = now;
-    S.log.unshift({ t: now, level, text }); if (S.log.length > 200) S.log.length = 200; saveJson(LOG_KEY, S.log);
-    showBanner(level, text, level === 'danger' ? 0 : level === 'warn' ? 40000 : 15000);
-    if (level === 'danger') beep(3, 880, 0.35); else if (level === 'warn') beep(2, 660, 0.2); else beep(1, 520, 0.12);
-    if (opt.speak !== false) speak(text, level);
-    try { if (navigator.vibrate) navigator.vibrate(level === 'danger' ? [300, 100, 300, 100, 300] : level === 'warn' ? [200, 100, 200] : 120); } catch (e) { }
+    const pol = policyFor(id);
+    const last = S.alertLast[id];
+    const interval = (pol.interval || opt.cooldown || 0) * 1000;
+    S.snooze = S.snooze || {};
+    if (S.snooze[id] && S.snooze[id] > now) { if (last) last.n++; return false; }
+    let suppressed = false;
+    if (last && typeof last === 'object') {
+      if (pol.repeat === 'once') suppressed = true;
+      else if (pol.repeat === 'on-change') suppressed = !((opt.value !== undefined && last.value !== undefined && (typeof opt.value === 'number' ? Math.abs(opt.value - last.value) >= (pol.delta || 0) : opt.value !== last.value)) || now - last.t >= interval);
+      else if (interval) suppressed = now - last.t < interval;
+    }
+    if (suppressed) { last.n++; const li = S.log.find(l => l.id === id); if (li) li.n = last.n; return false; }
+    S.alertLast[id] = { t: now, n: 1, value: opt.value, count: ((last && last.count) || 0) + 1 };
+    S.lastAlertText = text; S.lastAlertAt = now;
+    S.log.unshift({ t: now, level, text, id }); if (S.log.length > 200) S.log.length = 200; saveJson(LOG_KEY, S.log);
+    const planned = level !== 'danger' && id.startsWith('haz-') && S.plannedHaz && S.plannedHaz.has(id.slice(4));
+    const shownLevel = planned ? 'info' : level;
+    showBanner(shownLevel, text, shownLevel === 'danger' ? 0 : shownLevel === 'warn' ? 40000 : 15000, pol.snooze ? id : null);
+    if (shownLevel === 'danger') { beep(3, 880, 0.35); flashDanger(); } else if (shownLevel === 'warn') beep(2, 660, 0.2); else beep(1, 520, 0.12);
+    const speakIt = opt.speak !== false && !(pol.speak === 'first' && S.alertLast[id].count > 1);
+    if (speakIt) speak(text, pol.speakLevel || shownLevel, id);
+    try { if (navigator.vibrate) navigator.vibrate(shownLevel === 'danger' ? [300, 100, 300, 100, 300] : shownLevel === 'warn' ? [200, 100, 200] : 120); } catch (e) { }
     return true;
   }
-
+  function flashDanger() { document.body.classList.remove('flash'); void document.body.offsetWidth; document.body.classList.add('flash'); setTimeout(() => document.body.classList.remove('flash'), 1300); }
+  /** persistent danger strip: shows while a danger condition holds (independent of the banner) */
+  function renderDangerStrip() {
+    const el = $('dangerStrip'); if (!el) return;
+    const items = [];
+    if (S.mob) items.push('MAN OVERBOARD');
+    for (const l of C.tss.lanes) if (S.zone[l.id]) items.push(l.flow === 'W' ? 'IN WESTBOUND LANE' : 'IN EASTBOUND LANE');
+    for (const z of C.tss.zones) if (S.zone[z.id]) items.push('IN SEPARATION ZONE');
+    if (S.gpsLost) items.push('GPS LOST');
+    if (S.alertLast.landahead && Date.now() - S.alertLast.landahead.t < 30000) items.push('LAND AHEAD');
+    if (S.alertLast.anchordrag && Date.now() - S.alertLast.anchordrag.t < 60000) items.push('ANCHOR DRAGGING');
+    for (const h of (S.dangers || [])) if (h.level === 'danger' && S.hazard[h.id]) items.push(h.name.toUpperCase());
+    el.textContent = items.join(' · '); el.classList.toggle('hidden', !items.length);
+  }
+  setInterval(renderDangerStrip, 2000);
+  /** hazards whose circle touches a leg of the active route are 'planned': briefed, not alarmed */
+  function computePlannedHazards() {
+    const wps = WPS(); const set = new Set();
+    for (const h of (S.dangers || P.hazards)) {
+      if (h.level === 'danger') continue;
+      for (let i = 0; i < wps.length - 1; i++) {
+        const along = N.alongTrackNm(h, wps[i], wps[i + 1]); const leg = N.distanceNm(wps[i], wps[i + 1]);
+        const d = along < 0 ? N.distanceNm(h, wps[i]) : along > leg ? N.distanceNm(h, wps[i + 1]) : Math.abs(N.crossTrackNm(h, wps[i], wps[i + 1]));
+        if (d < h.radius) { set.add(h.id); break; }
+      }
+    }
+    S.plannedHaz = set;
+  }
   // ---------- wake lock ----------
   async function requestWakeLock() {
     try {
-      if ('wakeLock' in navigator) { S.wakeLock = await navigator.wakeLock.request('screen'); S.wakeLock.addEventListener('release', () => { S.wakeLock = null; }); }
-    } catch (e) { S.wakeLock = null; }
+      if ('wakeLock' in navigator) { S.wakeLock = await navigator.wakeLock.request('screen'); S.wakeLock.addEventListener('release', () => { S.wakeLock = null; renderLockState(); }); S.wakeRefusals = 0; }
+    } catch (e) { S.wakeLock = null; S.wakeRefusals = (S.wakeRefusals || 0) + 1; if (S.wakeRefusals === 2 && document.visibilityState === 'visible') toast('Screen lock refused: disable Low Power Mode or set Auto-Lock to Never', 6000); }
+    renderLockState();
   }
+  function renderLockState() { const el = $('netText'); if (!el) return; el.title = S.wakeLock ? 'screen wake lock held' : 'no wake lock'; el.textContent = (navigator.onLine ? 'online' : 'OFFLINE') + (S.started ? (S.wakeLock ? ' 🔆' : ' ⚠︎') : ''); }
+  setInterval(() => { if (S.started && S.navigating && !S.wakeLock && document.visibilityState === 'visible') requestWakeLock(); }, 60000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     if (S.started && !S.wakeLock) requestWakeLock();
@@ -227,6 +310,7 @@
   const hazColor = { danger: '#ff2b2b', caution: '#ff9f1a', info: '#4aa3ff' };
   const chartedDangers = C.aids.filter(x => ['wreck', 'rock', 'obstruction'].includes(x.type)).map(x => ({ id: 'aid-' + x.type + '-' + x.lat + '-' + x.lon, lat: x.lat, lon: x.lon, radius: 0.1, level: 'danger', name: `${x.type === 'wreck' ? 'Wreck' : x.type === 'rock' ? 'Rock' : 'Obstruction'}${x.name ? ' ' + x.name : ''}`, note: 'Charted ' + x.type + ' (OpenStreetMap seamark). Keep clear.' }));
   S.dangers = P.hazards.concat(chartedDangers);
+  computePlannedHazards();
   S.dangers.forEach(h => L.circle([h.lat, h.lon], { pane: 'haz', radius: h.radius * 1852, color: hazColor[h.level], weight: 1.5, dashArray: h.level === 'danger' ? null : '5 5', fillColor: hazColor[h.level], fillOpacity: h.level === 'danger' ? 0.2 : 0.08 }).bindPopup(`<b>${h.name}</b>${h.note}`).addTo(map));
   chartedDangers.forEach(h => L.marker([h.lat, h.lon], { pane: 'haz', interactive: false, icon: L.divIcon({ className: '', html: '<div style="color:#ff2b2b;font-weight:900;font-size:16px;line-height:16px;text-shadow:0 0 2px #fff">✱</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map));
   // aids
@@ -249,6 +333,7 @@
   const routeGroup = L.layerGroup().addTo(map);
   function drawRoutes() {
     routeGroup.clearLayers();
+    if (S.dangers) computePlannedHazards();
     P.routes.forEach(r => {
       const active = r.id === S.route.id;
       const ll = r.waypoints.map(w => [w.lat, w.lon]);
@@ -299,7 +384,7 @@
     S.watchId = navigator.geolocation.watchPosition(onFix, err => {
       setGps('bad', 'GPS error');
       if (err.code === 1) alert('gpsdenied', 'danger', 'Location permission denied. Enable it for Safari in iPhone Settings, Privacy, Location Services.', { cooldown: 120 });
-      else alert('gpserr', 'warn', 'GPS error: ' + err.message, { cooldown: 60 });
+      else setGps('bad', err.code === 3 ? 'GPS timeout' : 'GPS error'); // transient errors are folded into the GPS-lost watchdog
     }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
   }
   function stopGps() { if (S.watchId !== null) { navigator.geolocation.clearWatch(S.watchId); S.watchId = null; } }
@@ -316,9 +401,21 @@
         if (cog === null && d.d * 1852 > Math.max(8, (fix.acc || 10) * 0.6) && (sog === null || sog > 1.5)) cog = d.cog;
       }
     }
+    // fix-quality gate: reject jumps outright, and do not let poor or stale fixes drive any guard or transition
+    if (prev) { const d0 = N.deltaSpeedCourse(prev, fix); if (d0 && d0.dt >= 0.8 && d0.sog >= 60) { setGps('warn', 'GPS jump ignored'); return; } }
+    const stale = p.timestamp && Date.now() - p.timestamp > 10000 && !S.sim;
+    const grade = stale ? 'stale' : (c.accuracy == null || c.accuracy <= 50) ? 'good' : c.accuracy <= 150 ? 'degraded' : 'poor';
+    S.fixGrade = grade;
+    if (grade === 'poor' || grade === 'stale') {
+      S.lastKnown = fix; S.acc = c.accuracy;
+      setGps('bad', (stale ? 'GPS stale' : 'GPS poor') + (c.accuracy ? ' ±' + (c.accuracy >= 1000 ? (c.accuracy / 1000).toFixed(1) + ' km' : Math.round(c.accuracy) + ' m') : ''));
+      if (!S.pos) { S.pos = fix; if (!map.hasLayer(vessel)) { vessel.addTo(map); accCircle.addTo(map); } vessel.setLatLng([fix.lat, fix.lon]); vessel.setOpacity(0.4); accCircle.setLatLng([fix.lat, fix.lon]); accCircle.setRadius(c.accuracy || 0); }
+      $('hudPos').textContent = N.fmtDM(fix.lat, fix.lon) + ' (poor fix)';
+      return;
+    }
     S.smoother.push(sog, cog);
     S.sog = S.smoother.sog; S.cog = S.smoother.cog;
-    S.pos = fix; S.acc = c.accuracy; S.lastFixAt = Date.now();
+    S.pos = fix; S.lastGood = fix; S.acc = c.accuracy; S.lastFixAt = Date.now();
     if (S.gpsLost) { S.gpsLost = false; $('alertBanner').classList.add('hidden'); alert('gpsback', 'info', 'GPS signal back.'); }
     S.fixes.push(fix); if (S.fixes.length > 50) S.fixes.shift();
     tripUpdate(fix, prev); checkAnchor(fix);
@@ -328,9 +425,26 @@
     processFix();
   }
   setInterval(() => {
-    if (S.navigating && !S.sim && S.watchId !== null && S.lastFixAt && Date.now() - S.lastFixAt > 25000) { S.gpsLost = true; setGps('bad', 'GPS lost'); alert('gpslost', 'danger', 'GPS signal lost. Check sky view.', { cooldown: 60 }); }
+    if (S.navigating && !S.sim && S.watchId !== null && S.lastFixAt && Date.now() - S.lastFixAt > 25000) { S.gpsLost = true; setGps('bad', 'GPS lost'); if (Date.now() - S.lastFixAt > 90000) alert('gpslost', 'danger', 'GPS signal lost. Check sky view.'); }
     if (S.track.length && !S.sim) saveJson(TRACK_KEY, S.track.slice(-3000));
+    if (!S.sim) saveJson('saily.nav.v1', { navigating: S.navigating && S.started, startedAt: S.trip && S.trip.startedAt, wp: S.settings.wp, zone: S.zone, hazard: S.hazard, hazardNear: S.hazardNear, approached: S.approached, arrivedFinal: S.arrivedFinal, lastFix: S.pos ? { lat: S.pos.lat, lon: S.pos.lon, t: S.lastFixAt, acc: S.acc } : null, t: Date.now() });
+    checkComplete();
   }, 5000);
+  function checkComplete() {
+    if (!S.navigating || S.sim || !S.arrivedFinal || !S.pos) { S.completeSince = 0; return; }
+    const dest = DEST(); const near = N.distanceNm(S.pos, dest) < 0.3 && (S.sog === null || S.sog < 2);
+    if (!near) { S.completeSince = 0; return; }
+    if (!S.completeSince) S.completeSince = Date.now();
+    if (Date.now() - S.completeSince > 120000 && $('completeBar').classList.contains('hidden') && !S.completeShown) {
+      S.completeShown = true;
+      const t = S.trip; const hrs = t ? (Date.now() - t.startedAt) / 3600000 : 0;
+      $('completeBar').innerHTML = `<span><b>Passage complete.</b> ${t ? N.fmtNm(t.dist, 1) + ' nm in ' + N.fmtDur(hrs * 3600) + ', avg ' + (hrs > 0.02 ? (t.dist / hrs).toFixed(1) : '--') + ' kn, max ' + t.maxSog.toFixed(1) + ' kn, fuel about ' + Math.round(hrs * (P.vessel.burnLph || 75)) + ' L.' : ''}</span><button class="btn primary" id="btnStopNav">Stop</button><button class="btn" id="btnKeepGps">Keep GPS</button>${P.routes.some(r => r.id === 'return') ? '<button class="btn" id="btnPlanReturn">Plan return</button>' : ''}`;
+      $('completeBar').classList.remove('hidden');
+      $('btnStopNav').addEventListener('click', () => { S.navigating = false; stopGps(); try { S.wakeLock && S.wakeLock.release(); } catch (e) { } localStorage.removeItem('saily.nav.v1'); $('completeBar').classList.add('hidden'); toast('Navigation stopped; track kept'); });
+      $('btnKeepGps').addEventListener('click', () => $('completeBar').classList.add('hidden'));
+      const pr = $('btnPlanReturn'); if (pr) pr.addEventListener('click', () => { S.settings.routeId = 'return'; S.settings.wp = 1; const d = new Date(); d.setDate(d.getDate() + 1); S.settings.departure = fromLocal(TZ_ES, toLocalInput(TZ_ES, d).slice(0, 10) + 'T09:00').toISOString(); S.route = P.routes.find(r => r.id === 'return'); S.zone = {}; S.approached = {}; S.arrivedFinal = false; S.trip = null; S.completeShown = false; saveSettings(); drawRoutes(); $('completeBar').classList.add('hidden'); showView('plan'); toast('Return route planned for tomorrow 09:00'); });
+    }
+  }
 
   // ---------- navigation processing ----------
   function speedForEta() { return (S.sog !== null && S.sog >= 3) ? { v: S.sog, plan: false } : { v: S.settings.speed, plan: true }; }
@@ -342,8 +456,13 @@
       sol.remaining = sol.dist; S.solution = sol; updateHud(sol); updateMap(sol); return;
     }
     let sol = N.solve(pos, wps, S.settings.wp);
-    const arrived = sol.inRadius || (!S.manualWp && sol.passedPerp);
+    const wpsNext = wps[Math.min(sol.k + 1, wps.length - 1)];
+    const nextCourse = N.bearingDeg(sol.wp, wpsNext);
+    const holdingOff = sol.passedPerp && !sol.inRadius && !(Math.abs(sol.xte) < Math.max(0.15, 2 * (sol.wp.radius || 0.1)) || (S.cog !== null && Math.abs(N.angleDiff(S.cog, nextCourse)) < 60));
+    if (holdingOff && !S.holdToast) { S.holdToast = true; toast('Passed ' + sol.wp.id + ' abeam, holding this waypoint: close the track or tap Next WP', 6000); }
+    const arrived = sol.inRadius || (!S.manualWp && sol.passedPerp && !holdingOff);
     if (S.navigating && arrived) {
+      S.holdToast = false;
       if (sol.k >= wps.length - 1) {
         if (!S.arrivedFinal) { S.arrivedFinal = true; alert('arrived', 'info', `Arrived at ${sol.wp.name}. ${sol.wp.note}`); }
       } else {
@@ -390,20 +509,24 @@
   }
   function renderPhase(sol) {
     const el = $('hudPhase');
-    if (S.mob) { el.classList.remove('hidden'); el.innerHTML = `<b>MAN OVERBOARD</b> marked ${N.fmtTime(new Date(S.mob.t), TZ_ES)} · steer <b>${N.fmtBrg(N.bearingDeg(S.pos, S.mob))}</b> · ${N.fmtNm(N.distanceNm(S.pos, S.mob))} nm · ${N.fmtDM(S.mob.lat, S.mob.lon)}`; return; }
+    if (S.mob) { el.classList.remove('hidden'); if (!el.dataset.mob) { el.dataset.mob = '1'; el.innerHTML = `<span id="mobText"></span> <button class="btn danger" id="btnMobCancel" style="padding:6px 10px">Cancel MOB (hold)</button>`; holdButton($('btnMobCancel'), 1000, () => { if (confirm('Cancel man overboard mode?')) mobToggle(); }, 'Hold for a second to cancel MOB'); } $('mobText').innerHTML = `<b>MAN OVERBOARD</b> marked ${N.fmtTime(new Date(S.mob.t), TZ_ES)} · steer <b>${N.fmtBrg(N.bearingDeg(S.pos, S.mob))}</b> · ${N.fmtNm(N.distanceNm(S.pos, S.mob))} nm · ${N.fmtDM(S.mob.lat, S.mob.lon)}`; return; }
+    if (el.dataset.mob) { el.dataset.mob = ''; el.innerHTML = ''; }
     const lanes = C.tss.lanes.filter(l => S.zone[l.id]); const zones = C.tss.zones.filter(z => S.zone[z.id]);
     if (lanes.length || zones.length) {
       // distance to clear all TSS polygons along the current leg: walk the leg from here
       let clear = null;
       if (S.cog !== null) { for (let d = 0.1; d <= 8; d += 0.1) { const q = N.destination(S.pos, sol.legBrg, d); const inside = [].concat(C.tss.lanes, C.tss.zones).some(z => N.pointInRings(q, z.rings)); if (!inside) { clear = d; break; } } }
-      const flow = lanes.length ? (lanes[0].flow === 'W' ? 270 : 90) : null;
-      const target = flow === null ? sol.legBrg : (Math.abs(N.angleDiff(sol.legBrg, flow + 90)) < 90 ? N.norm360(flow + 90) : N.norm360(flow - 90));
+      const flow = lanes.length ? laneFlowDeg(lanes[0]) : null;
+      const target = flow === null ? sol.legBrg : crossingTarget(flow, sol.legBrg);
       const err = S.cog === null ? null : Math.round(N.angleDiff(S.cog, target));
-      const from = lanes.length ? (lanes[0].flow === 'W' ? 'east' : 'west') : null;
-      const side = from && S.cog !== null ? (N.angleDiff(from === 'east' ? 90 : 270, S.cog) > 0 ? 'RIGHT' : 'LEFT') : null;
+      const from = flow === null ? null : dirWord(N.norm360(flow + 180));
+      const side = flow === null ? null : trafficSide(flow, sol);
+      // distance to leave THIS polygon and to clear the whole scheme, walking the leg course
+      let thisLane = null;
+      if (S.cog !== null) { const cur = lanes[0] || zones[0]; for (let d = 0.05; d <= 8; d += 0.05) { const q = N.destination(S.pos, sol.legBrg, d); if (!N.pointInRings(q, cur.rings)) { thisLane = d; break; } } }
       el.classList.remove('hidden');
       const ships = window.AIS && AIS.targets.size ? AIS.ranked().filter(x => x.c && x.c.range < 6).slice(0, 2).map(x => `${x.t.name || x.t.mmsi} ${N.fmtNm(x.c.range)} nm ${N.compass16(x.c.brg)}${x.c.tcpa !== null && x.c.tcpa > 0 ? ', CPA ' + N.fmtNm(x.c.cpa) + ' in ' + Math.round(x.c.tcpa) + ' min' : ''}`).join(' · ') : '';
-      el.innerHTML = (ships ? `<div style="margin-bottom:4px">🚢 ${ships}</div>` : '') + `<b>${lanes.length ? (lanes[0].flow === 'W' ? 'WESTBOUND LANE' : 'EASTBOUND LANE') : 'SEPARATION ZONE'}</b>${side ? ' · ships from your <b>' + side + '</b> (' + from + ')' : ''} · cross on <b>${N.fmtBrg(target)}</b>${err !== null ? ' (' + (err > 0 ? '+' : '') + err + '°)' : ''}${clear !== null ? ' · clear in <b>' + N.fmtNm(clear) + ' nm</b>' + (S.sog > 3 ? ' / ' + Math.round(clear / S.sog * 60) + ' min' : '') : ''}`;
+      el.innerHTML = (ships ? `<div style="margin-bottom:4px">🚢 ${ships}</div>` : '') + `<b>${lanes.length ? (lanes[0].flow === 'W' ? 'WESTBOUND LANE' : 'EASTBOUND LANE') : 'SEPARATION ZONE'}</b>${side ? ' · ships from your <b>' + side + '</b> (' + from + ')' : ''} · cross on <b>${N.fmtBrg(target)}</b>${err !== null ? ' (COG ' + (err > 0 ? '+' : '') + err + '°)' : ''}${thisLane !== null ? ' · this lane <b>' + N.fmtNm(thisLane) + ' nm</b>' : ''}${clear !== null ? ' · scheme clear <b>' + N.fmtNm(clear) + ' nm</b>' + (S.sog > 3 ? ' / ' + Math.round(clear / S.sog * 60) + ' min' : '') : ''}`;
       return;
     }
     const prec = C.tss.precautionary.filter(z => S.zone[z.id]);
@@ -451,10 +574,10 @@
     ensureAudio();
     S.mob = { lat: S.pos.lat, lon: S.pos.lon, t: Date.now() };
     mobMarker = L.marker([S.mob.lat, S.mob.lon], { pane: 'vessel', icon: L.divIcon({ className: '', html: '<div class="mobmark">MOB</div>', iconSize: [0, 0] }) }).addTo(map);
-    mobLine.addTo(map); $('btnMob').classList.add('active'); $('btnMob').textContent = 'Cancel MOB';
+    mobLine.addTo(map); $('btnMob').classList.add('active'); $('btnMob').textContent = 'MOB active';
     S.follow = true; $('btnFollow').classList.add('on');
     alert('mob', 'danger', `MAN OVERBOARD. Position marked at ${N.fmtDM(S.mob.lat, S.mob.lon)}. Turn back now.`);
-    mobTimer = setInterval(() => { if (!S.mob || !S.pos) return; const b = N.bearingDeg(S.pos, S.mob), d = N.distanceNm(S.pos, S.mob); speak(`Man overboard bearing ${N.fmtBrg(b).replace('°', '')}, ${d < 0.1 ? Math.round(d * 1852) + ' metres' : N.fmtNm(d) + ' miles'}.`, 'danger'); }, 20000);
+    mobTimer = setInterval(() => { if (!S.mob || !S.pos) return; const b = N.bearingDeg(S.pos, S.mob), d = N.distanceNm(S.pos, S.mob); speak(`Man overboard bearing ${N.fmtBrg(b).replace('°', '')}, ${d < 0.1 ? Math.round(d * 1852) + ' metres' : N.fmtNm(d) + ' miles'}.`, 'warn', 'mobloop'); }, 20000);
     if (S.pos) processFix();
   }
   function markPosition() {
@@ -464,7 +587,7 @@
     alert('mark' + m.n, 'info', `Mark ${m.n} at ${N.fmtDM(m.lat, m.lon)}.`);
     saveJson('saily.marks.v1', S.marks);
   }
-  function repeatLast() { ensureAudio(); if (!S.lastAlertText) { toast('Nothing to repeat'); return; } showBanner('info', S.lastAlertText, 15000); speak(S.lastAlertText, 'warn'); }
+  function repeatLast() { ensureAudio(); const t = S.lastHeadline || S.lastAlertText; if (!t) { toast('Nothing to repeat'); return; } showBanner('info', S.lastAlertText || t, 15000); speak(S.lastAlertText || t, 'warn', 'repeat'); }
   function showBigPos() {
     if (!S.pos) { toast('No position yet'); return; }
     $('bigposText').textContent = N.fmtDM(S.pos.lat, S.pos.lon);
@@ -476,16 +599,31 @@
     const d = (v, pos, neg) => { const h = v >= 0 ? pos : neg; v = Math.abs(v); const deg = Math.floor(v), min = ((v - deg) * 60).toFixed(2); return `${deg} degrees ${min} minutes ${h}`; };
     speak(`Position ${d(S.pos.lat, 'north', 'south')}, ${d(S.pos.lon, 'east', 'west')}.`, 'warn');
   }
-  // anchor watch
-  let anchorCircle = null;
+  /** hold-to-act: fn runs only after the pointer is held for ms; an early release explains */
+  function holdButton(el, ms, fn, hint) {
+    let timer = null, fired = false;
+    el.classList.add('hold'); el.style.setProperty('--hold', ms + 'ms');
+    const start = e => { e.preventDefault(); fired = false; el.classList.add('holding'); timer = setTimeout(() => { fired = true; el.classList.remove('holding'); fn(); }, ms); };
+    const end = () => { clearTimeout(timer); el.classList.remove('holding'); if (!fired && el.dataset.armed !== 'no') toast(hint || 'Press and hold', 1500); fired = false; };
+    el.addEventListener('pointerdown', start); el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end);
+    el.addEventListener('click', e => e.preventDefault());
+  }
+  // anchor watch (sheet instead of prompt; alarm needs two consecutive fixes outside the circle)
+  let anchorCircle = null, anchRadius = 45;
   function anchorToggle() {
     if (S.settings.anchor) { S.settings.anchor = null; saveSettings(); if (anchorCircle) { map.removeLayer(anchorCircle); anchorCircle = null; } $('btnAnchor').classList.remove('active'); toast('Anchor watch off'); return; }
     if (!S.pos) { toast('No position yet'); return; }
-    const r = parseFloat(prompt('Anchor watch radius in metres (chain out plus swing):', '45')); if (!isFinite(r) || r <= 0) return;
-    ensureAudio(); if (S.watchId === null && !S.sim) startGps();
-    S.settings.anchor = { lat: S.pos.lat, lon: S.pos.lon, r, t: Date.now() }; saveSettings(); drawAnchor();
-    alert('anchorset', 'info', `Anchor watch set, ${r} metres.`);
+    $('anchRadius').textContent = anchRadius + ' m'; $('anchorSheet').classList.remove('hidden');
   }
+  $('anchMinus').addEventListener('click', () => { anchRadius = Math.max(20, anchRadius - 5); $('anchRadius').textContent = anchRadius + ' m'; });
+  $('anchPlus').addEventListener('click', () => { anchRadius = Math.min(150, anchRadius + 5); $('anchRadius').textContent = anchRadius + ' m'; });
+  $('anchClose').addEventListener('click', () => $('anchorSheet').classList.add('hidden'));
+  $('anchSet').addEventListener('click', () => {
+    $('anchorSheet').classList.add('hidden'); if (!S.pos) return;
+    ensureAudio(); if (S.watchId === null && !S.sim) startGps();
+    S.settings.anchor = { lat: S.pos.lat, lon: S.pos.lon, r: anchRadius, t: Date.now(), acc: S.acc || 0 }; saveSettings(); drawAnchor();
+    alert('anchorset', 'info', `Anchor watch set, ${anchRadius} metres${S.acc ? ', GPS plus or minus ' + Math.round(S.acc) + ' metres' : ''}.`);
+  });
   function drawAnchor() {
     const an = S.settings.anchor; if (!an) return;
     if (anchorCircle) map.removeLayer(anchorCircle);
@@ -495,11 +633,13 @@
   function checkAnchor(pos) {
     const an = S.settings.anchor; if (!an) return;
     const d = N.distanceNm(pos, an) * 1852;
-    if (d > an.r) alert('anchordrag', 'danger', `Anchor dragging: ${Math.round(d)} metres from the anchor position, limit ${an.r}.`, { cooldown: 30 });
+    const out = d - (pos.acc || 0) > an.r;
+    if (out && S.anchorOutPrev) alert('anchordrag', 'danger', `Anchor dragging: ${Math.round(d)} metres from the anchor position, limit ${an.r}.`, { cooldown: 30 });
+    S.anchorOutPrev = out;
   }
   if (S.settings.anchor) drawAnchor();
   $('btnAnchor').addEventListener('click', anchorToggle);
-  $('btnMob').addEventListener('click', mobToggle);
+  holdButton($('btnMob'), 700, () => { if (S.mob) { toast('Use Cancel MOB in the panel'); return; } mobToggle(); }, 'Hold the MOB button for a second to mark man overboard');
   $('btnMark').addEventListener('click', markPosition);
   $('btnRepeat').addEventListener('click', repeatLast);
   $('hudPos').addEventListener('click', showBigPos);
@@ -632,7 +772,7 @@
       const away = S.cog !== null && Math.abs(N.angleDiff(S.cog, sol.legBrg)) > 90;
       const turn = S.cog !== null ? N.angleDiff(sol.brg, S.cog) : null; // + = bearing is clockwise of our heading = turn right
       const dir = turn === null ? (sol.xte > 0 ? 'left' : 'right') : (Math.abs(turn) < 3 ? '' : (turn > 0 ? 'right' : 'left'));
-      alert('xte', 'warn', away ? `Off track ${N.fmtNm(ax)} miles and heading away from the route. Come round to ${N.fmtBrg(sol.brg)}.` : `Off track ${N.fmtNm(ax)} miles. ${dir ? 'Steer ' + dir + ' to ' : 'Hold '}${N.fmtBrg(sol.brg)}.`, { cooldown: 90 });
+      alert('xte', 'warn', away ? `Off track ${N.fmtNm(ax)} miles and heading away from the route. Come round to ${N.fmtBrg(sol.brg)}.` : `Off track ${N.fmtNm(ax)} miles. ${dir ? 'Steer ' + dir + ' to ' : 'Hold '}${N.fmtBrg(sol.brg)}.`, { value: Math.round(ax * 10) / 10 });
     }
     if (sol.legDist >= 0.6 && sol.dist < Math.max(0.5, sol.wp.radius * 3) && !S.approached[sol.k] && sol.k < WPS().length - 1) {
       S.approached[sol.k] = true;
@@ -642,9 +782,9 @@
     // in-lane heading check
     for (const l of C.tss.lanes) {
       if (S.zone[l.id] && S.cog !== null && S.sog !== null && S.sog > 3) {
-        const flow = l.flow === 'W' ? 270 : 90;
-        const dev = Math.min(Math.abs(N.angleDiff(S.cog, flow + 90)), Math.abs(N.angleDiff(S.cog, flow - 90)));
-        if (dev > 35) alert('lanehdg', 'warn', `Cross the lane at right angles: steer ${Math.abs(N.angleDiff(S.cog, 180)) < 90 ? '180' : '000'}. You are ${Math.round(dev)} degrees off.`, { cooldown: 60 });
+        const target = crossingTarget(laneFlowDeg(l), sol.legBrg);
+        const dev = Math.abs(N.angleDiff(S.cog, target));
+        if (dev > 35) alert('lanehdg', 'warn', `Cross the lane at right angles: steer ${N.fmtBrg(target)}. You are ${Math.round(dev)} degrees off.`, { cooldown: 60 });
       }
     }
   }
@@ -662,18 +802,31 @@
     itz_sw: ['info', 'In the Moroccan inshore traffic zone. Follow the coast to Tangier.', 'Leaving the Moroccan inshore zone.'],
     free_tm: ['warn', 'Off Tanger-Med: ferries and container ships manoeuvring. Keep clear of the port approaches.', 'Clear of the Tanger-Med approaches.'],
   };
+  const DIRWORD = { N: 'north', NNE: 'north-north-east', NE: 'north-east', ENE: 'east-north-east', E: 'east', ESE: 'east-south-east', SE: 'south-east', SSE: 'south-south-east', S: 'south', SSW: 'south-south-west', SW: 'south-west', WSW: 'west-south-west', W: 'west', WNW: 'west-north-west', NW: 'north-west', NNW: 'north-north-west' };
+  const dirWord = deg => DIRWORD[N.compass16(deg)] || N.compass16(deg);
+  function laneFlowDeg(l) { return l.flowDeg != null ? l.flowDeg : (l.flow === 'W' ? 270 : 90); }
+  function crossingTarget(flow, legBrg) { const a = N.norm360(flow + 90), b = N.norm360(flow - 90); return Math.abs(N.angleDiff(a, legBrg)) < Math.abs(N.angleDiff(b, legBrg)) ? a : b; }
+  function trafficSide(flow, sol) { // which side ships come from, relative to our reference heading
+    const ref = (S.cog !== null && sol && Math.abs(sol.xte) > 0.1) ? S.cog : (sol ? sol.legBrg : S.cog);
+    if (ref === null) return null;
+    return N.angleDiff(N.norm360(flow + 180), ref) > 0 ? 'RIGHT' : 'LEFT';
+  }
   function checkZones(pos, sol) {
     const all = [].concat(C.tss.itz, C.tss.free, C.tss.precautionary, C.tss.zones, C.tss.lanes);
     for (const z of all) {
       const inside = N.pointInRings(pos, z.rings);
       const was = !!S.zone[z.id];
       if (inside !== was) {
+        // debounce: a transition needs the same result on two consecutive accepted fixes (no polygon buffer, by design)
+        S.zonePending = S.zonePending || {};
+        if (S.zonePending[z.id] !== inside) { S.zonePending[z.id] = inside; continue; }
+        S.zonePending[z.id] = undefined;
         S.zone[z.id] = inside;
         const t = ZONE_TEXT[z.id]; if (!t) continue;
-        if (inside && z.flow) { // traffic lane: say which side the ships come from relative to our heading
-          const from = z.flow === 'W' ? 90 : 270, fromName = z.flow === 'W' ? 'east' : 'west';
-          const side = S.cog === null ? (z.flow === 'W' ? 'LEFT' : 'RIGHT') : (N.angleDiff(from, S.cog) > 0 ? 'RIGHT' : 'LEFT');
-          alert('zone-' + z.id, 'danger', `Entering the ${z.flow === 'W' ? 'WESTBOUND' : 'EASTBOUND'} traffic lane. Ships come from your ${side}, from the ${fromName}. Keep crossing at right angles, do not slow down.`, { cooldown: 30 });
+        if (inside && z.flow) { // traffic lane: side of traffic from the flow bearing and our leg course (COG only when off track)
+          const flow = laneFlowDeg(z), fromName = dirWord(N.norm360(flow + 180));
+          const side = trafficSide(flow, sol) || 'LEFT';
+          alert('zone-' + z.id, 'danger', `Entering the ${z.flow === 'W' ? 'WESTBOUND' : 'EASTBOUND'} traffic lane. Ships come from your ${side}, from the ${fromName}. Cross on ${N.fmtBrg(crossingTarget(flow, sol.legBrg))}, do not slow down.`, { cooldown: 30 });
         }
         else if (inside) alert('zone-' + z.id, t[0], t[1], { cooldown: 30 });
         else if (t[2]) alert('zoneout-' + z.id, 'info', t[2], { cooldown: 30 });
@@ -686,7 +839,8 @@
       const d = N.distanceNm(pos, h);
       const inside = d < h.radius;
       const was = !!S.hazard[h.id];
-      if (inside && !was) alert('haz-' + h.id, h.level === 'danger' ? 'danger' : h.level === 'caution' ? 'warn' : 'info', `${h.level === 'danger' ? 'DANGER' : 'Caution'}: ${h.name}. ${h.note}`, { cooldown: 120 });
+      if (inside && !was) { S.hazPending = S.hazPending || {}; if (!S.hazPending[h.id]) { S.hazPending[h.id] = true; continue; } S.hazPending[h.id] = false; }
+      if (inside && !was) { const planned = h.level !== 'danger' && S.plannedHaz && S.plannedHaz.has(h.id); alert('haz-' + h.id, h.level === 'danger' ? 'danger' : planned ? 'info' : h.level === 'caution' ? 'warn' : 'info', `${h.level === 'danger' ? 'DANGER' : planned ? 'Planned' : 'Caution'}: ${h.name}. ${planned ? 'As briefed.' : h.note}`, { cooldown: 120 }); }
       else if (!inside && h.level === 'danger' && d < h.radius + 0.15 && !S.hazardNear[h.id]) {
         S.hazardNear[h.id] = true;
         alert('hazn-' + h.id, 'warn', `${h.name}: ${N.fmtNm(d)} miles to the ${N.compass16(N.bearingDeg(pos, h))}.`, { cooldown: 120 });
@@ -696,14 +850,28 @@
     }
   }
   function landAt(q) { return C.land.some(r => N.pointInRing(q, r)); }
+  const HARBOUR_WPS = new Set(P.harbourWaypoints || ['SOTO', 'SOTO-HEAD', 'MAR-APP', 'TANJA', 'TANG-F', 'TANG-E']);
   function checkLandAhead(pos) {
+    // Guard against steering into the coast. Bounded by the route: when on track the leg ahead was verified for land
+    // clearance by the builder, so only look as far as the active waypoint; on harbour legs the danger circles are the guard.
     if (S.cog === null || S.sog === null || S.sog < 1.5) return;
+    const sol = S.solution;
+    const onTrack = sol && Math.abs(sol.xte) < 0.1 && Math.abs(N.angleDiff(S.cog, sol.legBrg)) < 25;
+    const harbourLeg = sol && (HARBOUR_WPS.has(sol.wp.id) || HARBOUR_WPS.has(sol.prev.id));
+    if (onTrack && harbourLeg && Math.abs(sol.xte) < 0.05) return;
     const nearHarbour = Object.values(P.places).some(pl => N.distanceNm(pos, pl) < 0.2);
-    const look = nearHarbour || S.sog < 4 ? 0.08 : Math.min(1.5, Math.max(0.2, S.sog * 4 / 60)); // 4 minutes ahead at sea, 150 m in harbour
+    let look = nearHarbour || S.sog < 4 ? 0.08 : Math.min(1.5, Math.max(0.2, S.sog * 4 / 60)); // 4 minutes ahead at sea, 150 m in harbour
+    if (onTrack) look = Math.min(look, sol.dist + 0.05);
+    // closing only: ignore land that is not getting nearer (skip when the previous check found it farther)
     for (let d = 0.04; d <= look; d += 0.04) {
       const q = N.destination(pos, S.cog, d);
-      if (landAt(q)) { alert('landahead', 'danger', `Land or rocks ahead, ${d < 0.1 ? Math.round(d * 1852) + ' metres' : N.fmtNm(d) + ' miles'} on this heading. Alter course.`, { cooldown: 30 }); return; }
+      if (landAt(q)) {
+        const prev = S.landAheadPrev; S.landAheadPrev = d;
+        if (prev !== undefined && d >= prev - 0.001) return; // not closing
+        alert('landahead', 'danger', `Land or rocks ahead, ${d < 0.1 ? Math.round(d * 1852) + ' metres' : N.fmtNm(d) + ' miles'} on this heading. Alter course.`, { cooldown: 30 }); return;
+      }
     }
+    S.landAheadPrev = undefined;
   }
   function checkHarbourSpeed(pos) {
     if (S.sog === null || S.sog < (P.harbourSpeedKn || 4)) return;
@@ -714,7 +882,7 @@
     const pt = W.nearestPoint(S.wx, pos); if (!pt) return;
     const row = W.rowAt(pt, new Date()); if (!row) return;
     const v = W.classify(row, S.settings.th);
-    if (v.level !== 'ok') { S.lastWxAlert = Date.now(); alert('wxnow', v.level === 'nogo' ? 'danger' : 'warn', `Weather ${v.level === 'nogo' ? 'danger' : 'caution'} near ${pt.name}: ${v.reasons.join(', ')}.`); }
+    if (v.level !== 'ok') { S.lastWxAlert = Date.now(); alert('wxnow', v.level === 'nogo' ? 'danger' : 'warn', `Weather ${v.level === 'nogo' ? 'danger' : 'caution'} near ${pt.name}: ${v.reasons.join(', ')}.`, { value: v.level }); }
   }
   function checkSun() {
     const now = new Date(); const st = N.sunTimes(now, P.sun.lat, P.sun.lon);
@@ -733,14 +901,14 @@
     const wps = WPS();
     S.settings.wp = Math.max(1, Math.min(fromWp || 1, wps.length - 1)); saveSettings(); drawRoutes();
     let cur = { lat: wps[S.settings.wp - 1].lat, lon: wps[S.settings.wp - 1].lon };
-    let t = Date.now(); let phase = 0;
+    let t = Date.now(); let phase = 0; let simClock = Date.now();
     S.sim = setInterval(() => {
-      const now = Date.now(); const dt = (now - t) / 1000; t = now; phase += dt;
+      const now = Date.now(); const dt = (now - t) / 1000; t = now; phase += dt; simClock += dt * 20000; // simulated time runs 20x
       const sol = N.solve(cur, wps, S.settings.wp);
       const spd = S.settings.speed * (0.92 + 0.08 * Math.sin(phase / 7));
       const hdg = sol.brg + 6 * Math.sin(phase / 25); // weave to exercise XTE
       cur = N.destination(cur, hdg, spd * dt / 3600 * 20); // 20x real time
-      onFix({ coords: { latitude: cur.lat + (Math.random() - .5) * 2e-5, longitude: cur.lon + (Math.random() - .5) * 2e-5, accuracy: 8, speed: spd / MS_TO_KN, heading: N.norm360(hdg) }, timestamp: now });
+      onFix({ coords: { latitude: cur.lat + (Math.random() - .5) * 2e-5, longitude: cur.lon + (Math.random() - .5) * 2e-5, accuracy: 8, speed: spd / MS_TO_KN, heading: N.norm360(hdg) }, timestamp: simClock });
       if (S.settings.aisDemo !== false) simShipsTick(dt);
       if (S.arrivedFinal) stopSim();
     }, 1000);
@@ -775,8 +943,8 @@
     const before = S.settings.wp; S.settings.wp = Math.max(1, Math.min(WPS().length - 1, k)); S.manualWp = true; S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix();
     toast((why || 'Active waypoint') + ': ' + WPS()[S.settings.wp].id, 6000, { label: 'Undo', fn: () => { S.settings.wp = before; S.manualWp = true; saveSettings(); drawRoutes(); if (S.pos) processFix(); } });
   }
-  $('btnPrevWp').addEventListener('click', () => setWp(S.settings.wp - 1, 'Back to'));
-  $('btnNextWp').addEventListener('click', () => setWp(S.settings.wp + 1, 'Skipped to'));
+  holdButton($('btnPrevWp'), 500, () => setWp(S.settings.wp - 1, 'Back to'), 'Hold to go back a waypoint');
+  holdButton($('btnNextWp'), 500, () => setWp(S.settings.wp + 1, 'Skipped to'), 'Hold to skip to the next waypoint');
   $('btnMute').addEventListener('click', () => { S.muted = !S.muted; $('btnMute').textContent = S.muted ? '🔇' : '🔊'; if (S.muted) try { speechSynthesis.cancel(); } catch (e) { } });
   $('startInfo').textContent = `${S.route.total} nm · about ${N.fmtDur(S.route.total / S.settings.speed * 3600)} at ${S.settings.speed} kn · planned departure ${bothTimes(new Date(S.settings.departure))}`;
 
@@ -797,7 +965,8 @@
   }
   const arrow = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) + 90}deg)">➤</span>`; // wind FROM d blows towards d+180; glyph points east (090)
   const arrowTo = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) - 90}deg)">➤</span>`;
-  const tagFor = v => v ? `<span class="tag ${v.level}">${v.level === 'nogo' ? 'NO-GO' : v.level.toUpperCase()}</span>` : '<span class="tag na">no data</span>';
+  const LEVELNAME = { ok: 'OK', caution: 'CAUTION', nogo: 'NO-GO', incomplete: 'INCOMPLETE', na: 'NO DATA' };
+  const tagFor = v => v ? `<span class="tag ${v.level}">${LEVELNAME[v.level] || v.level.toUpperCase()}</span>` : '<span class="tag na">no data</span>';
   function renderWx() {
     const el = $('wxPage'); const d = S.wx;
     const age = d ? Math.round((Date.now() - d.fetchedAt) / 60000) : null;
@@ -807,8 +976,10 @@
       const dep = new Date(S.settings.departure);
       const pass = W.passage(d, dep, S.settings.speed, S.settings.th, S.route.waypoints);
       const ov = W.overall(pass);
-      h += `<div class="card"><h2>Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn ${tagFor(ov)}</h2>`;
-      h += ov.reasons.length ? `<ul>${ov.reasons.slice(0, 5).map(r => `<li>${r}</li>`).join('')}${ov.reasons.length > 5 ? `<li class="muted">and ${ov.reasons.length - 5} more, see the table</li>` : ''}</ul>` : '<p>No thresholds exceeded at any route point during the planned passage.</p>';
+      h += `<div class="card"><h2>Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn</h2>
+        <div class="verdict ${ov.level}"><div class="vlabel">${LEVELNAME[ov.level] || ov.level}</div><div class="vgov">${ov.governing ? ov.governing.text : (ov.level === 'incomplete' ? 'Forecast missing for part of the passage' : 'Nothing over your thresholds at any route point')}</div></div>`;
+      if (ov.groups.length) h += `<ul>${ov.groups.map(g => `<li><span class="tag ${g.level === 2 ? 'nogo' : 'caution'}">${g.level === 2 ? 'NO-GO' : 'CAUTION'}</span> ${g.text}</li>`).join('')}</ul>`;
+      if (ov.missing.length) h += `<p class="muted">No forecast for ${ov.missing.map(m => m.point + (m.field === 'all' ? '' : ' (' + m.field + ')')).join(', ')}: refresh online or change the departure time.</p>`;
       h += `<div class="tbl"><table><tr><th>Point</th><th>Pass at</th><th>Wind</th><th>Gust</th><th>Waves</th><th>Swell</th><th>Current</th><th>Wind/cur</th><th>Vis</th><th></th></tr>`;
       for (const s of pass) {
         const r = s.row;
@@ -870,9 +1041,22 @@
       <div class="row" style="margin-top:8px">${SINGLE ? '' : `<a class="btn" id="gpxLink" download="saily-${r.id}.gpx">Download GPX for the plotter</a>`}<button class="btn" id="btnCopyWp">Copy waypoints (ID, lat/lon)</button></div></div>`;
     for (const c of (P.cards || [])) h += c.html;
     h += `<div class="card"><h2>Departure checklist</h2><div class="check">${CHECKLIST.map((c, i) => `<label><input type="checkbox" data-ck="${i}" ${S.settings.checklist[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>`;
+    // pilotage card: paper backup (print / save as PDF)
+    const variation = P.variationDeg != null ? P.variationDeg : -1;
+    const near = (lat, lon, maxNm) => { let best = Infinity, from = null; for (const l of r.legs) { const A = r.waypoints.find(w => w.id === l.from), B = r.waypoints.find(w => w.id === l.to); const al = N.alongTrackNm({ lat, lon }, A, B); const d = al < 0 ? N.distanceNm({ lat, lon }, A) : al > l.dist ? N.distanceNm({ lat, lon }, B) : Math.abs(N.crossTrackNm({ lat, lon }, A, B)); if (d < best) { best = d; from = l.from; } } return best <= maxNm ? { d: best, from } : null; };
+    const hazRows = (S.dangers || P.hazards).map(hz => ({ hz, n: near(hz.lat, hz.lon, 0.6 + hz.radius) })).filter(x => x.n).map(x => `<tr><td>${x.hz.name}</td><td>${N.fmtDM(x.hz.lat, x.hz.lon)}</td><td>${N.fmtNm(x.n.d)} nm off leg from ${x.n.from}</td></tr>`).join('');
+    const lightRows = C.aids.filter(x => x.light && (x.type.startsWith('light') || x.type.startsWith('beacon') || x.type.startsWith('buoy'))).map(x => ({ x, n: near(x.lat, x.lon, 2) })).filter(o => o.n).slice(0, 24).map(o => `<tr><td>${o.x.name || o.x.type.replace(/_/g, ' ')}</td><td>${o.x.light}</td><td>${N.fmtDM(o.x.lat, o.x.lon)}</td></tr>`).join('');
+    let cum2 = 0;
+    h += `<div class="card print-card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Pilotage card (paper backup)</h2><button class="btn" id="btnPrint">Print / save as PDF</button></div>
+      <p class="muted">Courses true and magnetic (variation ${variation}°). Times at ${sp} kn from ${bothTimes(dep)}, ${dep.toDateString()}.</p>
+      <div class="tbl"><table><tr><th>#</th><th>To</th><th>°T</th><th>°M</th><th>nm</th><th>ETA ${TZL_FROM}</th><th>ETA ${TZL_TO}</th><th>Instruction</th></tr>${r.legs.map((l, i) => { cum2 += l.dist; const w = r.waypoints.find(x => x.id === l.to); const at = new Date(dep.getTime() + cum2 / sp * 3600000); return `<tr><td>${i + 1}</td><td><b>${l.to}</b><br><span class="muted">${N.fmtDM(w.lat, w.lon)}</span></td><td>${N.fmtBrg(l.brg)}</td><td>${N.fmtBrg(l.brg - variation)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtTime(at, TZ_ES)}</td><td>${fmtMA(at)}</td><td style="white-space:normal;min-width:200px">${(w.note || '').split(/(?<=[.!?])\s/)[0]}</td></tr>`; }).join('')}</table></div>
+      <h3>Dangers near the route</h3><div class="tbl"><table><tr><th>Name</th><th>Position</th><th>Where</th></tr>${hazRows || '<tr><td colspan="3">none within 0.6 nm</td></tr>'}</table></div>
+      <h3>Lights within 2 nm of the route</h3><div class="tbl"><table><tr><th>Name</th><th>Character</th><th>Position</th></tr>${lightRows || '<tr><td colspan="3">none charted</td></tr>'}</table></div>
+      <h3>Radio</h3><p>${Object.values(P.places).map(pl => `${pl.name}: VHF ${pl.vhf}${pl.phone ? ', ' + pl.phone : ''}`).join(' · ')} · Distress VHF 16 / DSC 70</p></div>`;
     const sun = N.sunTimes(new Date(), P.sun.lat, P.sun.lon);
     h += `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at Tangier. Plan to be berthed with daylight to spare: the marina entrance and the port traffic are much harder at night.</p></div>`;
     el.innerHTML = h;
+    const bp = $('btnPrint'); if (bp) bp.addEventListener('click', () => window.print());
     el.querySelectorAll('input[name=route]').forEach(i => i.addEventListener('change', () => { S.settings.routeId = i.value; S.settings.wp = 1; saveSettings(); S.route = P.routes.find(x => x.id === i.value); S.zone = {}; S.approached = {}; drawRoutes(); renderPlan(); if (S.pos) processFix(); }));
     if ($('gpxLink')) $('gpxLink').href = 'data:application/gpx+xml;charset=utf-8,' + encodeURIComponent(N.toGPX('Saily ' + r.id, r.waypoints));
     $('btnCopyWp').addEventListener('click', async () => { const txt = r.waypoints.map(w => `${w.id}\t${N.fmtDM(w.lat, w.lon)}\t${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`).join('\n'); try { await navigator.clipboard.writeText(txt); toast('Copied'); } catch (e) { toast('Copy failed'); } });
@@ -909,8 +1093,9 @@
     h += `<div class="card"><h2>Preload for offline use</h2><p class="muted">Do this on wifi before leaving. Stores the app, the 3-day forecast and map tiles for the whole route (about 15 to 40 MB). The vector chart, route, TSS and hazards are built in and always work offline.</p>
       <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
       <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted">${preloadStatusText()}</div><div id="storeText" class="muted"></div></div>`;
+    h += `<div class="card"><h2>Ready for sea</h2><div id="readyCard" class="muted">checking…</div></div>`;
     h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Install</div><div>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload THERE: the Home Screen app has its own storage, separate from Safari's.</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div></div>`;
-    h += `<div class="card"><h2>Alert log</h2><div class="log">${S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}`).join('\n') || 'none yet'}</div><div class="row" style="margin-top:8px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
+    h += `<div class="card"><h2>Alert log</h2><div class="log">${S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}${l.n > 1 ? ' (x' + l.n + ')' : ''}`).join('\n') || 'none yet'}</div><div class="row" style="margin-top:8px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
     h += `<div class="card"><h2>About</h2><p class="muted">Saily is a temporary passage aid built for one crossing. Data: ${C.meta.sources.join('; ')}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, CARTO, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). Not for navigation without official charts, a proper lookout and COLREGs.</p></div>`;
     el.innerHTML = h;
     const num = (id, f) => $(id).addEventListener('change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
@@ -939,6 +1124,7 @@
     if ($('btnTrackGpx')) $('btnTrackGpx').href = 'data:application/gpx+xml;charset=utf-8,' + encodeURIComponent(N.trackGPX('Saily track', S.track));
     $('btnClearTrack').addEventListener('click', () => { S.track = []; track.setLatLngs([]); saveJson(TRACK_KEY, []); S.trip = S.navigating ? { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 } : null; saveJson('saily.trip.v1', S.trip); toast('Track and trip log cleared'); });
     $('btnReset').addEventListener('click', () => { if (confirm('Reset all settings, track and log?')) { localStorage.clear(); location.reload(); } });
+    renderReady();
     if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { $('storeText').textContent = `Storage used: ${(e.usage / 1048576).toFixed(1)} MB of ${(e.quota / 1048576).toFixed(0)} MB available.`; }).catch(() => { });
   }
   function preloadStatusText() {
@@ -1008,17 +1194,86 @@
   if ('serviceWorker' in navigator && !SINGLE) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').then(reg => {
-        reg.addEventListener('updatefound', () => { const nw = reg.installing; nw && nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) toast('App updated: reload to use the new version', 5000); }); });
+        S.swReg = reg;
+        const offer = () => { if (reg.waiting) showUpdateBar(reg); };
+        offer();
+        reg.addEventListener('updatefound', () => { const nw = reg.installing; nw && nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) offer(); }); });
+        setInterval(() => { if (!S.navigating) reg.update().catch(() => { }); }, 6 * 3600000);
       }).catch(() => { });
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (S.applyingUpdate && !reloading) { reloading = true; location.reload(); } });
     });
   }
 
+  // update bar: a new build waits until the user applies it (never mid-passage)
+  function showUpdateBar(reg) {
+    let bar = $('updateBar');
+    if (!bar) { bar = document.createElement('div'); bar.id = 'updateBar'; document.querySelector('main').appendChild(bar); }
+    bar.innerHTML = `<span>New version downloaded${S.navigating ? ' (apply when berthed)' : ''}.</span><button class="btn" id="btnApplyUpdate">Apply and reload</button><button class="btn" id="btnLaterUpdate">Later</button>`;
+    bar.classList.remove('hidden');
+    $('btnApplyUpdate').addEventListener('click', () => { if (S.navigating && !confirm('Apply the update now? The app reloads; navigation restarts from the saved waypoint.')) return; S.applyingUpdate = true; try { reg.waiting.postMessage('skipWaiting'); } catch (e) { location.reload(); } });
+    $('btnLaterUpdate').addEventListener('click', () => bar.classList.add('hidden'));
+  }
+  // resume a passage after iOS killed the tab: restore guard state silently and restart GPS without a tap
+  function tryResume() {
+    const nav = loadJson('saily.nav.v1', null);
+    if (!nav || !nav.navigating || !nav.lastFix || Date.now() - (nav.lastFix.t || nav.t) > 30 * 60000) return false;
+    S.zone = nav.zone || {}; S.hazard = nav.hazard || {}; S.hazardNear = nav.hazardNear || {}; S.approached = nav.approached || {}; S.arrivedFinal = !!nav.arrivedFinal;
+    S.settings.wp = nav.wp || S.settings.wp; S.started = true; S.navigating = true;
+    S.trip = loadJson('saily.trip.v1', null) || { startedAt: nav.startedAt || Date.now(), dist: 0, maxSog: 0, n: 0 };
+    S.pos = { lat: nav.lastFix.lat, lon: nav.lastFix.lon, t: nav.lastFix.t, acc: nav.lastFix.acc }; S.acc = nav.lastFix.acc; S.lastFixAt = Date.now();
+    $('startOverlay').classList.add('hidden'); drawRoutes(); processFix(); startGps(); requestWakeLock();
+    const bar = $('resumeBar'); bar.innerHTML = `<span>Passage resumed at ${WPS()[S.settings.wp].id}. Tap for sound.</span><button class="btn primary" id="btnResumeSound">Sound on</button>`; bar.classList.remove('hidden');
+    $('btnResumeSound').addEventListener('click', () => { ensureAudio(); bar.classList.add('hidden'); const sol = S.solution; speak(`Resumed. ${sol ? N.fmtNm(sol.remaining) + ' miles to go, next ' + sol.wp.id : ''}`, 'warn', 'resume'); });
+    S.log.unshift({ t: Date.now(), level: 'info', text: 'Resumed passage after the app was closed', id: 'resume' });
+    return true;
+  }
+  // ---------- ready for sea: self-test with one-tap fixes ----------
+  async function readyChecks() {
+    const rows = [];
+    const dot = (ok, warn) => ok ? 'ok' : warn ? 'warn' : 'bad';
+    // 1 offline shell
+    let shell = { ok: false, text: 'service worker not controlling', fix: 'reload' };
+    try {
+      if (SINGLE) shell = { ok: true, text: 'single-file build, everything inline' };
+      else if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        const missing = await new Promise(res => { const ch = new MessageChannel(); ch.port1.onmessage = e => res(e.data.missing || []); navigator.serviceWorker.controller.postMessage('shell-status', [ch.port2]); setTimeout(() => res(null), 1500); });
+        shell = missing === null ? { ok: false, warn: true, text: 'service worker did not answer' } : missing.length ? { ok: false, text: missing.length + ' app files not cached', fix: 'preload' } : { ok: true, text: 'app cached for offline use' };
+      }
+    } catch (e) { }
+    rows.push({ name: 'App offline', ...shell });
+    // 2 tiles
+    try {
+      if (!SINGLE && 'caches' in window) { const c = await caches.open('tiles-v1'); const urls = tileUrls().filter(u => u.includes('cartocdn') || u.includes('openseamap')); let have = 0; const sample = urls.filter((u, i) => i % 7 === 0); for (const u of sample) if (await c.match(u)) have++; const pct = sample.length ? Math.round(have / sample.length * 100) : 0; rows.push({ name: 'Map tiles', ok: pct >= 95, warn: pct >= 50, text: pct + '% of corridor tiles cached (vector chart always works)', fix: pct < 95 ? 'preload' : null }); }
+      else rows.push({ name: 'Map tiles', ok: true, text: 'vector chart built in' });
+    } catch (e) { rows.push({ name: 'Map tiles', ok: false, warn: true, text: 'cache not available (needs https)' }); }
+    // 3 forecast
+    if (S.wx) { const age = (Date.now() - S.wx.fetchedAt) / 3600000; const pt = Object.values(S.wx.points)[0]; const last = pt && pt.rows.length ? pt.rows[pt.rows.length - 1].time : null; const eta = new Date(new Date(S.settings.departure).getTime() + (S.route.total / S.settings.speed + 6) * 3600000); const covers = last ? last >= W.madridLocalIso(eta) : false; rows.push({ name: 'Forecast', ok: age < 6 && covers, warn: age < 24, text: `${age < 1 ? Math.round(age * 60) + ' min' : age.toFixed(1) + ' h'} old${covers ? '' : ', does not cover the planned passage'}`, fix: (age >= 6 || !covers) ? 'wx' : null }); }
+    else rows.push({ name: 'Forecast', ok: false, text: 'none stored', fix: 'wx' });
+    // 4 location permission
+    try { const st = navigator.permissions ? await navigator.permissions.query({ name: 'geolocation' }) : null; rows.push({ name: 'Location', ok: st ? st.state === 'granted' : !!S.pos, warn: !st || st.state === 'prompt', text: st ? st.state : (S.pos ? 'fix received' : 'unknown until you tap Start'), fix: (!st || st.state !== 'granted') ? 'gps' : null }); } catch (e) { rows.push({ name: 'Location', ok: !!S.pos, warn: true, text: S.pos ? 'fix received' : 'unknown until you tap Start', fix: 'gps' }); }
+    // 5 wake lock
+    rows.push({ name: 'Screen stays on', ok: !!S.wakeLock, warn: 'wakeLock' in navigator, text: S.wakeLock ? 'wake lock held' : ('wakeLock' in navigator ? 'not held yet (granted on Start; refused in Low Power Mode)' : 'not supported: set Auto-Lock to Never'), fix: !S.wakeLock && 'wakeLock' in navigator ? 'wake' : null });
+    // 6 sound and voice
+    const voices = ('speechSynthesis' in window) ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : [];
+    rows.push({ name: 'Sound and voice', ok: !!(S.audio && S.audio.state === 'running') && voices.length > 0, warn: true, text: `${S.audio ? 'audio ' + S.audio.state : 'audio not started'}, ${voices.length} English voice${voices.length === 1 ? '' : 's'}`, fix: 'audio' });
+    return rows;
+  }
+  async function renderReady() {
+    const rows = await readyChecks();
+    const dots = $('readyDots'); if (dots) dots.innerHTML = rows.map(r => `<span title="${r.name}: ${r.text}"><span class="rdot ${r.ok ? 'dot ok' : r.warn ? 'dot warn' : 'dot bad'}"></span>${r.name}</span>`).join('');
+    const card = $('readyCard'); if (!card) return;
+    card.innerHTML = `<div class="ready">${rows.map(r => `<span class="dot ${r.ok ? 'ok' : r.warn ? 'warn' : 'bad'}"></span><span><b>${r.name}</b>: ${r.text}</span><span>${r.fix ? `<button class="btn" data-fix="${r.fix}" style="padding:4px 8px">${{ preload: 'Preload', wx: 'Refresh', gps: 'Start GPS', wake: 'Retry', audio: 'Test', reload: 'Reload' }[r.fix]}</button>` : ''}</span>`).join('')}</div>`;
+    card.querySelectorAll('button[data-fix]').forEach(b => b.addEventListener('click', async () => { const f = b.dataset.fix; if (f === 'preload') preload(true, true); else if (f === 'wx') await refreshWeather(true); else if (f === 'gps') { startGps(); } else if (f === 'wake') { await requestWakeLock(); if (!S.wakeLock) toast('Screen lock refused: disable Low Power Mode, or set Auto-Lock to Never'); } else if (f === 'audio') { ensureAudio(); alert('test', 'warn', 'Sound check. Ships come from your left.', {}); } else location.reload(); setTimeout(renderReady, 800); }));
+  }
   // ---------- init ----------
   document.title = 'Saily · ' + (P.title || P.name);
   $('tzFrom').textContent = TZL_FROM; $('tzTo').textContent = TZL_TO;
   $('hudEtaLabel').textContent = 'ETA ' + (P.destinationShort || 'destination');
   $('startTitle').innerHTML = `<b>${P.name}</b><br>${P.description || ''}`;
   setNet(); renderWxOverlay(); renderSeaLine(); aisApply();
+  if (!SINGLE) tryResume();
+  renderReady();
   if (S.pos === null) { updateHudIdle(); }
   function updateHudIdle() {
     const w = WPS()[S.settings.wp];
@@ -1027,4 +1282,9 @@
     $('hudDtg').innerHTML = S.route.total + '<small> nm</small>';
   }
   window.SAILY = { S, map, processFix, startSim, stopSim, alert, preload, refreshWeather, onFix };
+  } catch (err) {
+    const o = document.getElementById('startOverlay');
+    if (o) o.innerHTML = '<h1>Saily</h1><p><b>The app failed to start.</b></p><p class="muted">' + String(err && err.message || err) + '</p><button class="bigbtn" onclick="location.reload()">Reload</button>';
+    throw err;
+  }
 })();

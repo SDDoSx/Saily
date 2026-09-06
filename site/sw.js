@@ -1,5 +1,5 @@
 /* Saily service worker: offline app shell, tile cache, weather cache. */
-const VERSION = 'saily-v3';
+const VERSION = 'saily-3e6e5454-dirty';
 const SHELL = 'shell-' + VERSION;
 const TILES = 'tiles-v1';
 const DATA = 'data-v1';
@@ -8,34 +8,41 @@ const SHELL_FILES = [
   './vendor/leaflet/leaflet.css', './vendor/leaflet/leaflet.min.js',
   './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png',
   './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
+  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './version.json',
 ];
 const TILE_HOSTS = ['tile.openstreetmap.org', 'tiles.openseamap.org', 't1.openseamap.org', 'basemaps.cartocdn.com', 'server.arcgisonline.com'];
 const DATA_HOSTS = ['api.open-meteo.com', 'marine-api.open-meteo.com'];
 const BLANK_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES.map(u => new Request(u, { cache: 'reload' }))))); // no skipWaiting: the new version waits until the user applies it
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('shell-') && k !== SHELL).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-self.addEventListener('message', e => { if (e.data === 'skipWaiting') self.skipWaiting(); });
+self.addEventListener('message', e => {
+  if (e.data === 'skipWaiting') self.skipWaiting();
+  if (e.data === 'version' && e.source) e.source.postMessage({ type: 'version', version: VERSION });
+  if (e.data === 'shell-status') {
+    const port = e.ports && e.ports[0];
+    caches.open(SHELL).then(async c => { const missing = []; for (const f of SHELL_FILES) { if (!(await c.match(f, { ignoreSearch: true }))) missing.push(f); } const msg = { type: 'shell-status', version: VERSION, missing }; if (port) port.postMessage(msg); else if (e.source) e.source.postMessage(msg); });
+  }
+});
 
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin === self.location.origin) {
-    // app shell: cache first, refresh in background
+    // app shell: served only from the set precached at install (atomic: every file from one build); nothing is
+    // written into the shell cache at fetch time, so index.html and app.js can never come from different pushes
     e.respondWith(caches.open(SHELL).then(async c => {
       const hit = await c.match(req, { ignoreSearch: true });
-      const fetchP = fetch(req).then(res => { if (res && res.ok) c.put(req, res.clone()); return res; }).catch(() => null);
-      if (hit) { fetchP.catch(() => {}); return hit; }
-      const res = await fetchP;
-      if (res) return res;
-      if (req.mode === 'navigate') return c.match('./index.html');
-      return new Response('offline', { status: 503 });
+      if (hit) return hit;
+      try { return await fetch(req); } catch (err) {
+        if (req.mode === 'navigate') return c.match('./index.html');
+        return new Response('offline', { status: 503 });
+      }
     }));
     return;
   }

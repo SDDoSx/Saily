@@ -2,3 +2,4 @@ node_modules/
 tools/out/
 *.log
 .DS_Store
+tools/__pycache__/

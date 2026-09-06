@@ -27,9 +27,8 @@ jobs:
         with:
           enablement: true
       - name: Stamp build id into service worker
-        run: |
-          sed -i "s/const VERSION = 'saily-v1';/const VERSION = 'saily-${GITHUB_SHA::8}';/" site/sw.js
-          echo "<!-- build ${GITHUB_SHA} -->" >> site/index.html
+        run: python3 tools/stamp_build.py "${GITHUB_SHA::8}"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

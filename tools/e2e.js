@@ -80,15 +80,22 @@ const OUT = path.join(__dirname, 'out');
     await page.waitForSelector('#btnStart');
     await page.click('#btnStart');
     await page.waitForTimeout(2500);
+    await page.evaluate(() => { window.SAILY.S.fixes = []; });
     await ctx.setGeolocation({ latitude: 36.2856, longitude: -5.2710, accuracy: 8 });
     await page.waitForTimeout(2500);
+    await page.evaluate(() => { window.SAILY.S.fixes = []; });
     await ctx.setGeolocation({ latitude: 36.2825, longitude: -5.2630, accuracy: 8 });
     await page.waitForTimeout(2500);
+    await page.evaluate(() => { window.SAILY.S.fixes = []; });
     await ctx.setGeolocation({ latitude: 36.20, longitude: -5.295, accuracy: 8 });
     await page.waitForTimeout(2500);
     const s1 = await page.evaluate(() => ({ wp: document.getElementById('hudWpId').textContent, sog: document.getElementById('hudSog').textContent, cog: document.getElementById('hudCog').textContent, xte: document.getElementById('hudXte').textContent, gps: document.getElementById('gpsText').textContent }));
     console.log('Desktop after geolocation jumps:', JSON.stringify(s1));
+    await page.evaluate(() => { window.SAILY.S.fixes = []; });
     await ctx.setGeolocation({ latitude: 35.96, longitude: -5.70, accuracy: 8 }); // inside westbound lane (west)
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => { window.SAILY.S.fixes = []; });
+    await ctx.setGeolocation({ latitude: 35.9595, longitude: -5.70, accuracy: 8 }); // second fix inside: zone transitions are debounced
     await page.waitForTimeout(2500);
     const zones = await page.evaluate(() => ({ zone: window.SAILY.S.zone, log: window.SAILY.S.log.slice(0, 4).map(l => l.level + ': ' + l.text) }));
     console.log('Zones at 35.96,-5.70:', JSON.stringify(zones));
