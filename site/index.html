@@ -23,7 +23,15 @@ button{font:inherit;color:inherit}
 #topbar .tb{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .dot{width:10px;height:10px;border-radius:50%;background:#666;display:inline-block;flex:none}
 .dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--danger)}
-#alertBanner{display:flex;align-items:center;gap:10px;padding:10px 12px;font-weight:600;background:var(--warn);color:#111;cursor:pointer}
+#alertBanner{position:absolute;top:0;left:0;right:0;z-index:1400;display:flex;align-items:center;gap:10px;padding:10px 12px;font-weight:600;background:var(--warn);color:#111;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);animation:slidein .25s ease-out}
+#alertBanner #alertText{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
+#alertBanner.expanded #alertText{-webkit-line-clamp:unset;display:block}
+#alertBanner #alertRest{font-weight:500}
+#alertBanner .age{font-weight:500;font-size:12px;opacity:.8;white-space:nowrap}
+#alertBanner.danger{animation:slidein .25s ease-out,pulse 1.2s ease-in-out 3}
+@keyframes slidein{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+@keyframes pulse{0%,100%{box-shadow:0 4px 12px rgba(0,0,0,.35)}50%{box-shadow:0 0 0 6px rgba(255,71,87,.45)}}
+@media (prefers-reduced-motion:reduce){#alertBanner,#alertBanner.danger{animation:none}}
 #alertBanner.danger{background:var(--danger);color:#fff}#alertBanner.info{background:var(--accent);color:#031}
 #alertBanner.hidden{display:none}
 #alertBanner span{flex:1}
@@ -55,6 +63,42 @@ main{flex:1;min-height:0;position:relative}
 #hud .wpbtns{display:flex;gap:6px;margin-top:6px}
 #hud .wpbtns button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
 #hud .sim{color:var(--danger);font-weight:700}
+#hud .phase{margin:2px 0 6px;padding:6px 8px;border-radius:8px;background:rgba(255,45,149,.15);border:1px solid rgba(255,45,149,.5);font-size:13px;line-height:1.35}
+#hud .phase.hidden{display:none}
+#hud .phase b{color:#fff}
+.highway{margin:6px 0 2px;user-select:none}
+.strip{margin:6px 0 2px;height:22px}
+.strip svg{width:100%;height:22px;display:block}
+.hw-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);padding:0 2px}
+.hw-track{position:relative;height:14px;border-radius:7px;background:linear-gradient(90deg,rgba(255,159,67,.35),var(--panel2) 40%,var(--panel2) 60%,rgba(84,213,255,.35))}
+.hw-centre{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--text);opacity:.7}
+.hw-marker{position:absolute;top:-4px;width:22px;height:22px;margin-left:-11px;border-radius:50%;background:var(--accent);border:2px solid #fff;left:50%;transition:left .4s ease-out;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.hw-marker.bad{background:var(--danger)}
+#hud .pos{cursor:pointer;text-decoration:underline dotted}
+#hud .helm button{font-weight:700}
+#hud .helm .mob{background:var(--danger);color:#fff;border-color:var(--danger)}
+#hud .helm .mob.active{background:#fff;color:var(--danger)}
+#bigpos{position:absolute;inset:0;z-index:1600;background:rgba(11,26,43,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;text-align:center}
+#bigpos.hidden{display:none}
+#bigpos .big{font-size:34px;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text}
+#bigpos .med{font-size:20px;color:var(--muted)}
+.mobmark{width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:var(--danger);border:3px solid #fff;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px rgba(255,71,87,.35)}
+.usermark{width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:2px;background:#ffe066;border:2px solid #111;transform:rotate(45deg)}
+.wxarrow{color:#0b1a2b;font-size:16px;line-height:16px;text-shadow:0 0 2px #fff,0 0 2px #fff;white-space:nowrap;pointer-events:none}
+.wxarrow small{font-size:9px;font-weight:700}
+.wxarrow.cur{color:#1d4e7a}
+.aislabel{background:rgba(255,255,255,.85);border:0;color:#111;font-size:10px;padding:0 4px;box-shadow:none;font-weight:600}
+.aislabel::before{display:none}
+@media (max-width:420px){#hud .cell .l{font-size:10px}#hud .row2 .v{font-size:17px}}
+body.day{--bg:#f2f5f8;--panel:#ffffff;--panel2:#e6edf4;--line:#b9c8d8;--text:#0b1a2b;--muted:#4b5f74;--accent:#0a6fd6}
+body.day #hud .cell .v{color:#000}
+body.day #mapControls button{background:rgba(255,255,255,.95);color:#0b1a2b}
+body.day #startOverlay{background:rgba(242,245,248,.96)}
+body.day .wplabel{background:rgba(255,255,255,.9);color:#0b1a2b}
+body.day #toast{background:rgba(255,255,255,.95);color:#000}
+body.day #bigpos{background:rgba(242,245,248,.98)}
+#toast button{margin-left:10px;padding:4px 10px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#031;font-weight:700;pointer-events:auto}
+#toast.show{pointer-events:auto}
 #startOverlay{position:absolute;inset:0;z-index:1500;background:rgba(11,26,43,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;overflow:auto}
 #startOverlay>*{flex:none}
 #startOverlay.hidden{display:none}
@@ -143,16 +187,19 @@ label.field input[type=checkbox]{width:22px;height:22px}
     <div class="tb"><span id="clockES">--:--</span>&nbsp;<span id="tzFrom">ES</span>&nbsp;·&nbsp;<span id="clockMA">--:--</span>&nbsp;<span id="tzTo">MA</span></div>
     <div class="tb"><span id="netText">online</span><span id="netDot" class="dot ok"></span></div>
   </header>
-  <div id="alertBanner" class="hidden"><span id="alertText"></span><button id="alertDismiss" aria-label="dismiss">✕</button></div>
   <main>
+  <div id="alertBanner" class="hidden"><span id="alertText"><b id="alertMain"></b> <span id="alertRest"></span></span><span class="age" id="alertAge"></span><button id="alertDismiss" aria-label="dismiss">✕</button></div>
     <section id="view-nav" class="view active">
       <div id="mapWrap">
         <div id="map"></div>
         <div id="mapControls">
+          <button id="btnZoomIn" title="Zoom in">+</button>
+          <button id="btnZoomOut" title="Zoom out">−</button>
           <button id="btnFollow" class="on" title="Follow vessel">◎</button>
           <button id="btnRoute" title="Zoom to route">⤢</button>
           <button id="btnLayers" title="Base layer">▦</button>
           <button id="btnChartOnly" title="Chart only (no tiles)">⛵</button>
+          <button id="btnDay" title="Daylight (glare) theme">☀</button>
           <button id="btnNight" title="Night mode">☾</button>
         </div>
         <div id="startOverlay">
@@ -164,23 +211,30 @@ label.field input[type=checkbox]{width:22px;height:22px}
           <div class="row"><button id="btnPlanOnly" class="btn">Just look around</button><button id="btnStartSim" class="btn">Demo (simulate)</button></div>
         </div>
         <div id="toast"></div>
+        <div id="bigpos" class="hidden"><div class="med">Position for VHF / MAYDAY</div><div class="big" id="bigposText">--</div><div class="med" id="bigposSub"></div><div class="row"><button class="btn primary" id="btnSayPos">Read aloud</button><button class="btn" id="btnClosePos">Close</button></div></div>
       </div>
       <div id="hud">
         <div class="next"><span>NEXT <b id="hudWpId">--</b> <span id="hudWpName"></span></span><span id="hudSim" class="sim"></span><span id="hudRoute"></span></div>
+        <div id="hudPhase" class="phase hidden"></div>
         <div class="grid">
           <div class="cell"><div class="l">Brg to WP</div><div class="v" id="hudBrg">---°</div></div>
           <div class="cell"><div class="l">Dist to WP</div><div class="v" id="hudDist">--<small> nm</small></div></div>
           <div class="cell"><div class="l">SOG</div><div class="v" id="hudSog">--<small> kn</small></div></div>
           <div class="cell"><div class="l">COG</div><div class="v" id="hudCog">---°</div></div>
         </div>
+        <div class="highway" id="highway" title="Cross-track error, ±0.5 nm"><div class="hw-scale"><span>0.5</span><span>0.25</span><span>0</span><span>0.25</span><span>0.5</span></div><div class="hw-track"><div class="hw-centre"></div><div class="hw-marker" id="hwMarker"></div></div></div>
         <div class="row2">
-          <div class="cell"><div class="l">XTE / steer</div><div class="v steer" id="hudXte">--</div></div>
-          <div class="cell"><div class="l">TTG WP</div><div class="v" id="hudTtg">--:--</div></div>
+          <div class="cell"><div class="l">Steer</div><div class="v steer" id="hudXte">--</div></div>
+          <div class="cell"><div class="l">Next turn</div><div class="v" id="hudTtg">--:--</div></div>
           <div class="cell"><div class="l" id="hudEtaLabel">ETA</div><div class="v" id="hudEta">--:--</div></div>
           <div class="cell"><div class="l">To go</div><div class="v" id="hudDtg">--<small> nm</small></div></div>
         </div>
-        <div class="next" style="margin-top:6px"><span id="hudPos">--</span><span id="hudAcc"></span><span id="hudWx"></span></div>
-        <div class="wpbtns"><button id="btnPrevWp">◀ Prev WP</button><button id="btnNextWp">Next WP ▶</button><button id="btnMute">🔊</button></div>
+        <div class="next" style="margin-top:6px"><span id="hudPos" class="pos" title="Tap for a big position display">--</span><span id="hudAcc"></span></div>
+        <div class="strip" id="strip" title="Passage progress"><svg id="stripSvg" viewBox="0 0 400 22" preserveAspectRatio="none"></svg></div>
+        <div class="next"><span id="hudWx"></span><span id="hudSea"></span></div>
+        <div class="next"><span id="hudTrip"></span></div>
+        <div class="wpbtns"><button id="btnPrevWp">◀ Prev WP</button><button id="btnNextWp">Next WP ▶</button><button id="btnMute" title="Mute voice and beeps">🔊</button></div>
+        <div class="wpbtns helm"><button id="btnMob" class="mob">MOB</button><button id="btnRepeat">Repeat</button><button id="btnMark">Mark</button></div>
       </div>
     </section>
     <section id="view-wx" class="view"><div class="page" id="wxPage"></div></section>
@@ -197,6 +251,7 @@ label.field input[type=checkbox]{width:22px;height:22px}
 <script src="vendor/leaflet/leaflet.min.js"></script>
 <script src="nav.js"></script>
 <script src="weather.js"></script>
+<script src="ais.js"></script>
 <script src="chart-data.js"></script>
 <script src="passage.js"></script>
 <script src="app.js"></script>

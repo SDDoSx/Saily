@@ -4,21 +4,26 @@ Offline-capable GPS passage guide for one crossing of the Strait of Gibraltar in
 Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and Mac as a home-screen web app.
 
 ## What it does
-- Route with 15 verified waypoints (Spanish inshore zone, right-angle crossing of the TSS at 5°42'W, Moroccan
-  inshore zone, official Tanja Marina Bay access channel) plus an alternative east crossing. Legs checked against
-  the OSM coastline for land clearance.
-- Vector chart built in: coastline, harbour breakwaters, the IMO traffic separation scheme (COLREG.2/Circ.66 coordinates),
-  precautionary areas, inshore zones, anchorages, lights and buoys, hazards (Sotogrande shoal notice Feb 2026,
-  La Perla, Tarifa race, Banco de Fenix, Almirante Rock, Buoree Rock, Tangier shoals). Works with no tiles at all.
-- GPS: bearing/distance to waypoint, cross-track error with steer arrow, SOG/COG, TTG, ETA in Spanish and Moroccan time,
-  automatic waypoint advance, track.
-- Spoken and audible alerts: entering lanes (which side ships come from), separation zone, precautionary areas,
-  hazards, off track, approaching waypoint, harbour speed, GPS lost, sunset, weather thresholds.
-- Weather: Open-Meteo wind (10 m, gusts) and marine (waves, swell, surface current incl. tide, sea level) at five
-  route points, passage check with go / caution / no-go thresholds, wind-against-current flag, hourly table, tide extremes.
-- Preload for offline use (app shell, 3-day forecast, map tiles for the corridor and both harbours).
-- Plan page: legs, waypoints in degrees/minutes, GPX export, marina and formalities briefing, COLREG rule 10 summary,
-  emergency and VHF reference, departure checklist.
+- **Vector chart built in**: coastline from OpenStreetMap, the IMO traffic separation scheme (COLREG.2/Circ.66) with lanes,
+  separation zones, precautionary areas and inshore zones, lights, buoys, charted wrecks and rocks, and place labels.
+  Raster tiles (CARTO, OpenStreetMap, satellite, OpenSeaMap seamarks, EMODnet depth) are an optional layer on top.
+- **Route guidance**: verified waypoints with pilotage notes read aloud, bearing and distance to the next waypoint,
+  cross-track error with an XTE highway bar, steering cue, next-turn countdown, ETA in both time zones, passage progress strip,
+  automatic waypoint advance with undo, MOB, mark position, repeat last instruction, big position display for a MAYDAY.
+- **Alerts at the helm** (spoken and on screen): entering a traffic lane with the side ships come from and the crossing heading,
+  separation zone, precautionary area, hazards with a pre-warning at 0.15 nm (shoals, rocks, wrecks, races), land or rocks
+  on your heading within four minutes, off track, waypoint approach and arrival, harbour speed, GPS lost and back,
+  sunset, weather thresholds.
+- **Ships**: optional AIS targets from aisstream.io (free key) with CPA/TCPA and a danger alert when a ship will pass
+  within 0.5 nm in the next 12 minutes; demo ships in the simulation.
+- **Weather that decides**: Open-Meteo wind, gusts, waves, swell, surface current and tide at five route points, sampled
+  at the time you reach each point; go / caution / no-go with reasons; wind-against-current flag; live wind and current
+  arrows on the chart; tide state and daylight left on the panel.
+- **Works offline**: app shell, forecast and tiles are cached; the chart, route, TSS and hazards never need a network.
+- **Phone first**: portrait and landscape layouts, day (glare) and night themes, auto-zoom with look-ahead, wake lock,
+  sound through the silent switch, one-hand map controls.
+- **Passage as data**: `passages/*.json` holds the route, hazards, places, weather points, thresholds and briefing; the
+  build script turns it into the chart. See `docs/ADAPTING.md`.
 
 ## Deploy (GitHub Pages)
 The workflow `.github/workflows/pages.yml` publishes `site/` on every push to `main` or this branch.

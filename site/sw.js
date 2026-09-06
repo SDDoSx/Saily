@@ -1,10 +1,10 @@
 /* Saily service worker: offline app shell, tile cache, weather cache. */
-const VERSION = 'saily-v2';
+const VERSION = 'saily-v3';
 const SHELL = 'shell-' + VERSION;
 const TILES = 'tiles-v1';
 const DATA = 'data-v1';
 const SHELL_FILES = [
-  './', './index.html', './app.js', './nav.js', './weather.js', './chart-data.js', './passage.js', './manifest.webmanifest',
+  './', './index.html', './app.js', './nav.js', './weather.js', './ais.js', './chart-data.js', './passage.js', './manifest.webmanifest',
   './vendor/leaflet/leaflet.css', './vendor/leaflet/leaflet.min.js',
   './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png',
   './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png',

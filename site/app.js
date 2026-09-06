@@ -39,12 +39,13 @@
   const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ${TZL_FROM} · ${fmtMA(d)} ${TZL_TO}`;
 
   // ---------- state ----------
-  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, night: false, wp: 1, checklist: {}, maOffset: 'auto' };
+  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, night: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false };
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
     zone: {}, hazard: {}, hazardNear: {}, manualWp: false, approached: {}, alertLast: {}, log: loadJson(LOG_KEY, []), wx: W.load() || (window.EMBEDDED_WX ? W.fromRaw(window.EMBEDDED_WX.points, window.EMBEDDED_WX.fetchedAt) : null), solution: null, route: null, follow: true,
     lastWxAlert: 0, sunsetWarned: false, nightNoted: false, layers: {}, aidsShown: false,
+    lastAlertText: '', lastAlertAt: 0, mob: null, marks: [], trip: null, userZoomAt: 0, programmaticZoom: false, progZoomAt: 0,
   };
   function loadSettings() {
     const s = loadJson(KEY, null);
@@ -62,7 +63,11 @@
   const DEST = () => WPS()[WPS().length - 1];
 
   // ---------- UI basics ----------
-  function toast(msg, ms) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), ms || 2500); }
+  function toast(msg, ms, action) {
+    const t = $('toast'); t.textContent = msg;
+    if (action) { const b = document.createElement('button'); b.textContent = action.label; b.addEventListener('click', () => { t.classList.remove('show'); action.fn(); }); t.appendChild(b); }
+    t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), ms || 2500);
+  }
   function showView(v) {
     document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === 'view-' + v));
     document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
@@ -131,18 +136,21 @@
       speechSynthesis.speak(u);
     } catch (e) { speech.busy = false; }
   }
-  let bannerTimer = null;
+  let bannerTimer = null, bannerAt = 0;
   function showBanner(level, text, ms) {
-    const b = $('alertBanner'); b.className = level; $('alertText').textContent = text; b.classList.remove('hidden');
+    const b = $('alertBanner'); b.className = level; b.classList.remove('hidden');
+    const m = /^(.*?[.!?])\s+(.*)$/s.exec(text); $('alertMain').textContent = m ? m[1] : text; $('alertRest').textContent = m ? m[2] : '';
+    bannerAt = Date.now(); $('alertAge').textContent = '';
     clearTimeout(bannerTimer); if (ms) bannerTimer = setTimeout(() => b.classList.add('hidden'), ms);
   }
-  $('alertBanner').addEventListener('click', () => $('alertBanner').classList.add('hidden'));
+  setInterval(() => { if (!$('alertBanner').classList.contains('hidden') && bannerAt) { const m = Math.round((Date.now() - bannerAt) / 60000); $('alertAge').textContent = m >= 1 ? m + ' min ago' : ''; } }, 15000);
+  $('alertBanner').addEventListener('click', e => { if (e.target.id === 'alertDismiss') $('alertBanner').classList.add('hidden'); else $('alertBanner').classList.toggle('expanded'); });
   /** level: info | warn | danger */
   function alert(id, level, text, opt) {
     opt = opt || {};
     const now = Date.now();
     if (opt.cooldown && S.alertLast[id] && now - S.alertLast[id] < opt.cooldown * 1000) return false;
-    S.alertLast[id] = now;
+    S.alertLast[id] = now; S.lastAlertText = text; S.lastAlertAt = now;
     S.log.unshift({ t: now, level, text }); if (S.log.length > 200) S.log.length = 200; saveJson(LOG_KEY, S.log);
     showBanner(level, text, level === 'danger' ? 0 : level === 'warn' ? 40000 : 15000);
     if (level === 'danger') beep(3, 880, 0.35); else if (level === 'warn') beep(2, 660, 0.2); else beep(1, 520, 0.12);
@@ -182,16 +190,21 @@
     sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Imagery © Esri' }),
   };
   const SEAMARK = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenSeaMap' });
+  const DEPTH = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', { layers: 'emodnet:mean_atlas_land', format: 'image/png', transparent: true, opacity: 0.55, attribution: 'EMODnet Bathymetry' });
+  const CONTOURS = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', { layers: 'emodnet:contours', format: 'image/png', transparent: true, opacity: 0.8 });
   function applyBase() {
     Object.values(BASES).forEach(l => map.removeLayer(l));
     if (map.hasLayer(SEAMARK)) map.removeLayer(SEAMARK);
+    if (map.hasLayer(DEPTH)) map.removeLayer(DEPTH); if (map.hasLayer(CONTOURS)) map.removeLayer(CONTOURS);
     if (!S.settings.chartOnly && !SINGLE) {
       (BASES[S.settings.base] || BASES.carto).addTo(map);
+      if (S.settings.depth) { DEPTH.addTo(map); CONTOURS.addTo(map); }
       if (S.settings.seamark) SEAMARK.addTo(map);
     }
     $('btnChartOnly').classList.toggle('on', !!S.settings.chartOnly);
     $('map').classList.toggle('night', !!S.settings.night);
     $('btnNight').classList.toggle('on', !!S.settings.night);
+    document.body.classList.toggle('day', !!S.settings.day); $('btnDay').classList.toggle('on', !!S.settings.day);
   }
   // land polygons (vector fallback under tiles)
   const landStyle = { pane: 'land', color: '#7d6b4a', weight: 1, fillColor: '#e9e2cd', fillOpacity: 1, interactive: false };
@@ -210,9 +223,12 @@
   C.tss.free.forEach(z => z.rings.forEach(r => tssGroup.addLayer(L.polygon(r, { pane: 'tss', color: '#888', weight: 1, dashArray: '3 5', fill: false }).bindPopup(`<b>${z.name}</b>`))));
   C.tss.lanes.forEach(l => l.arrows.forEach(a => tssGroup.addLayer(L.marker([a[0], a[1]], { pane: 'tss', interactive: false, icon: L.divIcon({ className: '', html: `<div style="transform:rotate(${a[2] - 90}deg);color:#c2249f;font-size:18px;line-height:18px;width:18px;height:18px;text-align:center;opacity:.8">➤</div>`, iconSize: [18, 18], iconAnchor: [9, 9] }) }))));
   C.anchorages.forEach(a => tssGroup.addLayer(L.polygon(a.ring, { pane: 'tss', color: '#666', weight: 1, dashArray: '4 4', fillOpacity: 0.05 }).bindPopup(`<b>${a.name}</b>Ships at anchor.`)));
-  // hazards
+  // hazards: passage-defined circles plus every charted wreck, rock and obstruction (alarm radius 0.1 nm)
   const hazColor = { danger: '#ff2b2b', caution: '#ff9f1a', info: '#4aa3ff' };
-  P.hazards.forEach(h => L.circle([h.lat, h.lon], { pane: 'haz', radius: h.radius * 1852, color: hazColor[h.level], weight: 1.5, dashArray: h.level === 'danger' ? null : '5 5', fillColor: hazColor[h.level], fillOpacity: h.level === 'danger' ? 0.2 : 0.08 }).bindPopup(`<b>${h.name}</b>${h.note}`).addTo(map));
+  const chartedDangers = C.aids.filter(x => ['wreck', 'rock', 'obstruction'].includes(x.type)).map(x => ({ id: 'aid-' + x.type + '-' + x.lat + '-' + x.lon, lat: x.lat, lon: x.lon, radius: 0.1, level: 'danger', name: `${x.type === 'wreck' ? 'Wreck' : x.type === 'rock' ? 'Rock' : 'Obstruction'}${x.name ? ' ' + x.name : ''}`, note: 'Charted ' + x.type + ' (OpenStreetMap seamark). Keep clear.' }));
+  S.dangers = P.hazards.concat(chartedDangers);
+  S.dangers.forEach(h => L.circle([h.lat, h.lon], { pane: 'haz', radius: h.radius * 1852, color: hazColor[h.level], weight: 1.5, dashArray: h.level === 'danger' ? null : '5 5', fillColor: hazColor[h.level], fillOpacity: h.level === 'danger' ? 0.2 : 0.08 }).bindPopup(`<b>${h.name}</b>${h.note}`).addTo(map));
+  chartedDangers.forEach(h => L.marker([h.lat, h.lon], { pane: 'haz', interactive: false, icon: L.divIcon({ className: '', html: '<div style="color:#ff2b2b;font-weight:900;font-size:16px;line-height:16px;text-shadow:0 0 2px #fff">✱</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map));
   // aids
   const aidsGroup = L.layerGroup();
   const aidColor = a => /red/i.test(a.light) ? '#e53935' : /green/i.test(a.light) ? '#2e7d32' : a.type === 'wreck' || a.type === 'obstruction' ? '#000' : a.type.includes('cardinal') ? '#f5b400' : '#f2f2f2';
@@ -221,6 +237,7 @@
     aidsGroup.addLayer(L.circleMarker([a.lat, a.lon], { pane: 'aids', radius: isLight ? 5 : 4, color: '#111', weight: 1, fillColor: aidColor(a), fillOpacity: 1 })
       .bindPopup(`<b>${a.name || a.type.replace(/_/g, ' ')}</b>${a.type.replace(/_/g, ' ')}${a.cat ? ' · ' + a.cat : ''}${a.light ? '<br>Light: ' + a.light : ''}<br>${N.fmtDM(a.lat, a.lon)}`));
   });
+  function progZoom(fn) { S.programmaticZoom = true; S.progZoomAt = Date.now(); try { fn(); } finally { setTimeout(() => { S.programmaticZoom = false; }, 0); } }
   function updateZoomLayers() {
     const z = map.getZoom();
     const wantAids = z >= 12, wantDetail = z >= 13;
@@ -251,13 +268,17 @@
   const brgLine = L.polyline([], { pane: 'route', color: '#ffe066', weight: 2, dashArray: '4 6', interactive: false }).addTo(map);
   const predLine = L.polyline([], { pane: 'route', color: '#43b3ff', weight: 1.5, interactive: false }).addTo(map);
   const savedTrack = loadJson(TRACK_KEY, []);
-  if (savedTrack.length && Date.now() - savedTrack[savedTrack.length - 1][2] < 12 * 3600000) { S.track = savedTrack; track.setLatLngs(S.track.map(p => [p[0], p[1]])); }
+  if (savedTrack.length && Date.now() - savedTrack[savedTrack.length - 1][2] < 12 * 3600000) { S.track = savedTrack; track.setLatLngs(S.track.map(p => [p[0], p[1]])); const lp = S.track[S.track.length - 1]; vessel.setLatLng([lp[0], lp[1]]); vessel.setOpacity(0.5); vessel.addTo(map); }
   map.on('dragstart', () => { S.follow = false; $('btnFollow').classList.remove('on'); });
+  map.on('zoomstart', () => { if (!S.programmaticZoom && Date.now() - (S.progZoomAt || 0) > 500) S.userZoomAt = Date.now(); });
+  $('btnZoomIn').addEventListener('click', () => { S.userZoomAt = Date.now(); map.zoomIn(); });
+  $('btnZoomOut').addEventListener('click', () => { S.userZoomAt = Date.now(); map.zoomOut(); });
   $('btnFollow').addEventListener('click', () => { S.follow = !S.follow; $('btnFollow').classList.toggle('on', S.follow); if (S.follow && S.pos) map.panTo([S.pos.lat, S.pos.lon]); });
-  $('btnRoute').addEventListener('click', () => { S.follow = false; $('btnFollow').classList.remove('on'); map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [30, 30] }); });
+  $('btnRoute').addEventListener('click', () => { S.follow = false; $('btnFollow').classList.remove('on'); S.userZoomAt = Date.now(); map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [30, 30] }); });
   $('btnLayers').addEventListener('click', () => { const order = ['carto', 'osm', 'sat']; S.settings.base = order[(order.indexOf(S.settings.base) + 1) % order.length]; S.settings.chartOnly = false; saveSettings(); applyBase(); toast('Base map: ' + { osm: 'OpenStreetMap', carto: 'CARTO light', sat: 'Satellite' }[S.settings.base]); });
   $('btnChartOnly').addEventListener('click', () => { S.settings.chartOnly = !S.settings.chartOnly; saveSettings(); applyBase(); toast(S.settings.chartOnly ? 'Vector chart only (works fully offline)' : 'Tiles on'); });
-  $('btnNight').addEventListener('click', () => { S.settings.night = !S.settings.night; saveSettings(); applyBase(); });
+  $('btnNight').addEventListener('click', () => { S.settings.night = !S.settings.night; if (S.settings.night) S.settings.day = false; saveSettings(); applyBase(); });
+  $('btnDay').addEventListener('click', () => { S.settings.day = !S.settings.day; if (S.settings.day) S.settings.night = false; saveSettings(); applyBase(); });
   applyBase();
   if (SINGLE) { $('btnLayers').style.display = 'none'; $('btnChartOnly').style.display = 'none'; }
   // place labels for the vector chart
@@ -266,7 +287,7 @@
   labelGroup.addTo(map);
   function updateLabels() { const z = map.getZoom(); document.querySelectorAll('.plabel').forEach(el => { el.style.display = z >= +el.dataset.z ? '' : 'none'; }); }
   map.on('zoomend', updateLabels); setTimeout(updateLabels, 0);
-  map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [20, 20] });
+  progZoom(() => map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [20, 20] }));
 
   // ---------- GPS ----------
   function setGps(status, text) { $('gpsDot').className = 'dot ' + status; $('gpsText').textContent = text; }
@@ -299,6 +320,7 @@
     S.pos = fix; S.acc = c.accuracy; S.lastFixAt = Date.now();
     if (S.gpsLost) { S.gpsLost = false; $('alertBanner').classList.add('hidden'); alert('gpsback', 'info', 'GPS signal back.'); }
     S.fixes.push(fix); if (S.fixes.length > 50) S.fixes.shift();
+    tripUpdate(fix, prev);
     const last = S.track[S.track.length - 1];
     if (!last || N.distanceNm({ lat: last[0], lon: last[1] }, fix) > 0.01) { S.track.push([+fix.lat.toFixed(5), +fix.lon.toFixed(5), fix.t]); if (S.track.length > 4000) S.track.splice(0, 500); track.addLatLng([fix.lat, fix.lon]); }
     setGps(c.accuracy <= 50 ? 'ok' : c.accuracy <= 150 ? 'warn' : 'bad', (S.sim ? 'SIM ' : 'GPS ') + (c.accuracy ? '±' + Math.round(c.accuracy) + ' m' : ''));
@@ -314,6 +336,10 @@
   function processFix() {
     const pos = S.pos; if (!pos) return;
     const wps = WPS();
+    if (S.mob) { // man overboard: everything points at the MOB position
+      const sol = N.solve(pos, [pos, { lat: S.mob.lat, lon: S.mob.lon, id: 'MOB', name: 'man overboard', note: '', radius: 0.02 }], 1);
+      sol.remaining = sol.dist; S.solution = sol; updateHud(sol); updateMap(sol); return;
+    }
     let sol = N.solve(pos, wps, S.settings.wp);
     const arrived = sol.inRadius || (!S.manualWp && sol.passedPerp);
     if (S.navigating && arrived) {
@@ -328,7 +354,7 @@
     }
     S.solution = sol;
     updateHud(sol); updateMap(sol);
-    if (S.navigating) { checkNavAlerts(sol); checkZones(pos, sol); checkHazards(pos); checkHarbourSpeed(pos); checkWeatherNow(pos); checkSun(); }
+    if (S.navigating) { checkNavAlerts(sol); checkZones(pos, sol); checkHazards(pos); checkLandAhead(pos); checkHarbourSpeed(pos); checkWeatherNow(pos); checkSun(); aisTick(); }
   }
   function updateHud(sol) {
     $('hudWpId').textContent = sol.wp.id; $('hudWpName').textContent = sol.wp.name;
@@ -340,9 +366,16 @@
     const el = $('hudXte');
     if (ax < 0.02) { el.className = 'v steer'; el.textContent = 'on track'; }
     else { el.className = 'v steer ' + (x > 0 ? 'left' : 'right'); el.textContent = (x > 0 ? '◀ ' : '') + N.fmtNm(ax) + ' nm' + (x < 0 ? ' ▶' : ''); }
+    // XTE highway: marker shows where the track is relative to us (track to the right when xte < 0)
+    const hw = $('hwMarker'); const pct = 50 - Math.max(-1, Math.min(1, x / 0.5)) * 48; hw.style.left = pct + '%'; hw.classList.toggle('bad', ax > 0.3);
     const sp = speedForEta();
     const ttg = N.ttgSeconds(sol.dist, sp.v), ttgAll = N.ttgSeconds(sol.remaining, sp.v);
-    $('hudTtg').textContent = N.fmtDur(ttg) + (sp.plan ? '*' : '');
+    const wps = WPS(); const nextBrg = sol.k < wps.length - 1 ? N.bearingDeg(sol.wp, wps[sol.k + 1]) : null;
+    const mmss = s => s === null ? '--:--' : (s < 600 ? Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0') : N.fmtDur(s));
+    $('hudTtg').innerHTML = mmss(ttg) + (sp.plan ? '*' : '') + (nextBrg !== null ? '<br><small>then ' + N.fmtBrg(nextBrg) + '</small>' : '<br><small>arrive</small>');
+    renderPhase(sol);
+    renderTrip();
+    renderStrip(sol);
     if (ttgAll === null) $('hudEta').textContent = '--:--';
     else { const eta = new Date(Date.now() + ttgAll * 1000); $('hudEta').innerHTML = N.fmtTime(eta, TZ_ES) + (sp.plan ? '*' : '') + '<small> ' + TZL_FROM + '</small><br><small>' + fmtMA(eta) + ' ' + TZL_TO + '</small>'; }
     $('hudDtg').innerHTML = N.fmtNm(sol.remaining, 1) + '<small> nm</small><br><small>' + N.fmtDur(ttgAll) + (sp.plan ? '*' : '') + '</small>';
@@ -353,20 +386,206 @@
     const wxp = W.nearestPoint(S.wx, S.pos); const row = wxp ? W.rowAt(wxp, new Date()) : null;
     $('hudWx').textContent = row ? `wind ${Math.round(row.wind)}${row.gust ? '/' + Math.round(row.gust) : ''} kn ${N.compass16(row.windDir)} · sea ${row.wave != null ? row.wave.toFixed(1) + ' m' : '--'}${row.current != null ? ' · cur ' + row.current.toFixed(1) + ' kn ' + N.compass16(row.currentDir) : ''}` : '';
   }
+  function renderPhase(sol) {
+    const el = $('hudPhase');
+    if (S.mob) { el.classList.remove('hidden'); el.innerHTML = `<b>MAN OVERBOARD</b> marked ${N.fmtTime(new Date(S.mob.t), TZ_ES)} · steer <b>${N.fmtBrg(N.bearingDeg(S.pos, S.mob))}</b> · ${N.fmtNm(N.distanceNm(S.pos, S.mob))} nm · ${N.fmtDM(S.mob.lat, S.mob.lon)}`; return; }
+    const lanes = C.tss.lanes.filter(l => S.zone[l.id]); const zones = C.tss.zones.filter(z => S.zone[z.id]);
+    if (lanes.length || zones.length) {
+      // distance to clear all TSS polygons along the current leg: walk the leg from here
+      let clear = null;
+      if (S.cog !== null) { for (let d = 0.1; d <= 8; d += 0.1) { const q = N.destination(S.pos, sol.legBrg, d); const inside = [].concat(C.tss.lanes, C.tss.zones).some(z => N.pointInRings(q, z.rings)); if (!inside) { clear = d; break; } } }
+      const flow = lanes.length ? (lanes[0].flow === 'W' ? 270 : 90) : null;
+      const target = flow === null ? sol.legBrg : (Math.abs(N.angleDiff(sol.legBrg, flow + 90)) < 90 ? N.norm360(flow + 90) : N.norm360(flow - 90));
+      const err = S.cog === null ? null : Math.round(N.angleDiff(S.cog, target));
+      const from = lanes.length ? (lanes[0].flow === 'W' ? 'east' : 'west') : null;
+      const side = from && S.cog !== null ? (N.angleDiff(from === 'east' ? 90 : 270, S.cog) > 0 ? 'RIGHT' : 'LEFT') : null;
+      el.classList.remove('hidden');
+      const ships = window.AIS && AIS.targets.size ? AIS.ranked().filter(x => x.c && x.c.range < 6).slice(0, 2).map(x => `${x.t.name || x.t.mmsi} ${N.fmtNm(x.c.range)} nm ${N.compass16(x.c.brg)}${x.c.tcpa !== null && x.c.tcpa > 0 ? ', CPA ' + N.fmtNm(x.c.cpa) + ' in ' + Math.round(x.c.tcpa) + ' min' : ''}`).join(' · ') : '';
+      el.innerHTML = (ships ? `<div style="margin-bottom:4px">🚢 ${ships}</div>` : '') + `<b>${lanes.length ? (lanes[0].flow === 'W' ? 'WESTBOUND LANE' : 'EASTBOUND LANE') : 'SEPARATION ZONE'}</b>${side ? ' · ships from your <b>' + side + '</b> (' + from + ')' : ''} · cross on <b>${N.fmtBrg(target)}</b>${err !== null ? ' (' + (err > 0 ? '+' : '') + err + '°)' : ''}${clear !== null ? ' · clear in <b>' + N.fmtNm(clear) + ' nm</b>' + (S.sog > 3 ? ' / ' + Math.round(clear / S.sog * 60) + ' min' : '') : ''}`;
+      return;
+    }
+    const prec = C.tss.precautionary.filter(z => S.zone[z.id]);
+    if (prec.length) { el.classList.remove('hidden'); el.innerHTML = `<b>PRECAUTIONARY AREA</b> · converging ships, keep a sharp lookout`; return; }
+    if (sol.dist < 0.6 && sol.k >= WPS().length - 2) { el.classList.remove('hidden'); el.innerHTML = `<b>HARBOUR APPROACH</b> · ${sol.wp.note}`; return; }
+    el.classList.add('hidden');
+  }
+  function renderTrip() {
+    const t = S.trip; const el = $('hudTrip'); if (!t) { el.textContent = ''; return; }
+    const hrs = (Date.now() - t.startedAt) / 3600000;
+    const avg = hrs > 0.02 ? t.dist / hrs : 0;
+    el.textContent = `run ${N.fmtNm(t.dist, 1)} nm · ${N.fmtDur(hrs * 3600)} · avg ${avg.toFixed(1)} · max ${t.maxSog.toFixed(1)} kn · fuel ~${Math.round(hrs * (P.vessel.burnLph || 75))} L`;
+  }
+  function tripUpdate(fix, prev) {
+    if (!S.trip || S.sim) return;
+    if (prev) { const d = N.distanceNm(prev, fix); if (d < 0.5) S.trip.dist += d; }
+    if (S.sog !== null && S.sog > S.trip.maxSog) S.trip.maxSog = S.sog;
+    if (S.trip.n++ % 20 === 0) saveJson('saily.trip.v1', S.trip);
+  }
+  // ----- helm actions -----
+  const mobLine = L.polyline([], { pane: 'route', color: '#ff4757', weight: 3, dashArray: '6 4', interactive: false });
+  let mobMarker = null, mobTimer = null;
+  function mobToggle() {
+    if (S.mob) { // cancel
+      S.mob = null; clearInterval(mobTimer); if (mobMarker) map.removeLayer(mobMarker); map.removeLayer(mobLine); $('btnMob').classList.remove('active'); $('btnMob').textContent = 'MOB';
+      alert('mobend', 'info', 'Man overboard mode cancelled. Back to the route.'); if (S.pos) processFix(); return;
+    }
+    if (!S.pos) { toast('No position yet'); return; }
+    ensureAudio();
+    S.mob = { lat: S.pos.lat, lon: S.pos.lon, t: Date.now() };
+    mobMarker = L.marker([S.mob.lat, S.mob.lon], { pane: 'vessel', icon: L.divIcon({ className: '', html: '<div class="mobmark">MOB</div>', iconSize: [0, 0] }) }).addTo(map);
+    mobLine.addTo(map); $('btnMob').classList.add('active'); $('btnMob').textContent = 'Cancel MOB';
+    S.follow = true; $('btnFollow').classList.add('on');
+    alert('mob', 'danger', `MAN OVERBOARD. Position marked at ${N.fmtDM(S.mob.lat, S.mob.lon)}. Turn back now.`);
+    mobTimer = setInterval(() => { if (!S.mob || !S.pos) return; const b = N.bearingDeg(S.pos, S.mob), d = N.distanceNm(S.pos, S.mob); speak(`Man overboard bearing ${N.fmtBrg(b).replace('°', '')}, ${d < 0.1 ? Math.round(d * 1852) + ' metres' : N.fmtNm(d) + ' miles'}.`, 'danger'); }, 20000);
+    if (S.pos) processFix();
+  }
+  function markPosition() {
+    if (!S.pos) { toast('No position yet'); return; }
+    const m = { n: S.marks.length + 1, lat: S.pos.lat, lon: S.pos.lon, t: Date.now() }; S.marks.push(m);
+    L.marker([m.lat, m.lon], { pane: 'aids', icon: L.divIcon({ className: '', html: '<div class="usermark" title="Mark ' + m.n + '"></div>', iconSize: [0, 0] }) }).bindPopup(`<b>Mark ${m.n}</b>${N.fmtDM(m.lat, m.lon)}<br>${N.fmtTime(new Date(m.t), TZ_ES)} ${TZL_FROM}`).addTo(map);
+    alert('mark' + m.n, 'info', `Mark ${m.n} at ${N.fmtDM(m.lat, m.lon)}.`);
+    saveJson('saily.marks.v1', S.marks);
+  }
+  function repeatLast() { ensureAudio(); if (!S.lastAlertText) { toast('Nothing to repeat'); return; } showBanner('info', S.lastAlertText, 15000); speak(S.lastAlertText, 'warn'); }
+  function showBigPos() {
+    if (!S.pos) { toast('No position yet'); return; }
+    $('bigposText').textContent = N.fmtDM(S.pos.lat, S.pos.lon);
+    $('bigposSub').textContent = `${S.pos.lat.toFixed(5)}, ${S.pos.lon.toFixed(5)} · ${N.fmtTime(new Date(), 'UTC')} UTC · COG ${N.fmtBrg(S.cog)} SOG ${S.sog === null ? '--' : S.sog.toFixed(1)} kn`;
+    $('bigpos').classList.remove('hidden');
+  }
+  function sayPosition() {
+    if (!S.pos) return; ensureAudio();
+    const d = (v, pos, neg) => { const h = v >= 0 ? pos : neg; v = Math.abs(v); const deg = Math.floor(v), min = ((v - deg) * 60).toFixed(2); return `${deg} degrees ${min} minutes ${h}`; };
+    speak(`Position ${d(S.pos.lat, 'north', 'south')}, ${d(S.pos.lon, 'east', 'west')}.`, 'warn');
+  }
+  $('btnMob').addEventListener('click', mobToggle);
+  $('btnMark').addEventListener('click', markPosition);
+  $('btnRepeat').addEventListener('click', repeatLast);
+  $('hudPos').addEventListener('click', showBigPos);
+  $('btnClosePos').addEventListener('click', () => $('bigpos').classList.add('hidden'));
+  $('btnSayPos').addEventListener('click', sayPosition);
+
+  // ----- live forecast overlay: wind and current arrows at the weather points for the current hour -----
+  const wxGroup = L.layerGroup().addTo(map);
+  function renderWxOverlay() {
+    wxGroup.clearLayers();
+    if (!S.wx) return;
+    const now = new Date();
+    for (const p of W.POINTS) {
+      const pt = S.wx.points[p.id]; if (!pt) continue;
+      const r = W.rowAt(pt, now); if (!r) continue;
+      if (r.wind != null && r.windDir != null) wxGroup.addLayer(L.marker([p.lat, p.lon], { pane: 'aids', interactive: false, icon: L.divIcon({ className: '', html: `<div class="wxarrow"><span style="display:inline-block;transform:rotate(${r.windDir + 90}deg)">➤</span><small> ${Math.round(r.wind)}${r.gust ? '/' + Math.round(r.gust) : ''} kn</small></div>`, iconAnchor: [8, 8] }) }));
+      if (r.current != null && r.currentDir != null && r.current >= 0.3) wxGroup.addLayer(L.marker([p.lat - 0.012, p.lon], { pane: 'aids', interactive: false, icon: L.divIcon({ className: '', html: `<div class="wxarrow cur"><span style="display:inline-block;transform:rotate(${r.currentDir - 90}deg)">➤</span><small> ${r.current.toFixed(1)} kn</small></div>`, iconAnchor: [8, 8] }) }));
+    }
+  }
+  setInterval(renderWxOverlay, 10 * 60000);
+  function renderSeaLine() {
+    const el = $('hudSea'); if (!el) return;
+    const parts = [];
+    const pt = S.wx && (W.nearestPoint(S.wx, S.pos || WPS()[0]));
+    if (pt) { const rows = pt.rows.filter(r => r.seaLevel != null); const nowIso = W.madridLocalIso(new Date()); const i = rows.findIndex(r => r.time >= nowIso.slice(0, 13)); if (i > 0 && i < rows.length) { const rising = rows[i].seaLevel > rows[i - 1].seaLevel; let j = i; while (j < rows.length - 1 && ((rows[j + 1].seaLevel > rows[j].seaLevel) === rising)) j++; parts.push(`tide ${rising ? 'rising' : 'falling'}, ${rising ? 'HW' : 'LW'} ${rows[j].time.slice(11)}`); } }
+    const st = N.sunTimes(new Date(), P.sun.lat, P.sun.lon);
+    if (st.sunset) { const left = (st.sunset - Date.now()) / 60000; parts.push(left > 0 ? `daylight ${N.fmtDur(left * 60)} (sunset ${N.fmtTime(st.sunset, TZ_ES)})` : 'after sunset'); }
+    el.textContent = parts.join(' · ');
+  }
+  setInterval(renderSeaLine, 60000);
+  // ----- passage progress strip: legs as segments, lane crossing highlighted, vessel and waypoints -----
+  function renderStrip(sol) {
+    const svg = $('stripSvg'); if (!svg) return;
+    const wps = WPS(); const total = S.route.total || N.routeTotal(wps); if (!total) return;
+    let x = 0; const segs = [];
+    for (let i = 0; i < wps.length - 1; i++) { const d = N.distanceNm(wps[i], wps[i + 1]); const mid = N.destination(wps[i], N.bearingDeg(wps[i], wps[i + 1]), d / 2); const lane = [].concat(C.tss.lanes, C.tss.zones).some(z => N.pointInRings(mid, z.rings)); segs.push({ x0: x / total * 400, x1: (x + d) / total * 400, lane }); x += d; }
+    let done = 0; for (let i = 0; i < sol.k - 1; i++) done += N.distanceNm(wps[i], wps[i + 1]);
+    done += Math.max(0, Math.min(sol.legDist, sol.along)); const vx = Math.max(0, Math.min(400, done / total * 400));
+    let s = segs.map(g => `<rect x="${g.x0.toFixed(1)}" y="8" width="${(g.x1 - g.x0).toFixed(1)}" height="6" fill="${g.lane ? '#c2249f' : '#2b5f8f'}"/>`).join('');
+    s += `<rect x="0" y="8" width="${vx.toFixed(1)}" height="6" fill="#43b3ff" opacity=".85"/>`;
+    let cx = 0; for (let i = 0; i < wps.length; i++) { s += `<rect x="${(cx / total * 400 - 1).toFixed(1)}" y="5" width="2" height="12" fill="#eaf2fb"/>`; if (i < wps.length - 1) cx += N.distanceNm(wps[i], wps[i + 1]); }
+    s += `<polygon points="${vx.toFixed(1)},2 ${(vx - 5).toFixed(1)},20 ${(vx + 5).toFixed(1)},20" fill="#ffe066" stroke="#000" stroke-width=".5"/>`;
+    svg.innerHTML = s;
+  }
+
+  // ----- AIS targets (optional, aisstream.io key) -----
+  const aisGroup = L.layerGroup().addTo(map); const aisMarkers = new Map();
+  function aisIcon(t, risk) {
+    const col = risk === 2 ? '#ff2b2b' : risk === 1 ? '#ff9f1a' : '#666';
+    const rot = t.hdg != null ? t.hdg : (t.cog != null ? t.cog : 0);
+    return L.divIcon({ className: '', iconSize: [0, 0], html: `<div style="width:22px;height:22px;margin:-11px 0 0 -11px;transform:rotate(${rot}deg)"><svg viewBox="0 0 22 22" width="22" height="22"><path d="M11 2 L18 19 L11 15 L4 19 Z" fill="${col}" stroke="#fff" stroke-width="1.2"/></svg></div>` });
+  }
+  function aisRisk(c) { if (!c || c.tcpa === null) return 0; if (c.tcpa > 0 && c.tcpa < 12 && c.cpa < 0.5) return 2; if (c.tcpa > 0 && c.tcpa < 20 && c.cpa < 1) return 1; return 0; }
+  function aisDraw(t) {
+    if (!window.AIS || t.lat == null) return;
+    const c = AIS.cpa(AIS.own, t), risk = aisRisk(c);
+    let m = aisMarkers.get(t.mmsi);
+    const label = `${t.name || t.mmsi}${t.sog != null ? ' ' + t.sog.toFixed(0) + ' kn' : ''}`;
+    const popup = `<b>${t.name || 'MMSI ' + t.mmsi}</b>${AIS.typeName(t.type) || 'ship'} · COG ${N.fmtBrg(t.cog)} · ${t.sog != null ? t.sog.toFixed(1) : '--'} kn${c ? '<br>range ' + N.fmtNm(c.range) + ' nm, bearing ' + N.fmtBrg(c.brg) + (c.tcpa !== null && c.tcpa > 0 ? '<br>CPA ' + N.fmtNm(c.cpa) + ' nm in ' + Math.round(c.tcpa) + ' min' : '<br>opening') : ''}<br>${Math.round((Date.now() - t.t) / 1000)} s ago`;
+    if (!m) { m = L.marker([t.lat, t.lon], { pane: 'vessel', icon: aisIcon(t, risk) }).bindPopup(popup).bindTooltip(label, { permanent: true, direction: 'right', offset: [10, 0], className: 'aislabel' }); aisGroup.addLayer(m); aisMarkers.set(t.mmsi, m); }
+    else { m.setLatLng([t.lat, t.lon]); m.setIcon(aisIcon(t, risk)); m.getPopup().setContent(popup); m.setTooltipContent(label); }
+  }
+  function aisTick() {
+    if (!window.AIS) return;
+    AIS.own = S.pos ? { lat: S.pos.lat, lon: S.pos.lon, cog: S.cog, sog: S.sog } : null;
+    AIS.prune();
+    for (const [mmsi, m] of aisMarkers) if (!AIS.targets.has(mmsi)) { aisGroup.removeLayer(m); aisMarkers.delete(mmsi); }
+    if (Date.now() - (S.aisDrawAt || 0) > 5000) { S.aisDrawAt = Date.now(); for (const t of AIS.targets.values()) aisDraw(t); }
+  }
+  function aisAlarm(t, c) {
+    const rel = S.cog === null ? '' : (() => { const d = N.angleDiff(c.brg, S.cog); return Math.abs(d) < 30 ? 'ahead' : Math.abs(d) > 150 ? 'astern' : d > 0 ? 'on your RIGHT' : 'on your LEFT'; })();
+    alert('ais-' + t.mmsi, 'danger', `Ship ${t.name || ''} ${rel}, ${N.fmtNm(c.range)} miles, bearing ${N.fmtBrg(c.brg)}, closest approach ${N.fmtNm(c.cpa)} miles in ${Math.round(c.tcpa)} minutes. Watch it.`);
+  }
+  function aisApply() {
+    if (!window.AIS) return;
+    AIS.onUpdate = aisDraw; AIS.onAlarm = aisAlarm;
+    const key = (S.settings.aisKey || '').trim();
+    if (S.settings.aisOn && key && !S.sim) AIS.connect(key, P.bbox); else AIS.disconnect();
+  }
+  function aisStatusText() { if (!window.AIS) return 'module missing'; const n = AIS.targets.size; return `${AIS.status}${n ? ', ' + n + ' targets' : ''}${AIS.lastMsgAt ? ', last message ' + Math.round((Date.now() - AIS.lastMsgAt) / 1000) + ' s ago' : ''}`; }
+  // synthetic ships for the demo: exercise the CPA alarms without a key
+  let simShips = null;
+  function simShipsTick(dt) {
+    if (!window.AIS) return;
+    if (!simShips) simShips = [
+      { mmsi: 900001, name: 'DEMO CARGO WEST', lat: 35.955, lon: -5.45, cog: 268, sog: 14, type: 70 },
+      { mmsi: 900002, name: 'DEMO TANKER EAST', lat: 35.905, lon: -5.85, cog: 88, sog: 12, type: 80 },
+      { mmsi: 900003, name: 'DEMO FERRY', lat: 36.005, lon: -5.60, cog: 205, sog: 30, type: 60 },
+    ];
+    for (const s of simShips) { const q = N.destination(s, s.cog, s.sog * dt / 3600 * 20); s.lat = q.lat; s.lon = q.lon; AIS.ingest({ MessageType: 'PositionReport', MetaData: { MMSI: s.mmsi, ShipName: s.name, latitude: s.lat, longitude: s.lon }, Message: { PositionReport: { Latitude: s.lat, Longitude: s.lon, Cog: s.cog, Sog: s.sog, TrueHeading: s.cog } } }); if (s.type && !AIS.targets.get(s.mmsi).type) AIS.targets.get(s.mmsi).type = s.type; }
+  }
+
   function updateMap(sol) {
     const p = [S.pos.lat, S.pos.lon];
     if (!map.hasLayer(vessel)) { vessel.addTo(map); accCircle.addTo(map); }
+    vessel.setOpacity(1);
     vessel.setLatLng(p); accCircle.setLatLng(p); accCircle.setRadius(S.acc || 0);
     const rot = document.getElementById('vesselRot'); if (rot) rot.style.transform = `rotate(${S.cog === null ? 0 : S.cog}deg)`;
     brgLine.setLatLngs([p, [sol.wp.lat, sol.wp.lon]]);
     if (S.cog !== null && S.sog !== null && S.sog > 1) { const d = N.destination(S.pos, S.cog, S.sog / 6); predLine.setLatLngs([p, [d.lat, d.lon]]); } else predLine.setLatLngs([]);
-    if (S.follow) map.panTo(p, { animate: false });
+    if (S.follow) {
+      // auto-range by what comes next (unless the user zoomed within the last 90 s), then look ahead along COG
+      if (S.settings.autoZoom !== false && Date.now() - S.userZoomAt > 90000 && S.navigating) {
+        const inLane = Object.keys(S.zone).some(k => S.zone[k] && /^(west|east)_/.test(k));
+        const d = S.mob ? 0.5 : sol.dist;
+        const want = d > 8 ? 11 : d > 3 ? 12 : d > 1 ? 13 : d > 0.35 ? 14 : 15;
+        const z = inLane ? Math.min(want, 12) : want;
+        if (z !== map.getZoom()) progZoom(() => map.setZoom(z, { animate: false }));
+      }
+      let centre = p;
+      if (S.cog !== null && S.sog !== null && S.sog > 2) {
+        const size = map.getSize(); const k = Math.min(size.x, size.y) * 0.18;
+        const vp = map.latLngToContainerPoint(p);
+        const ahead = L.point(vp.x + Math.sin(N.toRad(S.cog)) * k, vp.y - Math.cos(N.toRad(S.cog)) * k);
+        centre = map.containerPointToLatLng(ahead);
+      }
+      map.panTo(centre, { animate: false });
+    }
+    if (S.mob) mobLine.setLatLngs([p, [S.mob.lat, S.mob.lon]]);
   }
   function checkNavAlerts(sol) {
     const ax = Math.abs(sol.xte);
     if (ax > 0.3 && sol.legDist > 0.5 && sol.dist > 0.3) {
       const away = S.cog !== null && Math.abs(N.angleDiff(S.cog, sol.legBrg)) > 90;
-      alert('xte', 'warn', away ? `Off track ${N.fmtNm(ax)} miles and heading away from the route. Come round to ${N.fmtBrg(sol.brg)}.` : `Off track ${N.fmtNm(ax)} miles. Steer ${sol.xte > 0 ? 'left' : 'right'} to ${N.fmtBrg(sol.brg)}.`, { cooldown: 90 });
+      const turn = S.cog !== null ? N.angleDiff(sol.brg, S.cog) : null; // + = bearing is clockwise of our heading = turn right
+      const dir = turn === null ? (sol.xte > 0 ? 'left' : 'right') : (Math.abs(turn) < 3 ? '' : (turn > 0 ? 'right' : 'left'));
+      alert('xte', 'warn', away ? `Off track ${N.fmtNm(ax)} miles and heading away from the route. Come round to ${N.fmtBrg(sol.brg)}.` : `Off track ${N.fmtNm(ax)} miles. ${dir ? 'Steer ' + dir + ' to ' : 'Hold '}${N.fmtBrg(sol.brg)}.`, { cooldown: 90 });
     }
     if (sol.legDist >= 0.6 && sol.dist < Math.max(0.5, sol.wp.radius * 3) && !S.approached[sol.k] && sol.k < WPS().length - 1) {
       S.approached[sol.k] = true;
@@ -416,7 +635,7 @@
   }
   function checkHazards(pos) {
     S.hazardNear = S.hazardNear || {};
-    for (const h of P.hazards) {
+    for (const h of (S.dangers || P.hazards)) {
       const d = N.distanceNm(pos, h);
       const inside = d < h.radius;
       const was = !!S.hazard[h.id];
@@ -427,6 +646,16 @@
       }
       if (d > h.radius + 0.4) S.hazardNear[h.id] = false;
       S.hazard[h.id] = inside;
+    }
+  }
+  function landAt(q) { return C.land.some(r => N.pointInRing(q, r)); }
+  function checkLandAhead(pos) {
+    if (S.cog === null || S.sog === null || S.sog < 1.5) return;
+    const nearHarbour = Object.values(P.places).some(pl => N.distanceNm(pos, pl) < 0.2);
+    const look = nearHarbour || S.sog < 4 ? 0.08 : Math.min(1.5, Math.max(0.2, S.sog * 4 / 60)); // 4 minutes ahead at sea, 150 m in harbour
+    for (let d = 0.04; d <= look; d += 0.04) {
+      const q = N.destination(pos, S.cog, d);
+      if (landAt(q)) { alert('landahead', 'danger', `Land or rocks ahead, ${d < 0.1 ? Math.round(d * 1852) + ' metres' : N.fmtNm(d) + ' miles'} on this heading. Alter course.`, { cooldown: 30 }); return; }
     }
   }
   function checkHarbourSpeed(pos) {
@@ -451,7 +680,7 @@
   // ---------- simulation ----------
   function startSim(fromWp) {
     stopSim();
-    S.simGpsWasOn = S.watchId !== null; stopGps(); S.gpsLost = false;
+    S.simGpsWasOn = S.watchId !== null; stopGps(); S.gpsLost = false; if (window.AIS) AIS.disconnect();
     S.simSavedWp = S.settings.wp; S.simSavedTrack = S.track.slice();
     S.track = []; track.setLatLngs([]); S.zone = {}; S.hazard = {}; S.hazardNear = {}; S.approached = {}; S.arrivedFinal = false;
     const wps = WPS();
@@ -465,6 +694,7 @@
       const hdg = sol.brg + 6 * Math.sin(phase / 25); // weave to exercise XTE
       cur = N.destination(cur, hdg, spd * dt / 3600 * 20); // 20x real time
       onFix({ coords: { latitude: cur.lat + (Math.random() - .5) * 2e-5, longitude: cur.lon + (Math.random() - .5) * 2e-5, accuracy: 8, speed: spd / MS_TO_KN, heading: N.norm360(hdg) }, timestamp: now });
+      if (S.settings.aisDemo !== false) simShipsTick(dt);
       if (S.arrivedFinal) stopSim();
     }, 1000);
     $('hudSim').textContent = 'SIMULATION';
@@ -472,6 +702,7 @@
   function stopSim() {
     if (S.sim) { clearInterval(S.sim); S.sim = null; }
     if (S.simGpsWasOn) { S.simGpsWasOn = false; S.lastFixAt = Date.now(); startGps(); } else setGps('', 'GPS off');
+    simShips = null; if (window.AIS) { for (const k of [900001, 900002, 900003]) AIS.targets.delete(k); } aisTick(); aisApply();
     if (S.simSavedWp !== undefined) { // restore the real passage state the demo replaced
       S.settings.wp = S.simSavedWp; S.track = S.simSavedTrack || []; S.simSavedWp = undefined; S.simSavedTrack = undefined;
       track.setLatLngs(S.track.map(p => [p[0], p[1]])); saveSettings(); saveJson(TRACK_KEY, S.track);
@@ -485,7 +716,7 @@
     ensureAudio(); S.started = true; requestWakeLock();
     $('startOverlay').classList.add('hidden');
     S.arrivedFinal = false;
-    if (mode === 'nav') { S.navigating = true; startGps(); speak('Navigation started. Route ' + S.route.name.split(':')[0] + '.'); }
+    if (mode === 'nav') { S.navigating = true; if (!S.trip) { S.trip = loadJson('saily.trip.v1', null); if (!S.trip || Date.now() - S.trip.startedAt > 12 * 3600000) S.trip = { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 }; } startGps(); speak('Navigation started. Route ' + (S.route.short || S.route.id) + '.', 'info'); }
     else if (mode === 'sim') { S.navigating = true; startSim(S.settings.wp); }
     else { S.navigating = false; startGps(); }
     renderMore();
@@ -493,8 +724,12 @@
   $('btnStart').addEventListener('click', () => begin('nav'));
   $('btnPlanOnly').addEventListener('click', () => begin('look'));
   $('btnStartSim').addEventListener('click', () => begin('sim'));
-  $('btnPrevWp').addEventListener('click', () => { S.settings.wp = Math.max(1, S.settings.wp - 1); S.manualWp = true; S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Active waypoint: ' + WPS()[S.settings.wp].id); });
-  $('btnNextWp').addEventListener('click', () => { S.settings.wp = Math.min(WPS().length - 1, S.settings.wp + 1); S.manualWp = true; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Active waypoint: ' + WPS()[S.settings.wp].id); });
+  function setWp(k, why) {
+    const before = S.settings.wp; S.settings.wp = Math.max(1, Math.min(WPS().length - 1, k)); S.manualWp = true; S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix();
+    toast((why || 'Active waypoint') + ': ' + WPS()[S.settings.wp].id, 6000, { label: 'Undo', fn: () => { S.settings.wp = before; S.manualWp = true; saveSettings(); drawRoutes(); if (S.pos) processFix(); } });
+  }
+  $('btnPrevWp').addEventListener('click', () => setWp(S.settings.wp - 1, 'Back to'));
+  $('btnNextWp').addEventListener('click', () => setWp(S.settings.wp + 1, 'Skipped to'));
   $('btnMute').addEventListener('click', () => { S.muted = !S.muted; $('btnMute').textContent = S.muted ? '🔇' : '🔊'; if (S.muted) try { speechSynthesis.cancel(); } catch (e) { } });
   $('startInfo').textContent = `${S.route.total} nm · about ${N.fmtDur(S.route.total / S.settings.speed * 3600)} at ${S.settings.speed} kn · planned departure ${bothTimes(new Date(S.settings.departure))}`;
 
@@ -511,6 +746,7 @@
     } catch (e) { toast('Forecast fetch failed: ' + e.message); }
     if ($('view-wx').classList.contains('active')) renderWx();
     if (S.solution) updateHud(S.solution);
+    renderWxOverlay(); renderSeaLine();
   }
   const arrow = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) + 90}deg)">➤</span>`; // wind FROM d blows towards d+180; glyph points east (090)
   const arrowTo = deg => `<span class="arrow" style="transform:rotate(${(deg || 0) - 90}deg)">➤</span>`;
@@ -597,11 +833,20 @@
       <label class="field"><span>Planned cruise speed (kn)</span><input type="number" id="setSpeed" min="5" max="40" step="1" value="${s.speed}"></label>
       <label class="field"><span>Planned departure (Spain time)</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
       <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${r.id}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${r.short || r.id})</option>`).join('')}</select></label>
+      <label class="field"><span>Auto-zoom the chart to the next waypoint</span><input type="checkbox" id="setAutoZoom" ${s.autoZoom !== false ? 'checked' : ''}></label>
       <label class="field"><span>Spoken alerts</span><input type="checkbox" id="setVoice" ${s.voice ? 'checked' : ''}></label>
       <label class="field"><span>Alert beeps</span><input type="checkbox" id="setSound" ${s.sound ? 'checked' : ''}></label>
       <label class="field"><span>OpenSeaMap buoys/lights overlay</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
       <label class="field"><span>Morocco clock (MA)</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option><option value="60" ${s.maOffset === '60' ? 'selected' : ''}>UTC+1 (until 20 Sep 2026)</option><option value="0" ${s.maOffset === '0' ? 'selected' : ''}>UTC+0 (from 20 Sep 2026)</option></select></label>
       <div class="row" style="margin-top:8px"><button class="btn" id="btnTestAlert">Test alert</button><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
+    h += `<div class="card"><h2>Ships (AIS)</h2><p class="muted">Live ship positions need an AIS feed. No public feed covers the Strait of Gibraltar without an account: <b>aisstream.io</b> gives a free key (sign in with GitHub, no payment). Paste it here and the app streams ships in the passage area, draws them with their course, computes closest point of approach (CPA) and time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes. Coverage comes from volunteer shore receivers: not every ship, and up to a minute late. The demo simulation shows three synthetic ships so you can see how it looks.</p>
+      <label class="field"><span>Enable AIS targets</span><input type="checkbox" id="setAisOn" ${s.aisOn ? 'checked' : ''}></label>
+      <label class="field"><span>aisstream.io API key</span><input type="password" id="setAisKey" value="${(s.aisKey || '').replace(/"/g, '&quot;')}" placeholder="paste key" autocomplete="off"></label>
+      <label class="field"><span>Show demo ships in the simulation</span><input type="checkbox" id="setAisDemo" ${s.aisDemo !== false ? 'checked' : ''}></label>
+      <div class="muted">Status: <span id="aisStatus">${aisStatusText()}</span></div></div>`;
+    h += `<div class="card"><h2>Chart layers</h2>
+      <label class="field"><span>Depth shading and contours (EMODnet, online only)</span><input type="checkbox" id="setDepth" ${s.depth ? 'checked' : ''}></label>
+      <p class="muted">EMODnet bathymetry is a gridded model (about 100 m cells), fine for seeing banks and the shelf, not for the last metres in a harbour. Charted rocks, wrecks and obstructions from OpenStreetMap are drawn as red asterisks with a 0.1 nm alarm circle; the app also warns when land or rocks lie on your heading within four minutes at your speed.</p></div>`;
     h += `<div class="card"><h2>Weather thresholds</h2>
       <label class="field"><span>Wind caution / no-go (kn)</span><span class="row"><input type="number" id="thWindC" value="${s.th.windCaution}" style="width:70px"><input type="number" id="thWindN" value="${s.th.windNoGo}" style="width:70px"></span></label>
       <label class="field"><span>Gust caution / no-go (kn)</span><span class="row"><input type="number" id="thGustC" value="${s.th.gustCaution}" style="width:70px"><input type="number" id="thGustN" value="${s.th.gustNoGo}" style="width:70px"></span></label>
@@ -619,6 +864,12 @@
     $('setDep').addEventListener('change', () => { try { s.departure = fromLocal(TZ_ES, $('setDep').value).toISOString(); saveSettings(); } catch (e) { } });
     $('setRoute').addEventListener('change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = P.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
     $('setVoice').addEventListener('change', () => { s.voice = $('setVoice').checked; saveSettings(); });
+    $('setAutoZoom').addEventListener('change', () => { s.autoZoom = $('setAutoZoom').checked; saveSettings(); });
+    $('setAisOn').addEventListener('change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); setTimeout(() => { const el = $('aisStatus'); if (el) el.textContent = aisStatusText(); }, 1500); });
+    $('setAisKey').addEventListener('change', () => { s.aisKey = $('setAisKey').value.trim(); saveSettings(); aisApply(); });
+    $('setAisDemo').addEventListener('change', () => { s.aisDemo = $('setAisDemo').checked; saveSettings(); });
+    $('setDepth').addEventListener('change', () => { s.depth = $('setDepth').checked; saveSettings(); applyBase(); });
+    if (!S.aisStatusTimer) S.aisStatusTimer = setInterval(() => { const el = $('aisStatus'); if (el) el.textContent = aisStatusText(); }, 5000);
     $('setSound').addEventListener('change', () => { s.sound = $('setSound').checked; saveSettings(); });
     $('setSeamark').addEventListener('change', () => { s.seamark = $('setSeamark').checked; saveSettings(); applyBase(); });
     $('setMa').addEventListener('change', () => { s.maOffset = $('setMa').value; saveSettings(); tickClocks(); if (S.solution) updateHud(S.solution); });
@@ -631,7 +882,7 @@
     $('btnPreloadTiles').addEventListener('click', () => preload(false, true));
     $('btnSim').addEventListener('click', () => { if (S.sim) { stopSim(); } else { ensureAudio(); S.started = true; S.navigating = true; $('startOverlay').classList.add('hidden'); startSim(s.wp); showView('nav'); } renderMore(); });
     $('btnClearLog').addEventListener('click', () => { S.log = []; saveJson(LOG_KEY, []); renderMore(); });
-    $('btnClearTrack').addEventListener('click', () => { S.track = []; track.setLatLngs([]); saveJson(TRACK_KEY, []); toast('Track cleared'); });
+    $('btnClearTrack').addEventListener('click', () => { S.track = []; track.setLatLngs([]); saveJson(TRACK_KEY, []); S.trip = S.navigating ? { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 } : null; saveJson('saily.trip.v1', S.trip); toast('Track and trip log cleared'); });
     $('btnReset').addEventListener('click', () => { if (confirm('Reset all settings, track and log?')) { localStorage.clear(); location.reload(); } });
     if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { $('storeText').textContent = `Storage used: ${(e.usage / 1048576).toFixed(1)} MB of ${(e.quota / 1048576).toFixed(0)} MB available.`; }).catch(() => { });
   }
@@ -712,7 +963,7 @@
   $('tzFrom').textContent = TZL_FROM; $('tzTo').textContent = TZL_TO;
   $('hudEtaLabel').textContent = 'ETA ' + (P.destinationShort || 'destination');
   $('startTitle').innerHTML = `<b>${P.name}</b><br>${P.description || ''}`;
-  setNet();
+  setNet(); renderWxOverlay(); renderSeaLine(); aisApply();
   if (S.pos === null) { updateHudIdle(); }
   function updateHudIdle() {
     const w = WPS()[S.settings.wp];

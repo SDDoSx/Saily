@@ -21,6 +21,7 @@ parts = ['<title>Saily</title>',
          '<script>\n' + leaflet_js + '\n</script>',
          '<script>\n' + rd('nav.js') + '\n</script>',
          '<script>\n' + rd('weather.js') + '\n</script>',
+         '<script>\n' + rd('ais.js') + '\n</script>',
          '<script>\n' + rd('chart-data.js') + '\n</script>',
          '<script>\n' + rd('passage.js') + '\n</script>']
 if snap:
