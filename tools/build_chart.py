@@ -341,7 +341,7 @@ labels = [
     (35.885, -5.505, 'Tanger-Med', 'town', 10), (35.772, -5.812, 'Tangier', 'town', 10), (35.84, -5.562, 'Ksar es-Seghir', 'town', 11),
     (35.817, -5.750, 'Cap Malabata', 'cape', 11), (35.91, -5.483, 'Punta Cires', 'cape', 11), (36.077, -5.426, 'Punta Carnero', 'cape', 11),
     (36.109, -5.346, 'Europa Point', 'cape', 11), (36.0, -5.61, 'Isla de Tarifa', 'cape', 12), (36.20, -5.40, 'BAY OF ALGECIRAS', 'sea', 11),
-    (35.80, -5.77, 'TANGIER BAY', 'sea', 12), (36.28, -5.20, 'ALBORAN SEA', 'sea', 9), (35.90, -6.0, 'ATLANTIC', 'sea', 9),
+    (35.80, -5.77, 'TANGIER BAY', 'sea', 12), (36.20, -5.08, 'ALBORAN SEA', 'sea', 9), (35.90, -6.0, 'ATLANTIC', 'sea', 9),
 ]
 chart = {
     'meta': {
