@@ -194,7 +194,26 @@
     return g;
   }
 
+  /** GPX track from [[lat, lon, tMs], ...] */
+  function trackGPX(name, pts) {
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    let g = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Saily" xmlns="http://www.topografix.com/GPX/1/1">\n  <trk><name>' + esc(name) + '</name><trkseg>\n';
+    for (const p of pts) g += `    <trkpt lat="${(+p[0]).toFixed(5)}" lon="${(+p[1]).toFixed(5)}">${p[2] ? '<time>' + new Date(p[2]).toISOString() + '</time>' : ''}</trkpt>\n`;
+    return g + '  </trkseg></trk>\n</gpx>\n';
+  }
+  /** course (deg) on a route at a given distance from its start */
+  function courseAtNm(wps, atNm) {
+    let acc = 0;
+    for (let i = 0; i < wps.length - 1; i++) { const d = distanceNm(wps[i], wps[i + 1]); if (atNm <= acc + d || i === wps.length - 2) return bearingDeg(wps[i], wps[i + 1]); acc += d; }
+    return null;
+  }
+  /** relative sea: waves FROM waveFrom deg vs course -> 'head' | 'bow' | 'beam' | 'quarter' | 'following' */
+  function seaAspect(waveFrom, course) {
+    const a = Math.abs(angleDiff(waveFrom, course));
+    return a < 30 ? 'head' : a < 60 ? 'bow' : a < 120 ? 'beam' : a < 150 ? 'quarter' : 'following';
+  }
+
   return { R, NM, toRad, toDeg, norm360, angleDiff, distanceNm, bearingDeg, destination, crossTrackNm, alongTrackNm,
     pointInRing, pointInRings, legs, routeTotal, solve, ttgSeconds, makeSmoother, deltaSpeedCourse,
-    fmtDM, fmtBrg, fmtNm, fmtDur, fmtTime, compass16, sunTimes, windVsCurrent, toGPX };
+    fmtDM, fmtBrg, fmtNm, fmtDur, fmtTime, compass16, sunTimes, windVsCurrent, toGPX, trackGPX, courseAtNm, seaAspect };
 });

@@ -136,7 +136,7 @@
   }
 
   /** classify one row against thresholds -> {level: 'ok'|'caution'|'nogo', reasons:[]} */
-  function classify(row, th) {
+  function classify(row, th, course) {
     th = th || DEFAULT_THRESHOLDS;
     const reasons = [];
     let level = 0; // 0 ok, 1 caution, 2 nogo
@@ -161,11 +161,16 @@
     }
     if (row.wavePeriod != null && row.wave != null && row.wave >= 0.8 && row.wavePeriod <= 4.5) bump(1, 'short steep waves');
     if (row.rain != null && row.rain >= 2) bump(1, `rain ${row.rain} mm/h`);
+    if (course != null && row.wave != null && row.waveDir != null && row.wave >= 0.8) {
+      const asp = root.NAV.seaAspect(row.waveDir, course);
+      if (asp === 'beam') bump(1, `beam sea ${row.wave.toFixed(1)} m (rolling)`);
+      else if (asp === 'head' && row.wave >= 1.0) bump(1, `head sea ${row.wave.toFixed(1)} m (slamming, slow down)`);
+    }
     return { level: ['ok', 'caution', 'nogo'][level], reasons };
   }
 
   /** passage plan: for departure time + speed, row at each point when passing it */
-  function passage(data, departure, speedKn, th) {
+  function passage(data, departure, speedKn, th, routeWps) {
     const out = [];
     if (!data) return out;
     for (const p of POINTS) {
@@ -173,7 +178,22 @@
       if (!pt) continue;
       const when = new Date(departure.getTime() + p.routeNm / speedKn * 3600000);
       const row = rowAt(pt, when);
-      out.push({ point: pt, when, row, verdict: row ? classify(row, th) : null });
+      const course = routeWps ? root.NAV.courseAtNm(routeWps, p.routeNm) : null;
+      out.push({ point: pt, when, row, course, verdict: row ? classify(row, th, course) : null });
+    }
+    return out;
+  }
+  /** scan departure times every hour over the next `hours`, return [{dep, overall, maxWind, maxGust, maxWave}] */
+  function departureScan(data, fromDate, hours, speedKn, th, routeWps) {
+    const out = [];
+    if (!data) return out;
+    const start = new Date(fromDate); start.setMinutes(0, 0, 0);
+    for (let h = 0; h < hours; h++) {
+      const dep = new Date(start.getTime() + h * 3600000);
+      const pass = passage(data, dep, speedKn, th, routeWps);
+      const rows = pass.map(s => s.row).filter(Boolean);
+      const mx = k => rows.length ? Math.max(...rows.map(r => r[k] == null ? -1 : r[k])) : null;
+      out.push({ dep, overall: overall(pass), maxWind: mx('wind'), maxGust: mx('gust'), maxWave: mx('wave'), pass });
     }
     return out;
   }
@@ -204,5 +224,5 @@
 
   const WMO = { 0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 80: 'Showers', 81: 'Showers', 82: 'Violent showers', 95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Thunderstorm w/ hail' };
 
-  root.WX = { POINTS, DEFAULT_THRESHOLDS, fetchAll, fromRaw, load, save, rowAt, classify, passage, overall, nearestPoint, madridLocalIso, WMO, TZ };
+  root.WX = { POINTS, DEFAULT_THRESHOLDS, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, overall, nearestPoint, madridLocalIso, WMO, TZ };
 })(typeof self !== 'undefined' ? self : this);

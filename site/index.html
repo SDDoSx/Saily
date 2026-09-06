@@ -68,6 +68,8 @@ main{flex:1;min-height:0;position:relative}
 #hud .phase b{color:#fff}
 .highway{margin:6px 0 2px;user-select:none}
 .strip{margin:6px 0 2px;height:22px}
+.tape{margin:6px 0 0;height:30px;border-radius:6px;overflow:hidden;background:var(--panel2)}
+.tape svg{width:100%;height:30px;display:block}
 .strip svg{width:100%;height:22px;display:block}
 .hw-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);padding:0 2px}
 .hw-track{position:relative;height:14px;border-radius:7px;background:linear-gradient(90deg,rgba(255,159,67,.35),var(--panel2) 40%,var(--panel2) 60%,rgba(84,213,255,.35))}
@@ -78,6 +80,8 @@ main{flex:1;min-height:0;position:relative}
 #hud .helm button{font-weight:700}
 #hud .helm .mob{background:var(--danger);color:#fff;border-color:var(--danger)}
 #hud .helm .mob.active{background:#fff;color:var(--danger)}
+#hud .helm #btnAnchor.active{background:var(--warn);color:#210;border-color:var(--warn)}
+tr.best td{background:rgba(46,204,113,.18)}
 #bigpos{position:absolute;inset:0;z-index:1600;background:rgba(11,26,43,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;text-align:center}
 #bigpos.hidden{display:none}
 #bigpos .big{font-size:34px;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text}
@@ -211,7 +215,7 @@ label.field input[type=checkbox]{width:22px;height:22px}
           <div class="row"><button id="btnPlanOnly" class="btn">Just look around</button><button id="btnStartSim" class="btn">Demo (simulate)</button></div>
         </div>
         <div id="toast"></div>
-        <div id="bigpos" class="hidden"><div class="med">Position for VHF / MAYDAY</div><div class="big" id="bigposText">--</div><div class="med" id="bigposSub"></div><div class="row"><button class="btn primary" id="btnSayPos">Read aloud</button><button class="btn" id="btnClosePos">Close</button></div></div>
+        <div id="bigpos" class="hidden"><div class="med">Position for VHF / MAYDAY</div><div class="big" id="bigposText">--</div><div class="med" id="bigposSub"></div><div class="row"><button class="btn primary" id="btnSayPos">Read aloud</button><button class="btn" id="btnSharePos">Share</button><button class="btn" id="btnClosePos">Close</button></div></div>
       </div>
       <div id="hud">
         <div class="next"><span>NEXT <b id="hudWpId">--</b> <span id="hudWpName"></span></span><span id="hudSim" class="sim"></span><span id="hudRoute"></span></div>
@@ -222,6 +226,7 @@ label.field input[type=checkbox]{width:22px;height:22px}
           <div class="cell"><div class="l">SOG</div><div class="v" id="hudSog">--<small> kn</small></div></div>
           <div class="cell"><div class="l">COG</div><div class="v" id="hudCog">---°</div></div>
         </div>
+        <div class="tape" id="tape" title="Course over ground; yellow = bearing to waypoint, magenta = leg course"><svg id="tapeSvg" viewBox="0 0 400 30" preserveAspectRatio="none"></svg></div>
         <div class="highway" id="highway" title="Cross-track error, ±0.5 nm"><div class="hw-scale"><span>0.5</span><span>0.25</span><span>0</span><span>0.25</span><span>0.5</span></div><div class="hw-track"><div class="hw-centre"></div><div class="hw-marker" id="hwMarker"></div></div></div>
         <div class="row2">
           <div class="cell"><div class="l">Steer</div><div class="v steer" id="hudXte">--</div></div>
@@ -234,7 +239,7 @@ label.field input[type=checkbox]{width:22px;height:22px}
         <div class="next"><span id="hudWx"></span><span id="hudSea"></span></div>
         <div class="next"><span id="hudTrip"></span></div>
         <div class="wpbtns"><button id="btnPrevWp">◀ Prev WP</button><button id="btnNextWp">Next WP ▶</button><button id="btnMute" title="Mute voice and beeps">🔊</button></div>
-        <div class="wpbtns helm"><button id="btnMob" class="mob">MOB</button><button id="btnRepeat">Repeat</button><button id="btnMark">Mark</button></div>
+        <div class="wpbtns helm"><button id="btnMob" class="mob">MOB</button><button id="btnAnchor">Anchor</button><button id="btnRepeat">Repeat</button><button id="btnMark">Mark</button></div>
       </div>
     </section>
     <section id="view-wx" class="view"><div class="page" id="wxPage"></div></section>

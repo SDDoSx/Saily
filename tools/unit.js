@@ -16,4 +16,7 @@ t('sunset Tangier 6 Sep 2026 ~18:45 UTC', () => { const s = N.sunTimes(new Date(
 t('fmtDM', () => assert.strictEqual(N.fmtDM(36.2869, -5.2701), "36°17.214'N 005°16.206'W"));
 t('smoother circular mean across north', () => { const s = N.makeSmoother(0.5); s.push(10, 350); s.push(10, 10); s.push(10, 10); const c = s.cog; assert(c < 15 || c > 345, c); });
 t('GPX export', () => { const g = N.toGPX('r', [{ lat: 36, lon: -5.5, id: 'A', name: 'a' }]); assert(g.includes('<rtept lat="36.00000" lon="-5.50000">')); });
+t('seaAspect', () => { assert.strictEqual(N.seaAspect(90, 180), 'beam'); assert.strictEqual(N.seaAspect(180, 180), 'head'); assert.strictEqual(N.seaAspect(0, 180), 'following'); });
+t('courseAtNm', () => { const wps = [{ lat: 36, lon: -5.5 }, { lat: 35.9, lon: -5.5 }, { lat: 35.9, lon: -5.6 }]; assert.strictEqual(Math.round(N.courseAtNm(wps, 3)), 180); assert.strictEqual(Math.round(N.courseAtNm(wps, 8)), 270); });
+t('trackGPX', () => { const g = N.trackGPX('t', [[36, -5.5, 1757160000000]]); assert(g.includes('<trkpt lat="36.00000" lon="-5.50000"><time>2025-09-06T')); });
 console.log(`${n} unit tests passed`);

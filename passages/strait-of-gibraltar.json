@@ -310,6 +310,135 @@
      "note": "Inside the gap heading N. Fuel dock to starboard, reception pontoon beyond it (high wall, fenders high). Q flag and Moroccan flag up. Marineros take lines."
     }
    ]
+  },
+  {
+   "id": "return",
+   "short": "Return to Sotogrande",
+   "name": "Return: Tangier to Sotogrande via the Tarifa crossing (northbound)",
+   "recommended": false,
+   "summary": "Leave Tanja Marina Bay by the marked channel, follow the Moroccan inshore zone to the crossing point, cross both lanes on 000 T (first the eastbound lane: ships from your LEFT, then the westbound lane: ships from your RIGHT), then the Spanish inshore zone past Tarifa, Punta Carnero and Europa Point to Sotogrande.",
+   "waypoints": [
+    {
+     "id": "TANJA",
+     "name": "Tanja Marina Bay entrance",
+     "lat": 35.7841,
+     "lon": -5.7957,
+     "radius": 0.03,
+     "note": "Leaving the marina heading S through the gap: red Fl(3)R now to starboard, green to port. Clear out with police and customs before leaving (daylight only)."
+    },
+    {
+     "id": "MAR-APP",
+     "name": "South of marina entrance",
+     "lat": 35.7824,
+     "lon": -5.7955,
+     "radius": 0.04,
+     "note": "Turn E towards channel point F. Shoal water to your W/SW along the beach: do not cut the corner."
+    },
+    {
+     "id": "TANG-F",
+     "name": "Channel point F, off entrance",
+     "lat": 35.7836,
+     "lon": -5.7925,
+     "radius": 0.05,
+     "note": "Follow the channel NE. Ferries turn just north of here: keep clear, give way."
+    },
+    {
+     "id": "TANG-E",
+     "name": "Marina access channel, point E",
+     "lat": 35.788,
+     "lon": -5.7845,
+     "radius": 0.08,
+     "note": "End of the marked channel. Head N on the ferry line past the jetty head, then NE for Cap Malabata. Charted wreck and Buoree Rock lie E of the ferry line."
+    },
+    {
+     "id": "TANG-N",
+     "name": "Tangier port approach (ferry line)",
+     "lat": 35.802,
+     "lon": -5.787,
+     "radius": 0.15,
+     "note": "Jetty head light 0.7 nm SSW. Set course NE for the Malabata offing. Call Tangier Traffic on VHF 69 if you want a traffic picture."
+    },
+    {
+     "id": "MALABATA",
+     "name": "Cap Malabata offing",
+     "lat": 35.835,
+     "lon": -5.765,
+     "radius": 0.2,
+     "note": "Cap Malabata 1.1 nm SE, Almirante Rock 0.9 nm SE: hold this offing. Next leg runs NE inside the Moroccan inshore zone; Banco de Fenix (overfalls at max stream) is on it."
+    },
+    {
+     "id": "X-SOUTH",
+     "name": "Crossing point south",
+     "lat": 35.874,
+     "lon": -5.7,
+     "radius": 0.15,
+     "note": "Turn to 000 T. Cross the TSS at right angles, do not slow down. First the EASTBOUND lane: ships come from your LEFT (west). Then the separation zone, then the WESTBOUND lane: ships from your RIGHT (east)."
+    },
+    {
+     "id": "X-NORTH",
+     "name": "Crossing point north",
+     "lat": 35.98,
+     "lon": -5.7,
+     "radius": 0.15,
+     "note": "Clear of the westbound lane. Spanish inshore zone. Turn E for the Tarifa offing; Bajo de los Cabezos race 2 nm N, stay on the line."
+    },
+    {
+     "id": "TARIFA",
+     "name": "Tarifa Island offing",
+     "lat": 35.9845,
+     "lon": -5.613,
+     "radius": 0.2,
+     "note": "Tarifa Island 0.8 nm N, westbound lane 0.7 nm S: keep to the corridor. Overfalls with wind against tide. Ferries cross here."
+    },
+    {
+     "id": "CARNERO",
+     "name": "Punta Carnero offing",
+     "lat": 36.04,
+     "lon": -5.44,
+     "radius": 0.2,
+     "note": "Punta Carnero offing: La Perla rocks 0.5 nm N of this leg, strong tidal set along the shore. Ships entering and leaving Algeciras Bay cross ahead."
+    },
+    {
+     "id": "EUROPA",
+     "name": "Europa Point offing",
+     "lat": 36.098,
+     "lon": -5.345,
+     "radius": 0.2,
+     "note": "Rounding Europa Point 0.7 nm off. Precautionary area to the S: converging ships. Turn N for the east side of the Rock."
+    },
+    {
+     "id": "GIB-E",
+     "name": "Gibraltar east side",
+     "lat": 36.125,
+     "lon": -5.325,
+     "radius": 0.2,
+     "note": "Anchored ships in the eastern anchorage: pass between them with care. Set course NNE for Sotogrande."
+    },
+    {
+     "id": "SOTO-OUT",
+     "name": "Sotogrande offing",
+     "lat": 36.2825,
+     "lon": -5.263,
+     "radius": 0.15,
+     "note": "Sotogrande offing. Approach the breakwater head from the ESE: the reported shoal lies 500 m S of the head, keep it to port. Call Sotogrande on VHF 9. 3 kn from here."
+    },
+    {
+     "id": "SOTO-HEAD",
+     "name": "Sotogrande breakwater head",
+     "lat": 36.2856,
+     "lon": -5.271,
+     "radius": 0.04,
+     "note": "Breakwater head with the green light 100 m to your E. Turn N up the channel between the breakwater and the beach."
+    },
+    {
+     "id": "SOTO",
+     "name": "Sotogrande inner mouth",
+     "lat": 36.2882,
+     "lon": -5.2703,
+     "radius": 0.03,
+     "note": "Inner harbour mouth, 80 m wide. Berth as directed by the marineros."
+    }
+   ]
   }
  ],
  "hazards": [

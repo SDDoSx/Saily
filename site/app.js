@@ -320,7 +320,7 @@
     S.pos = fix; S.acc = c.accuracy; S.lastFixAt = Date.now();
     if (S.gpsLost) { S.gpsLost = false; $('alertBanner').classList.add('hidden'); alert('gpsback', 'info', 'GPS signal back.'); }
     S.fixes.push(fix); if (S.fixes.length > 50) S.fixes.shift();
-    tripUpdate(fix, prev);
+    tripUpdate(fix, prev); checkAnchor(fix);
     const last = S.track[S.track.length - 1];
     if (!last || N.distanceNm({ lat: last[0], lon: last[1] }, fix) > 0.01) { S.track.push([+fix.lat.toFixed(5), +fix.lon.toFixed(5), fix.t]); if (S.track.length > 4000) S.track.splice(0, 500); track.addLatLng([fix.lat, fix.lon]); }
     setGps(c.accuracy <= 50 ? 'ok' : c.accuracy <= 150 ? 'warn' : 'bad', (S.sim ? 'SIM ' : 'GPS ') + (c.accuracy ? '±' + Math.round(c.accuracy) + ' m' : ''));
@@ -376,6 +376,7 @@
     renderPhase(sol);
     renderTrip();
     renderStrip(sol);
+    renderTape(sol);
     if (ttgAll === null) $('hudEta').textContent = '--:--';
     else { const eta = new Date(Date.now() + ttgAll * 1000); $('hudEta').innerHTML = N.fmtTime(eta, TZ_ES) + (sp.plan ? '*' : '') + '<small> ' + TZL_FROM + '</small><br><small>' + fmtMA(eta) + ' ' + TZL_TO + '</small>'; }
     $('hudDtg').innerHTML = N.fmtNm(sol.remaining, 1) + '<small> nm</small><br><small>' + N.fmtDur(ttgAll) + (sp.plan ? '*' : '') + '</small>';
@@ -408,6 +409,22 @@
     if (prec.length) { el.classList.remove('hidden'); el.innerHTML = `<b>PRECAUTIONARY AREA</b> · converging ships, keep a sharp lookout`; return; }
     if (sol.dist < 0.6 && sol.k >= WPS().length - 2) { el.classList.remove('hidden'); el.innerHTML = `<b>HARBOUR APPROACH</b> · ${sol.wp.note}`; return; }
     el.classList.add('hidden');
+  }
+  function renderTape(sol) {
+    const svg = $('tapeSvg'); if (!svg) return;
+    const cog = S.cog === null ? sol.brg : S.cog; const span = 120; // degrees visible
+    const x = deg => 200 + N.angleDiff(deg, cog) / span * 400;
+    let s = '';
+    for (let d = Math.ceil((cog - span / 2) / 10) * 10; d <= cog + span / 2; d += 10) {
+      const px = x(d); const major = ((d % 30) + 360) % 360 === 0;
+      s += `<line x1="${px.toFixed(1)}" y1="${major ? 14 : 20}" x2="${px.toFixed(1)}" y2="30" stroke="#9db4cc" stroke-width="1"/>`;
+      if (major) s += `<text x="${px.toFixed(1)}" y="11" font-size="9" fill="#9db4cc" text-anchor="middle">${String(N.norm360(d)).padStart(3, '0')}</text>`;
+    }
+    const mark = (deg, col, label) => { const px = x(deg); if (Math.abs(N.angleDiff(deg, cog)) > span / 2) return ''; return `<polygon points="${px.toFixed(1)},22 ${(px - 5).toFixed(1)},30 ${(px + 5).toFixed(1)},30" fill="${col}"/>`; };
+    s += mark(sol.legBrg, '#ff2d95'); s += mark(sol.brg, '#ffe066');
+    s += `<line x1="200" y1="0" x2="200" y2="30" stroke="#43b3ff" stroke-width="2"/>`;
+    if (S.cog === null) s += `<text x="200" y="11" font-size="9" fill="#ff9f43" text-anchor="middle">no COG</text>`;
+    svg.innerHTML = s;
   }
   function renderTrip() {
     const t = S.trip; const el = $('hudTrip'); if (!t) { el.textContent = ''; return; }
@@ -458,12 +475,41 @@
     const d = (v, pos, neg) => { const h = v >= 0 ? pos : neg; v = Math.abs(v); const deg = Math.floor(v), min = ((v - deg) * 60).toFixed(2); return `${deg} degrees ${min} minutes ${h}`; };
     speak(`Position ${d(S.pos.lat, 'north', 'south')}, ${d(S.pos.lon, 'east', 'west')}.`, 'warn');
   }
+  // anchor watch
+  let anchorCircle = null;
+  function anchorToggle() {
+    if (S.settings.anchor) { S.settings.anchor = null; saveSettings(); if (anchorCircle) { map.removeLayer(anchorCircle); anchorCircle = null; } $('btnAnchor').classList.remove('active'); toast('Anchor watch off'); return; }
+    if (!S.pos) { toast('No position yet'); return; }
+    const r = parseFloat(prompt('Anchor watch radius in metres (chain out plus swing):', '45')); if (!isFinite(r) || r <= 0) return;
+    ensureAudio(); if (S.watchId === null && !S.sim) startGps();
+    S.settings.anchor = { lat: S.pos.lat, lon: S.pos.lon, r, t: Date.now() }; saveSettings(); drawAnchor();
+    alert('anchorset', 'info', `Anchor watch set, ${r} metres.`);
+  }
+  function drawAnchor() {
+    const an = S.settings.anchor; if (!an) return;
+    if (anchorCircle) map.removeLayer(anchorCircle);
+    anchorCircle = L.circle([an.lat, an.lon], { pane: 'haz', radius: an.r, color: '#f5b400', weight: 2, dashArray: '4 4', fillOpacity: 0.08 }).addTo(map);
+    $('btnAnchor').classList.add('active');
+  }
+  function checkAnchor(pos) {
+    const an = S.settings.anchor; if (!an) return;
+    const d = N.distanceNm(pos, an) * 1852;
+    if (d > an.r) alert('anchordrag', 'danger', `Anchor dragging: ${Math.round(d)} metres from the anchor position, limit ${an.r}.`, { cooldown: 30 });
+  }
+  if (S.settings.anchor) drawAnchor();
+  $('btnAnchor').addEventListener('click', anchorToggle);
   $('btnMob').addEventListener('click', mobToggle);
   $('btnMark').addEventListener('click', markPosition);
   $('btnRepeat').addEventListener('click', repeatLast);
   $('hudPos').addEventListener('click', showBigPos);
   $('btnClosePos').addEventListener('click', () => $('bigpos').classList.add('hidden'));
   $('btnSayPos').addEventListener('click', sayPosition);
+  $('btnSharePos').addEventListener('click', async () => {
+    if (!S.pos) return;
+    const sol = S.solution; const sp = speedForEta(); const ttgAll = sol ? N.ttgSeconds(sol.remaining, sp.v) : null;
+    const txt = `${P.vessel.name || 'Saily'}: ${N.fmtDM(S.pos.lat, S.pos.lon)} at ${N.fmtTime(new Date(), 'UTC')} UTC, COG ${N.fmtBrg(S.cog)} SOG ${S.sog === null ? '--' : S.sog.toFixed(1)} kn${ttgAll ? ', ETA ' + (P.destinationShort || '') + ' ' + bothTimes(new Date(Date.now() + ttgAll * 1000)) : ''}. https://maps.google.com/?q=${S.pos.lat.toFixed(5)},${S.pos.lon.toFixed(5)}`;
+    try { if (navigator.share) await navigator.share({ text: txt }); else { await navigator.clipboard.writeText(txt); toast('Copied to clipboard'); } } catch (e) { try { await navigator.clipboard.writeText(txt); toast('Copied to clipboard'); } catch (e2) { toast('Could not share'); } }
+  });
 
   // ----- live forecast overlay: wind and current arrows at the weather points for the current hour -----
   const wxGroup = L.layerGroup().addTo(map);
@@ -758,7 +804,7 @@
       <p class="muted">${d ? `Open-Meteo, fetched ${age} min ago (${N.fmtTime(new Date(d.fetchedAt), TZ_ES)} ES).` : 'No forecast stored yet. Go online and tap Refresh.'} Wind at 10 m in knots, waves = significant height, current = surface (includes tide). Thresholds in Setup.</p></div>`;
     if (d) {
       const dep = new Date(S.settings.departure);
-      const pass = W.passage(d, dep, S.settings.speed, S.settings.th);
+      const pass = W.passage(d, dep, S.settings.speed, S.settings.th, S.route.waypoints);
       const ov = W.overall(pass);
       h += `<div class="card"><h2>Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn ${tagFor(ov)}</h2>`;
       h += ov.reasons.length ? `<ul>${ov.reasons.map(r => `<li>${r}</li>`).join('')}</ul>` : '<p>No thresholds exceeded at any route point during the planned passage.</p>';
@@ -768,6 +814,12 @@
         h += `<tr class="${s.verdict ? s.verdict.level : ''}"><td>${s.point.name}</td><td>${N.fmtTime(s.when, TZ_ES)}</td>` + (r ? `<td>${Math.round(r.wind)} kn ${N.compass16(r.windDir)} ${arrow(r.windDir)}</td><td>${Math.round(r.gust)}</td><td>${r.wave != null ? r.wave.toFixed(1) + ' m ' + Math.round(r.wavePeriod) + 's' : '--'}</td><td>${r.swell != null ? r.swell.toFixed(1) + ' m ' + N.compass16(r.swellDir) : '--'}</td><td>${r.current != null ? r.current.toFixed(1) + ' kn ' + arrowTo(r.currentDir) + ' ' + N.compass16(r.currentDir) : '--'}</td><td>${r.current != null && r.current >= 0.8 ? N.windVsCurrent(r.windDir, r.currentDir) : '-'}</td><td>${r.vis != null ? (r.vis / 1000).toFixed(0) + ' km' : '--'}</td><td>${tagFor(s.verdict)}</td>` : '<td colspan="8">no data for this hour</td>') + '</tr>';
       }
       h += '</table></div></div>';
+      // departure-window scan
+      const scan = W.departureScan(d, new Date(Math.max(Date.now(), new Date(S.settings.departure).getTime() - 12 * 3600000)), 36, S.settings.speed, S.settings.th, S.route.waypoints);
+      const okOnes = scan.filter(s => s.overall.level === 'ok');
+      h += `<div class="card"><h2>Departure windows (next 36 h)</h2><p class="muted">Same passage check run for every hour of departure. Green rows are windows with nothing over your thresholds. Tap "Use" to plan on that hour.</p><div class="tbl"><table><tr><th>Depart (ES)</th><th>Verdict</th><th>Max wind</th><th>Max gust</th><th>Max wave</th><th></th></tr>`;
+      for (const s of scan) h += `<tr class="${s.overall.level === 'ok' ? 'best' : s.overall.level}"><td>${s.dep.toDateString().slice(0, 3)} ${N.fmtTime(s.dep, TZ_ES)}</td><td>${tagFor(s.overall)}</td><td>${s.maxWind != null && s.maxWind >= 0 ? Math.round(s.maxWind) + ' kn' : '--'}</td><td>${s.maxGust != null && s.maxGust >= 0 ? Math.round(s.maxGust) : '--'}</td><td>${s.maxWave != null && s.maxWave >= 0 ? s.maxWave.toFixed(1) + ' m' : '--'}</td><td><button class="btn" data-dep="${s.dep.toISOString()}" style="padding:4px 8px">Use</button></td></tr>`;
+      h += `</table></div>${okOnes.length ? '' : '<p><b>No clean window in the next 36 hours</b> at these thresholds.</p>'}</div>`;
       // hourly table for a selected point
       const sel = S.wxSel || 'tarifa'; const pt = d.points[sel];
       h += `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Hourly</h2><select id="wxSel">${W.POINTS.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${p.name}</option>`).join('')}</select></div>`;
@@ -787,6 +839,7 @@
     el.innerHTML = h;
     $('btnWxRefresh').addEventListener('click', () => refreshWeather(true));
     const s = $('wxSel'); if (s) s.addEventListener('change', () => { S.wxSel = s.value; renderWx(); });
+    el.querySelectorAll('button[data-dep]').forEach(b => b.addEventListener('click', () => { S.settings.departure = b.dataset.dep; saveSettings(); toast('Departure set to ' + bothTimes(new Date(b.dataset.dep))); renderWx(); }));
   }
   function tideSummary(pt) {
     const rows = pt.rows.filter(r => r.seaLevel != null); if (rows.length < 5) return '';
@@ -856,7 +909,7 @@
       <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
       <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted">${preloadStatusText()}</div><div id="storeText" class="muted"></div></div>`;
     h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Install</div><div>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload THERE: the Home Screen app has its own storage, separate from Safari's.</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div></div>`;
-    h += `<div class="card"><h2>Alert log</h2><div class="log">${S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}`).join('\n') || 'none yet'}</div><div class="row" style="margin-top:8px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button><button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
+    h += `<div class="card"><h2>Alert log</h2><div class="log">${S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}`).join('\n') || 'none yet'}</div><div class="row" style="margin-top:8px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
     h += `<div class="card"><h2>About</h2><p class="muted">Saily is a temporary passage aid built for one crossing. Data: ${C.meta.sources.join('; ')}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, CARTO, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). Not for navigation without official charts, a proper lookout and COLREGs.</p></div>`;
     el.innerHTML = h;
     const num = (id, f) => $(id).addEventListener('change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
@@ -882,6 +935,7 @@
     $('btnPreloadTiles').addEventListener('click', () => preload(false, true));
     $('btnSim').addEventListener('click', () => { if (S.sim) { stopSim(); } else { ensureAudio(); S.started = true; S.navigating = true; $('startOverlay').classList.add('hidden'); startSim(s.wp); showView('nav'); } renderMore(); });
     $('btnClearLog').addEventListener('click', () => { S.log = []; saveJson(LOG_KEY, []); renderMore(); });
+    if ($('btnTrackGpx')) $('btnTrackGpx').href = 'data:application/gpx+xml;charset=utf-8,' + encodeURIComponent(N.trackGPX('Saily track', S.track));
     $('btnClearTrack').addEventListener('click', () => { S.track = []; track.setLatLngs([]); saveJson(TRACK_KEY, []); S.trip = S.navigating ? { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 } : null; saveJson('saily.trip.v1', S.trip); toast('Track and trip log cleared'); });
     $('btnReset').addEventListener('click', () => { if (confirm('Reset all settings, track and log?')) { localStorage.clear(); location.reload(); } });
     if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { $('storeText').textContent = `Storage used: ${(e.usage / 1048576).toFixed(1)} MB of ${(e.quota / 1048576).toFixed(0)} MB available.`; }).catch(() => { });
