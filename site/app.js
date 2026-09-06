@@ -271,6 +271,7 @@
   if (savedTrack.length && Date.now() - savedTrack[savedTrack.length - 1][2] < 12 * 3600000) { S.track = savedTrack; track.setLatLngs(S.track.map(p => [p[0], p[1]])); const lp = S.track[S.track.length - 1]; vessel.setLatLng([lp[0], lp[1]]); vessel.setOpacity(0.5); vessel.addTo(map); }
   map.on('dragstart', () => { S.follow = false; $('btnFollow').classList.remove('on'); });
   map.on('zoomstart', () => { if (!S.programmaticZoom && Date.now() - (S.progZoomAt || 0) > 500) S.userZoomAt = Date.now(); });
+  $('btnMore').addEventListener('click', () => { $('mapControls').classList.toggle('open'); $('btnMore').classList.toggle('on', $('mapControls').classList.contains('open')); });
   $('btnZoomIn').addEventListener('click', () => { S.userZoomAt = Date.now(); map.zoomIn(); });
   $('btnZoomOut').addEventListener('click', () => { S.userZoomAt = Date.now(); map.zoomOut(); });
   $('btnFollow').addEventListener('click', () => { S.follow = !S.follow; $('btnFollow').classList.toggle('on', S.follow); if (S.follow && S.pos) map.panTo([S.pos.lat, S.pos.lon]); });
@@ -807,7 +808,7 @@
       const pass = W.passage(d, dep, S.settings.speed, S.settings.th, S.route.waypoints);
       const ov = W.overall(pass);
       h += `<div class="card"><h2>Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn ${tagFor(ov)}</h2>`;
-      h += ov.reasons.length ? `<ul>${ov.reasons.map(r => `<li>${r}</li>`).join('')}</ul>` : '<p>No thresholds exceeded at any route point during the planned passage.</p>';
+      h += ov.reasons.length ? `<ul>${ov.reasons.slice(0, 5).map(r => `<li>${r}</li>`).join('')}${ov.reasons.length > 5 ? `<li class="muted">and ${ov.reasons.length - 5} more, see the table</li>` : ''}</ul>` : '<p>No thresholds exceeded at any route point during the planned passage.</p>';
       h += `<div class="tbl"><table><tr><th>Point</th><th>Pass at</th><th>Wind</th><th>Gust</th><th>Waves</th><th>Swell</th><th>Current</th><th>Wind/cur</th><th>Vis</th><th></th></tr>`;
       for (const s of pass) {
         const r = s.row;

@@ -41,12 +41,14 @@ main{flex:1;min-height:0;position:relative}
 .view.active{display:block}
 #view-nav{display:none;flex-direction:column}
 #view-nav.active{display:flex}
-#mapWrap{flex:1;min-height:0;position:relative;background:var(--sea)}
+#mapWrap{flex:1;min-height:0;position:relative;background:var(--sea);overflow:hidden}
 #map{position:absolute;inset:0;background:var(--sea)}
 #map.night{filter:brightness(.55) saturate(.6)}
 .leaflet-container{font:inherit}
-#mapControls{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px;z-index:1000}
-#mapControls button,.mbtn{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:rgba(18,42,68,.92);color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+#mapControls{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:5px;z-index:1000;align-items:flex-end}
+#mapControls .more{display:none;flex-direction:row;gap:5px}
+#mapControls.open .more{display:flex}
+#mapControls button,.mbtn{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);background:rgba(18,42,68,.92);color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
 #mapControls button.on{background:var(--accent);color:#031;border-color:var(--accent)}
 #hud{background:var(--panel);border-top:1px solid var(--line);padding:8px 12px 6px;font-variant-numeric:tabular-nums}
 #hud .next{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;color:var(--muted);margin-bottom:4px}
@@ -201,10 +203,13 @@ label.field input[type=checkbox]{width:22px;height:22px}
           <button id="btnZoomOut" title="Zoom out">−</button>
           <button id="btnFollow" class="on" title="Follow vessel">◎</button>
           <button id="btnRoute" title="Zoom to route">⤢</button>
-          <button id="btnLayers" title="Base layer">▦</button>
-          <button id="btnChartOnly" title="Chart only (no tiles)">⛵</button>
-          <button id="btnDay" title="Daylight (glare) theme">☀</button>
-          <button id="btnNight" title="Night mode">☾</button>
+          <button id="btnMore" title="Layers and themes">☰</button>
+          <div class="more">
+            <button id="btnLayers" title="Base layer">▦</button>
+            <button id="btnChartOnly" title="Chart only (no tiles)">⛵</button>
+            <button id="btnDay" title="Daylight (glare) theme">☀</button>
+            <button id="btnNight" title="Night mode">☾</button>
+          </div>
         </div>
         <div id="startOverlay">
           <h1>Saily</h1>

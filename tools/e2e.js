@@ -69,6 +69,7 @@ const OUT = path.join(__dirname, 'out');
     console.log('Offline reload:', JSON.stringify(offlineOk));
     await page.click('#btnPlanOnly');
     await page.waitForTimeout(800);
+    await page.click('#btnMore');
     await page.click('#btnChartOnly');
     await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(OUT, 'iphone-offline-chart.png') });
