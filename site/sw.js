@@ -1,10 +1,10 @@
 /* Saily service worker: offline app shell, tile cache, weather cache. */
-const VERSION = 'saily-v1';
+const VERSION = 'saily-v2';
 const SHELL = 'shell-' + VERSION;
 const TILES = 'tiles-v1';
 const DATA = 'data-v1';
 const SHELL_FILES = [
-  './', './index.html', './app.js', './nav.js', './weather.js', './chart-data.js', './manifest.webmanifest',
+  './', './index.html', './app.js', './nav.js', './weather.js', './chart-data.js', './passage.js', './manifest.webmanifest',
   './vendor/leaflet/leaflet.css', './vendor/leaflet/leaflet.min.js',
   './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png',
   './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png',
@@ -15,7 +15,7 @@ const DATA_HOSTS = ['api.open-meteo.com', 'marine-api.open-meteo.com'];
 const BLANK_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('shell-') && k !== SHELL).map(k => caches.delete(k)))).then(() => self.clients.claim()));
@@ -62,7 +62,11 @@ self.addEventListener('fetch', e => {
         return res;
       } catch (err) {
         const hit = await c.match(req);
-        return hit || new Response(JSON.stringify({ error: true, reason: 'offline' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+        if (hit) { // mark it so the app knows this is the last stored forecast, not a fresh one
+          const h = new Headers(hit.headers); h.set('X-Saily-Cache', 'stale');
+          return new Response(await hit.blob(), { status: 200, headers: h });
+        }
+        return new Response(JSON.stringify({ error: true, reason: 'offline' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
       }
     }));
   }

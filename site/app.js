@@ -2,9 +2,9 @@
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);
-  const C = window.CHART, N = window.NAV, W = window.WX;
+  const C = window.CHART, N = window.NAV, W = window.WX, P = window.PASSAGE;
   const SINGLE = !!window.SAILY_SINGLE; // single-file build (hosted artifact): no service worker, no raster tiles, embedded forecast
-  const TZ_ES = 'Europe/Madrid', TZ_MA = 'Africa/Casablanca';
+  const TZ_ES = P.tz.from.zone, TZ_MA = P.tz.to.zone, TZL_FROM = P.tz.from.label, TZL_TO = P.tz.to.label;
   const KEY = 'saily.settings.v2', TRACK_KEY = 'saily.track.v1', LOG_KEY = 'saily.alertlog.v1';
   const MS_TO_KN = 1.943844;
 
@@ -29,12 +29,17 @@
   }
   function defaultDeparture() {
     const today = toLocalInput(TZ_ES, new Date()).slice(0, 10);
-    return fromLocal(TZ_ES, today + 'T13:30').toISOString();
+    return fromLocal(TZ_ES, today + 'T' + (P.defaultDeparture || '13:30')).toISOString();
   }
-  const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ES · ${N.fmtTime(d, TZ_MA)} MA`;
+  function fmtMA(d) { // Morocco time: device tz database by default; manual UTC offset override in Setup (Morocco moves to UTC+0 on 20 Sep 2026)
+    const o = S.settings && S.settings.maOffset;
+    if (o === undefined || o === 'auto') return N.fmtTime(d, TZ_MA);
+    return N.fmtTime(new Date(d.getTime() + parseInt(o, 10) * 60000), 'UTC');
+  }
+  const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ${TZL_FROM} · ${fmtMA(d)} ${TZL_TO}`;
 
   // ---------- state ----------
-  const DEFAULTS = { speed: 22, routeId: 'tarifa', departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, night: false, wp: 1, checklist: {} };
+  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, night: false, wp: 1, checklist: {}, maOffset: 'auto' };
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
@@ -52,7 +57,7 @@
   function loadJson(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function saveJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
 
-  S.route = C.routes.find(r => r.id === S.settings.routeId) || C.routes[0];
+  S.route = P.routes.find(r => r.id === S.settings.routeId) || P.routes[0];
   const WPS = () => S.route.waypoints;
   const DEST = () => WPS()[WPS().length - 1];
 
@@ -71,7 +76,7 @@
   function tickClocks() {
     const now = new Date();
     $('clockES').textContent = N.fmtTime(now, TZ_ES);
-    $('clockMA').textContent = N.fmtTime(now, TZ_MA);
+    $('clockMA').textContent = fmtMA(now);
   }
   setInterval(tickClocks, 1000); tickClocks();
 
@@ -96,7 +101,7 @@
   function beep(count, freq, dur) {
     if (!S.audio || S.muted || !S.settings.sound) return;
     try {
-      const ctx = S.audio; let t = ctx.currentTime;
+      const ctx = S.audio; if (ctx.state === 'suspended') ctx.resume(); let t = ctx.currentTime;
       for (let i = 0; i < count; i++) {
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.type = 'square'; o.frequency.value = freq; g.gain.value = 0.0001;
@@ -106,13 +111,25 @@
       }
     } catch (e) { }
   }
-  function speak(text) {
+  // speech queue with priorities: danger interrupts, info is dropped when the queue is busy
+  const speech = { q: [], busy: false, timer: null };
+  function speak(text, level) {
     if (S.muted || !S.settings.voice || !('speechSynthesis' in window)) return;
+    const pr = level === 'danger' ? 2 : level === 'warn' ? 1 : 0;
+    if (pr === 2) { speech.q = speech.q.filter(x => x.pr === 2); try { speechSynthesis.cancel(); } catch (e) { } speech.busy = false; }
+    else if (speech.q.length >= 2) { if (pr === 0) return; speech.q = speech.q.filter(x => x.pr >= 1).slice(-1); }
+    speech.q.push({ text, pr }); pumpSpeech();
+  }
+  function pumpSpeech() {
+    if (speech.busy || !speech.q.length) return;
+    const it = speech.q.shift();
     try {
-      if (speechSynthesis.pending && speechSynthesis.speaking) speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text); u.lang = 'en-GB'; u.rate = 1.0; u.volume = 1;
+      const u = new SpeechSynthesisUtterance(it.text); u.lang = 'en-GB'; u.rate = 1.0; u.volume = 1;
+      const done = () => { clearTimeout(speech.timer); speech.busy = false; setTimeout(pumpSpeech, 150); };
+      u.onend = done; u.onerror = done;
+      speech.busy = true; clearTimeout(speech.timer); speech.timer = setTimeout(done, 4000 + it.text.length * 80); // Safari sometimes never fires onend
       speechSynthesis.speak(u);
-    } catch (e) { }
+    } catch (e) { speech.busy = false; }
   }
   let bannerTimer = null;
   function showBanner(level, text, ms) {
@@ -129,7 +146,7 @@
     S.log.unshift({ t: now, level, text }); if (S.log.length > 200) S.log.length = 200; saveJson(LOG_KEY, S.log);
     showBanner(level, text, level === 'danger' ? 0 : level === 'warn' ? 40000 : 15000);
     if (level === 'danger') beep(3, 880, 0.35); else if (level === 'warn') beep(2, 660, 0.2); else beep(1, 520, 0.12);
-    if (opt.speak !== false) speak(text);
+    if (opt.speak !== false) speak(text, level);
     try { if (navigator.vibrate) navigator.vibrate(level === 'danger' ? [300, 100, 300, 100, 300] : level === 'warn' ? [200, 100, 200] : 120); } catch (e) { }
     return true;
   }
@@ -140,11 +157,19 @@
       if ('wakeLock' in navigator) { S.wakeLock = await navigator.wakeLock.request('screen'); S.wakeLock.addEventListener('release', () => { S.wakeLock = null; }); }
     } catch (e) { S.wakeLock = null; }
   }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.started && !S.wakeLock) requestWakeLock(); if (document.visibilityState === 'visible') map.invalidateSize(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (S.started && !S.wakeLock) requestWakeLock();
+    try { if (S.audio && S.audio.state === 'suspended') S.audio.resume(); } catch (e) { }
+    S.lastFixAt = Date.now(); // grace period: no false 'GPS lost' right after coming back from background
+    if (S.watchId !== null) { stopGps(); startGps(); } // iOS often leaves the old watch dead
+    setTimeout(() => map.invalidateSize(), 50);
+  });
 
   // ---------- map ----------
   const map = L.map('map', { zoomControl: false, attributionControl: true, worldCopyJump: false }).setView([36.03, -5.52], 10);
   map.attributionControl.setPrefix('');
+  try { new ResizeObserver(() => map.invalidateSize()).observe($('mapWrap')); } catch (e) { }
   map.createPane('land').style.zIndex = 150;
   map.createPane('tss').style.zIndex = 405;
   map.createPane('haz').style.zIndex = 408;
@@ -153,7 +178,7 @@
   map.createPane('vessel').style.zIndex = 650;
   const BASES = {
     osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }),
-    carto: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { subdomains: 'abcd', maxZoom: 19, attribution: '© OpenStreetMap © CARTO' }),
+    carto: L.tileLayer('https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap © CARTO' }), // single host: preload cache keys must match
     sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Imagery © Esri' }),
   };
   const SEAMARK = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenSeaMap' });
@@ -187,7 +212,7 @@
   C.anchorages.forEach(a => tssGroup.addLayer(L.polygon(a.ring, { pane: 'tss', color: '#666', weight: 1, dashArray: '4 4', fillOpacity: 0.05 }).bindPopup(`<b>${a.name}</b>Ships at anchor.`)));
   // hazards
   const hazColor = { danger: '#ff2b2b', caution: '#ff9f1a', info: '#4aa3ff' };
-  C.hazards.forEach(h => L.circle([h.lat, h.lon], { pane: 'haz', radius: h.radius * 1852, color: hazColor[h.level], weight: 1.5, dashArray: h.level === 'danger' ? null : '5 5', fillColor: hazColor[h.level], fillOpacity: h.level === 'danger' ? 0.2 : 0.08 }).bindPopup(`<b>${h.name}</b>${h.note}`).addTo(map));
+  P.hazards.forEach(h => L.circle([h.lat, h.lon], { pane: 'haz', radius: h.radius * 1852, color: hazColor[h.level], weight: 1.5, dashArray: h.level === 'danger' ? null : '5 5', fillColor: hazColor[h.level], fillOpacity: h.level === 'danger' ? 0.2 : 0.08 }).bindPopup(`<b>${h.name}</b>${h.note}`).addTo(map));
   // aids
   const aidsGroup = L.layerGroup();
   const aidColor = a => /red/i.test(a.light) ? '#e53935' : /green/i.test(a.light) ? '#2e7d32' : a.type === 'wreck' || a.type === 'obstruction' ? '#000' : a.type.includes('cardinal') ? '#f5b400' : '#f2f2f2';
@@ -207,7 +232,7 @@
   const routeGroup = L.layerGroup().addTo(map);
   function drawRoutes() {
     routeGroup.clearLayers();
-    C.routes.forEach(r => {
+    P.routes.forEach(r => {
       const active = r.id === S.route.id;
       const ll = r.waypoints.map(w => [w.lat, w.lon]);
       routeGroup.addLayer(L.polyline(ll, { pane: 'route', color: active ? '#ff2d95' : '#777', weight: active ? 4 : 2, opacity: active ? 0.9 : 0.6, dashArray: active ? null : '6 8', interactive: !active }).bindPopup(`<b>${r.name}</b>${r.total} nm`));
@@ -237,7 +262,7 @@
   if (SINGLE) { $('btnLayers').style.display = 'none'; $('btnChartOnly').style.display = 'none'; }
   // place labels for the vector chart
   const labelGroup = L.layerGroup();
-  (C.labels || []).forEach(l => labelGroup.addLayer(L.marker([l.lat, l.lon], { pane: 'aids', interactive: false, icon: L.divIcon({ className: '', html: `<div class="plabel ${l.kind}" data-z="${l.z}">${l.name}</div>`, iconAnchor: [0, 8] }) })));
+  (P.labels || []).forEach(l => labelGroup.addLayer(L.marker([l.lat, l.lon], { pane: 'aids', interactive: false, icon: L.divIcon({ className: '', html: `<div class="plabel ${l.kind}" data-z="${l.z}">${l.name}</div>`, iconAnchor: [0, 8] }) })));
   labelGroup.addTo(map);
   function updateLabels() { const z = map.getZoom(); document.querySelectorAll('.plabel').forEach(el => { el.style.display = z >= +el.dataset.z ? '' : 'none'; }); }
   map.on('zoomend', updateLabels); setTimeout(updateLabels, 0);
@@ -272,6 +297,7 @@
     S.smoother.push(sog, cog);
     S.sog = S.smoother.sog; S.cog = S.smoother.cog;
     S.pos = fix; S.acc = c.accuracy; S.lastFixAt = Date.now();
+    if (S.gpsLost) { S.gpsLost = false; $('alertBanner').classList.add('hidden'); alert('gpsback', 'info', 'GPS signal back.'); }
     S.fixes.push(fix); if (S.fixes.length > 50) S.fixes.shift();
     const last = S.track[S.track.length - 1];
     if (!last || N.distanceNm({ lat: last[0], lon: last[1] }, fix) > 0.01) { S.track.push([+fix.lat.toFixed(5), +fix.lon.toFixed(5), fix.t]); if (S.track.length > 4000) S.track.splice(0, 500); track.addLatLng([fix.lat, fix.lon]); }
@@ -279,7 +305,7 @@
     processFix();
   }
   setInterval(() => {
-    if (S.navigating && !S.sim && S.lastFixAt && Date.now() - S.lastFixAt > 25000) { setGps('bad', 'GPS lost'); alert('gpslost', 'danger', 'GPS signal lost. Check sky view.', { cooldown: 60 }); }
+    if (S.navigating && !S.sim && S.watchId !== null && S.lastFixAt && Date.now() - S.lastFixAt > 25000) { S.gpsLost = true; setGps('bad', 'GPS lost'); alert('gpslost', 'danger', 'GPS signal lost. Check sky view.', { cooldown: 60 }); }
     if (S.track.length && !S.sim) saveJson(TRACK_KEY, S.track.slice(-3000));
   }, 5000);
 
@@ -318,12 +344,12 @@
     const ttg = N.ttgSeconds(sol.dist, sp.v), ttgAll = N.ttgSeconds(sol.remaining, sp.v);
     $('hudTtg').textContent = N.fmtDur(ttg) + (sp.plan ? '*' : '');
     if (ttgAll === null) $('hudEta').textContent = '--:--';
-    else { const eta = new Date(Date.now() + ttgAll * 1000); $('hudEta').innerHTML = N.fmtTime(eta, TZ_ES) + (sp.plan ? '*' : '') + '<small> ES</small><br><small>' + N.fmtTime(eta, TZ_MA) + ' MA</small>'; }
-    $('hudDtg').innerHTML = N.fmtNm(sol.remaining, 1) + '<small> nm ' + N.fmtDur(ttgAll) + '</small>';
+    else { const eta = new Date(Date.now() + ttgAll * 1000); $('hudEta').innerHTML = N.fmtTime(eta, TZ_ES) + (sp.plan ? '*' : '') + '<small> ' + TZL_FROM + '</small><br><small>' + fmtMA(eta) + ' ' + TZL_TO + '</small>'; }
+    $('hudDtg').innerHTML = N.fmtNm(sol.remaining, 1) + '<small> nm</small><br><small>' + N.fmtDur(ttgAll) + (sp.plan ? '*' : '') + '</small>';
     $('hudPos').textContent = N.fmtDM(S.pos.lat, S.pos.lon);
     $('hudAcc').textContent = sp.plan ? '* at plan speed ' + S.settings.speed + ' kn' : '';
     $('hudSim').textContent = S.sim ? 'SIMULATION' : '';
-    $('hudRoute').textContent = S.route.id === 'tarifa' ? 'Tarifa crossing' : 'East crossing';
+    $('hudRoute').textContent = S.route.short || S.route.id;
     const wxp = W.nearestPoint(S.wx, S.pos); const row = wxp ? W.rowAt(wxp, new Date()) : null;
     $('hudWx').textContent = row ? `wind ${Math.round(row.wind)}${row.gust ? '/' + Math.round(row.gust) : ''} kn ${N.compass16(row.windDir)} · sea ${row.wave != null ? row.wave.toFixed(1) + ' m' : '--'}${row.current != null ? ' · cur ' + row.current.toFixed(1) + ' kn ' + N.compass16(row.currentDir) : ''}` : '';
   }
@@ -390,7 +416,7 @@
   }
   function checkHazards(pos) {
     S.hazardNear = S.hazardNear || {};
-    for (const h of C.hazards) {
+    for (const h of P.hazards) {
       const d = N.distanceNm(pos, h);
       const inside = d < h.radius;
       const was = !!S.hazard[h.id];
@@ -404,8 +430,8 @@
     }
   }
   function checkHarbourSpeed(pos) {
-    if (S.sog === null || S.sog < 4) return;
-    for (const pl of Object.values(C.places)) if (N.distanceNm(pos, pl) < 0.3) alert('harbspeed', 'warn', `Slow down: harbour speed limit near ${pl.name}.`, { cooldown: 60 });
+    if (S.sog === null || S.sog < (P.harbourSpeedKn || 4)) return;
+    for (const pl of Object.values(P.places)) if (N.distanceNm(pos, pl) < 0.3) alert('harbspeed', 'warn', `Slow down: harbour speed limit near ${pl.name}.`, { cooldown: 60 });
   }
   function checkWeatherNow(pos) {
     if (!S.wx || Date.now() - S.lastWxAlert < 15 * 60000) return;
@@ -415,7 +441,7 @@
     if (v.level !== 'ok') { S.lastWxAlert = Date.now(); alert('wxnow', v.level === 'nogo' ? 'danger' : 'warn', `Weather ${v.level === 'nogo' ? 'danger' : 'caution'} near ${pt.name}: ${v.reasons.join(', ')}.`); }
   }
   function checkSun() {
-    const now = new Date(); const st = N.sunTimes(now, 35.78, -5.80);
+    const now = new Date(); const st = N.sunTimes(now, P.sun.lat, P.sun.lon);
     if (!st.sunset) return;
     const dt = (st.sunset - now) / 60000;
     if (dt > 0 && dt < 60 && !S.sunsetWarned) { S.sunsetWarned = true; alert('sunset', 'warn', `Sunset in ${Math.round(dt)} minutes (${bothTimes(st.sunset)}). Navigation lights on, prepare for night entry.`); }
@@ -425,6 +451,7 @@
   // ---------- simulation ----------
   function startSim(fromWp) {
     stopSim();
+    S.simGpsWasOn = S.watchId !== null; stopGps(); S.gpsLost = false;
     S.simSavedWp = S.settings.wp; S.simSavedTrack = S.track.slice();
     S.track = []; track.setLatLngs([]); S.zone = {}; S.hazard = {}; S.hazardNear = {}; S.approached = {}; S.arrivedFinal = false;
     const wps = WPS();
@@ -444,6 +471,7 @@
   }
   function stopSim() {
     if (S.sim) { clearInterval(S.sim); S.sim = null; }
+    if (S.simGpsWasOn) { S.simGpsWasOn = false; S.lastFixAt = Date.now(); startGps(); } else setGps('', 'GPS off');
     if (S.simSavedWp !== undefined) { // restore the real passage state the demo replaced
       S.settings.wp = S.simSavedWp; S.track = S.simSavedTrack || []; S.simSavedWp = undefined; S.simSavedTrack = undefined;
       track.setLatLngs(S.track.map(p => [p[0], p[1]])); saveSettings(); saveJson(TRACK_KEY, S.track);
@@ -477,8 +505,8 @@
     if (!force && S.wx && Date.now() - S.wx.fetchedAt < 20 * 60000) return;
     toast('Fetching forecast…');
     try {
-      const d = await W.fetchAll(3);
-      if (Object.keys(d.points).length) { S.wx = d; toast('Forecast updated' + (d.errors.length ? ' (some points failed)' : '')); }
+      const d = await W.fetchAll(3, null, S.wx);
+      if (Object.keys(d.points).length) { S.wx = d; toast(d.stale ? 'Offline: showing the stored forecast' : 'Forecast updated' + (d.errors.length ? ' (some points kept from the previous fetch)' : '')); }
       else toast('Forecast fetch failed');
     } catch (e) { toast('Forecast fetch failed: ' + e.message); }
     if ($('view-wx').classList.contains('active')) renderWx();
@@ -518,11 +546,7 @@
         h += tideSummary(pt);
       }
       h += '</div>';
-      h += `<div class="card"><h2>How to read the Strait</h2><ul>
-        <li><b>Levante</b> (E wind) and <b>Poniente</b> (W wind) funnel through the Strait; the wind is strongest between Tarifa and Tangier and can be 10 to 15 kn more than the forecast at the ends.</li>
-        <li>The surface flow runs <b>eastward</b> into the Mediterranean (1 to 2 kn, up to 3 kn off Tarifa) with the tidal stream on top. A Levante blowing <b>against</b> that eastward flow builds short, steep seas: the "wind against current" column flags it.</li>
-        <li>Crossing on a plane at 20+ kn in 1.5 m short seas is punishing; over 2 m or 25 kn sustained, do not go with this boat and crew.</li>
-        <li>Fog is possible in September, mostly mornings on the Atlantic side. Below 2 km visibility, radar/AIS-less crossing of the lanes is not sensible.</li></ul></div>`;
+      h += P.weatherNotes || '';
     }
     el.innerHTML = h;
     $('btnWxRefresh').addEventListener('click', () => refreshWeather(true));
@@ -546,75 +570,25 @@
     const el = $('planPage'); const r = S.route; const dep = new Date(S.settings.departure);
     const sp = S.settings.speed;
     let cum = 0;
-    let h = `<div class="card"><h2>Route</h2><div class="row">${C.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${x.id}" ${x.id === r.id ? 'checked' : ''}> ${x.recommended ? 'Recommended' : 'Alternative'}</label>`).join('')}</div>
+    let h = `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${x.id}" ${x.id === r.id ? 'checked' : ''}> ${x.recommended ? 'Recommended' : 'Alternative'}</label>`).join('')}</div>
       <p><b>${r.name}</b></p><p>${r.summary}</p>
-      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA Tangier</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * 75)} L at a planning burn of 75 L/h (Prestige 36 at 20-22 kn; tanks 2 x 400 L). Leave with full tanks.</div></div></div>`;
+      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA Tangier</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (P.vessel.burnLph || 75))} L at a planning burn of ${P.vessel.burnLph || 75} L/h (${P.vessel.name || 'planning figure'}; tanks ${P.vessel.fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
     h += `<div class="card"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
     r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
     h += `</table></div><p class="muted">Courses are true. Apply your compass variation (about 1° W here) and deviation if steering by compass.</p></div>`;
     h += `<div class="card"><h2>Waypoints</h2><div class="tbl"><table><tr><th>ID</th><th>Position</th><th>Note</th></tr>${r.waypoints.map(w => `<tr><td><b>${w.id}</b><br><span class="muted">${w.name}</span></td><td>${N.fmtDM(w.lat, w.lon)}<br><span class="muted">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</span></td><td style="white-space:normal;min-width:220px">${w.note}</td></tr>`).join('')}</table></div>
       <div class="row" style="margin-top:8px">${SINGLE ? '' : `<a class="btn" id="gpxLink" download="saily-${r.id}.gpx">Download GPX for the plotter</a>`}<button class="btn" id="btnCopyWp">Copy waypoints (ID, lat/lon)</button></div></div>`;
-    h += `<div class="card"><h2>Crossing the traffic lanes (COLREG rule 10)</h2><ul>
-      <li>Stay in the <b>inshore traffic zones</b> (green dashed) along both coasts. Do not use the lanes as a route.</li>
-      <li>Cross the scheme <b>on a heading at right angles</b> to the traffic flow (here 180° T going south). Heading, not ground track: aim the bow at 180° and accept the set.</li>
-      <li>The north lane is <b>westbound</b>: ships come from your <b>left</b>. The south lane is <b>eastbound</b>: ships come from your <b>right</b>. Big ships do 15 to 22 kn; a ship 3 nm away is on you in 8 minutes.</li>
-      <li>You are the give-way vessel to anyone in a lane if you are crossing under 20 m LOA (rule 10j): do not impede them. Slow down or speed up early, never cut close ahead.</li>
-      <li>Keep VHF 16 on. Tarifa Traffic (VTS) works VHF 10 and watches the whole Strait on radar and AIS. If in doubt, call them: "Tarifa Traffic, this is motor yacht [name], position ..., crossing southbound, request traffic information."</li>
-      <li>Precautionary areas (magenta dotted) have no lanes but ships turn and converge there. The eastern one (Gibraltar to Ceuta) is the busiest water in the Strait.</li></ul></div>`;
-    h += `<div class="card"><h2>Sotogrande (departure)</h2><div class="kv">
-      <div>Marina</div><div>${C.places.sotogrande.name} · VHF 9 (office 09:00-21:00) · +34 956 790 000 · WhatsApp +34 639 347 807</div>
-      <div>Layout</div><div>Inner mouth 80 m wide (4.5 m) opens SOUTH at 36°17.29'N 5°16.22'W; a 250 m channel runs south between the breakwater (east) and the beach to the breakwater head with its green light at 36°17.15'N 5°16.19'W. Leaving: go south down the channel, round the head to port, then turn ESE to SOTO-OUT. Speed limit 3 kn near the mouth and inside (port rules art. 37).</div>
-      <div>Hazard</div><div>Marina safety notice of 20 Feb 2026: dangerous shoaling at 36°16.890'N 5°16.276'W, 500 m south of the head (bearing 195°), and a voluntary exclusion zone off the Guadiaro river mouth. No notice lifting it was found. Ask the Capitanía on VHF 9 before leaving; do not run south or south-west from the head.</div>
-      <div>Sea at entrance</div><div>Swell at the mouth with E/SE winds; noticeable ebb current at the entrance; recurrent silting.</div>
-      <div>Leaving Spain</div><div>Spanish-flag private boats without professional crew need no "despacho" (RD 186/2023). Sotogrande is not a Schengen border post: EU/EEA/Swiss crew need nothing; non-EU passport holders (UK, US...) should get their Schengen exit recorded (EES) at La Línea, Algeciras or Tarifa police, or accept the overstay risk on return. Morocco does not ask for a Spanish exit stamp.</div>
-      <div>Carry</div><div>Passports, boat registration, insurance certificate valid for Morocco, skipper licence (ICC or national), radio licence, crew list ×4, a sheet with the boat's technical data.</div></div></div>`;
-    h += `<div class="card"><h2>Tangier (arrival)</h2><div class="kv">
-      <div>Marina</div><div>${C.places.tangier.name} · VHF <b>11</b> (harbourmaster 11/16) · Tangier Traffic (VTS) VHF 69, alt 68 · port pilots VHF 12</div>
-      <div>Contact</div><div>Capitainerie 24 h: +212 539 372 424 · Office: +212 539 33 17 17 · info@tanjamarinabay.ma (send registration, insurance, passports and crew list ahead; reservation advised, a berth is not guaranteed on arrival)</div>
-      <div>Hours</div><div>Office Mon-Fri 09:00-19:00, Sat 10:00-14:00 (2026 guide), <b>closed Sunday</b>; capitainerie, marineros and fuel 24/7; police and customs posts on site. Arrive before 18:00 Morocco time and clear in daylight; departure clearance is daytime only.</div>
-      <div>Approach</div><div>Tangier Bay opens NE. Keep at least 1 nm off Cap Malabata (Almirante Rock 6.3 m, 0.5 nm north of it, breaks in heavy seas). Do not cut across the bay: shoals lie in its east and south (Sevil du Burj 3.6 m, Gandouri 5.5 m, Buoree Rock 0.9 m about 1 nm east of the main jetty head, a wreck 0.5 nm ENE of it). Come in from the NE on the ferry line towards the jetty head Fl(3) 12s, then follow the marked marina channel. Buoys are reported off station or missing: rely on bearings and daylight.</div>
-      <div>Entrance</div><div>${N.fmtDM(C.places.tangier.lat, C.places.tangier.lon)}, 140 m wide at the SE corner of the basin, between the Jetée Est head Fl(3)G 10s (starboard) and the Jetée Ouest head Fl(3)R 10s (port). Enter heading N/NW. Shoal 0.9-2 m immediately south of the red head and along the beach: never approach from the beach side. Fuel dock just inside, reception pontoon beyond it (high concrete edge, 1.7-2 m tidal range: fenders high).</div>
-      <div>Traffic</div><div>Fast ferries from Tarifa and cruise ships use the north side of the outer harbour and a turning area in the middle. Give way, keep to the marina side. No anchoring within 500 m of the marina breakwaters (Moroccan law).</div>
-      <div>Formalities</div><div>Q flag and Moroccan courtesy flag. Police, customs and port authority in one building by the reception pontoon: 15-90 min, no charge. Customs form D716 (temporary admission of the boat): keep the blue and white copies aboard and present them on departure. Declare alcohol, medicines, drones (drones are held until you leave). Visa-free 90 days for EU, UK, US, CA, AU, CH and most others.</div>
-      <div>Cost</div><div>2026 rate for a 12 m x 4 m boat: 281 MAD per night in high season (to 30 Sep), about 26 EUR; access card deposit.</div>
-      <div>Time</div><div>Morocco is UTC+1 (1 h behind Spain) until 02:00 on Sunday 20 Sep 2026, when it moves to permanent UTC+0 (2 h behind Spain). The MA clock in this app uses your phone's time-zone database: check it against a local clock after 20 Sep.</div></div></div>`;
-    h += `<div class="card"><h2>Emergency and radio</h2><div class="kv">
-      <div>Distress</div><div>VHF 16 (DSC 70): MAYDAY / PAN PAN with the position shown on the Navigate tab.</div>
-      <div>Salvamento Marítimo</div><div><b>+34 900 202 202</b> (24 h, free) · Spain 112</div>
-      <div>Tarifa Traffic</div><div>VTS for the Strait (radar, AIS): VHF <b>10</b> (67 alt), watch 16, MMSI 002240994, +34 956 684 740 / 684 757. Weather and traffic bulletins on VHF 10 at 00:15, 04:15, 08:15, 12:15, 16:15, 20:15 UTC (14:15 and 18:15 Spain time). A yacht need not file a GIBREP report, but announcing the crossing is advised and contact is mandatory in fog.</div>
-      <div>Algeciras Traffic</div><div>VHF 74 (15), MMSI 002241001, +34 956 580 930 (Bay of Algeciras).</div>
-      <div>Tangier Traffic</div><div>VHF <b>69</b> (68 alt); bulletins 02:15, 06:15, 10:15, 14:15, 18:15, 22:15 UTC.</div>
-      <div>Gibraltar</div><div>Gibraltar VTS VHF 12, watch 16, +350 200 46254 (24 h).</div>
-      <div>Morocco</div><div>MRCC Rabat +212 5 37 62 58 77 · MRSC Tanger +212 5 39 93 20 90 (currency unverified: use VHF 16 first) · Tanger harbourmaster VHF 11/16 · Police 19 · Gendarmerie 177 · Fire/ambulance 15 · 112 from a mobile.</div></div><p class="muted">Compiled from IMO MSC.300(87), NGA Pub 131, Salvamento Marítimo and port sources (Sep 2026). Confirm before departure and keep a paper copy.</p></div>`;
-    h += `<div class="card"><h2>Sea and current notes (NGA Pub 131, Ifremer)</h2><ul>
-      <li>Surface flow sets <b>east</b> into the Med, 1-2 kn mid-strait and up to 3 kn inshore; at Tarifa it is almost always eastward (3+ kn measured at HW+2). Mid-strait the east-going stream starts about <b>HW Gibraltar</b> and the west-going about 6 h later, earlier towards both shores.</li>
-      <li><b>Punta Carnero</b>: strong NW-NE tidal set along the coast, "numerous accidents"; dangers to 0.2 nm off, La Perla rocks (4.7 m) 1.2 nm south. Keep the CARNERO offing.</li>
-      <li><b>Tarifa</b>: races off the island; Bajo de los Cabezos race 5 nm NW (off route) can extend across the strait in heavy weather.</li>
-      <li><b>Banco de Fenix</b> (15 m, 3 nm NNE of Malabata) and the banks between Malabata and Hejar Lesfar: the most violent races on the Moroccan side at max stream. The route passes just north of it; at springs (10-14 Sep 2026) with wind against stream expect breaking overfalls there and north of Tangier.</li>
-      <li>Wind at Tarifa and Punta Carnero is commonly <b>2-3 Beaufort above</b> the area forecast. The local whale-boat operator stays in port from 21 kn of Levante. Fog forms in the early morning when a Levante dies and can last into the afternoon.</li>
-      <li>Tunny nets up to 7 nm offshore in season (white flag with black A by day, red over white lights at night). Whale speed limit 13 kn applies April to August only.</li></ul></div>`;
+    for (const c of (P.cards || [])) h += c.html;
     h += `<div class="card"><h2>Departure checklist</h2><div class="check">${CHECKLIST.map((c, i) => `<label><input type="checkbox" data-ck="${i}" ${S.settings.checklist[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>`;
-    const sun = N.sunTimes(new Date(), 35.78, -5.80);
+    const sun = N.sunTimes(new Date(), P.sun.lat, P.sun.lon);
     h += `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at Tangier. Plan to be berthed with daylight to spare: the marina entrance and the port traffic are much harder at night.</p></div>`;
     el.innerHTML = h;
-    el.querySelectorAll('input[name=route]').forEach(i => i.addEventListener('change', () => { S.settings.routeId = i.value; S.settings.wp = 1; saveSettings(); S.route = C.routes.find(x => x.id === i.value); S.zone = {}; S.approached = {}; drawRoutes(); renderPlan(); if (S.pos) processFix(); }));
+    el.querySelectorAll('input[name=route]').forEach(i => i.addEventListener('change', () => { S.settings.routeId = i.value; S.settings.wp = 1; saveSettings(); S.route = P.routes.find(x => x.id === i.value); S.zone = {}; S.approached = {}; drawRoutes(); renderPlan(); if (S.pos) processFix(); }));
     if ($('gpxLink')) $('gpxLink').href = 'data:application/gpx+xml;charset=utf-8,' + encodeURIComponent(N.toGPX('Saily ' + r.id, r.waypoints));
     $('btnCopyWp').addEventListener('click', async () => { const txt = r.waypoints.map(w => `${w.id}\t${N.fmtDM(w.lat, w.lon)}\t${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`).join('\n'); try { await navigator.clipboard.writeText(txt); toast('Copied'); } catch (e) { toast('Copy failed'); } });
     el.querySelectorAll('input[data-ck]').forEach(i => i.addEventListener('change', () => { S.settings.checklist[i.dataset.ck] = i.checked; saveSettings(); }));
   }
-  const CHECKLIST = [
-    'Weather checked in the app for the whole passage window (wind, gusts, waves, wind vs current), and Spanish forecast (AEMET Estrecho) or Windy cross-checked.',
-    'Preload done in Setup while on wifi: app shell, forecast, map tiles. Airplane-mode test: app opens and shows the chart.',
-    'Phone at 100 %, charging cable and power bank on deck; phone mounted with a clear sky view; auto-lock off (the app requests wake lock, but check).',
-    'Route loaded in the boat plotter too (GPX or keyed in); paper copy of waypoints and contacts.',
-    'Fuel: full tanks, at least 30 % reserve after the planned burn; engine checks done (oil, coolant, belts, raw water strainers).',
-    'Lifejackets worn on deck, kill cord, EPIRB/PLB if aboard, flares in date, VHF tested on 16, handheld VHF charged.',
-    'Documents: passports, boat registration, insurance (Morocco covered), skipper licence, crew list ×4, boat stamp if you have one.',
-    'Flags: Moroccan courtesy flag and Q flag ready.',
-    'Marina office told; Tanja Marina Bay booked or called (VHF 9 on approach).',
-    'Crew briefing: lane crossing (ships from the LEFT then the RIGHT), what "give way" means at 22 kn, who watches which sector, seasickness pills taken early.',
-    'Timezone: watches to Morocco time on arrival (1 hour back).',
-  ];
+  const CHECKLIST = P.checklist || [];
 
   // ---------- setup / more ----------
   function renderMore() {
@@ -622,10 +596,11 @@
     let h = `<div class="card"><h2>Passage settings</h2>
       <label class="field"><span>Planned cruise speed (kn)</span><input type="number" id="setSpeed" min="5" max="40" step="1" value="${s.speed}"></label>
       <label class="field"><span>Planned departure (Spain time)</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
-      <label class="field"><span>Route</span><select id="setRoute">${C.routes.map(r => `<option value="${r.id}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended (Tarifa crossing)' : 'Alternative (east crossing)'}</option>`).join('')}</select></label>
+      <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${r.id}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${r.short || r.id})</option>`).join('')}</select></label>
       <label class="field"><span>Spoken alerts</span><input type="checkbox" id="setVoice" ${s.voice ? 'checked' : ''}></label>
       <label class="field"><span>Alert beeps</span><input type="checkbox" id="setSound" ${s.sound ? 'checked' : ''}></label>
       <label class="field"><span>OpenSeaMap buoys/lights overlay</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
+      <label class="field"><span>Morocco clock (MA)</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option><option value="60" ${s.maOffset === '60' ? 'selected' : ''}>UTC+1 (until 20 Sep 2026)</option><option value="0" ${s.maOffset === '0' ? 'selected' : ''}>UTC+0 (from 20 Sep 2026)</option></select></label>
       <div class="row" style="margin-top:8px"><button class="btn" id="btnTestAlert">Test alert</button><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
     h += `<div class="card"><h2>Weather thresholds</h2>
       <label class="field"><span>Wind caution / no-go (kn)</span><span class="row"><input type="number" id="thWindC" value="${s.th.windCaution}" style="width:70px"><input type="number" id="thWindN" value="${s.th.windNoGo}" style="width:70px"></span></label>
@@ -635,17 +610,18 @@
     h += `<div class="card"><h2>Preload for offline use</h2><p class="muted">Do this on wifi before leaving. Stores the app, the 3-day forecast and map tiles for the whole route (about 15 to 40 MB). The vector chart, route, TSS and hazards are built in and always work offline.</p>
       <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
       <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted">${preloadStatusText()}</div><div id="storeText" class="muted"></div></div>`;
-    h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Install</div><div>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon: fullscreen, and the cache is kept.</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div></div>`;
+    h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Install</div><div>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload THERE: the Home Screen app has its own storage, separate from Safari's.</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div></div>`;
     h += `<div class="card"><h2>Alert log</h2><div class="log">${S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}`).join('\n') || 'none yet'}</div><div class="row" style="margin-top:8px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button><button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
     h += `<div class="card"><h2>About</h2><p class="muted">Saily is a temporary passage aid built for one crossing. Data: ${C.meta.sources.join('; ')}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, CARTO, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). Not for navigation without official charts, a proper lookout and COLREGs.</p></div>`;
     el.innerHTML = h;
     const num = (id, f) => $(id).addEventListener('change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
     num('setSpeed', v => { s.speed = v; });
     $('setDep').addEventListener('change', () => { try { s.departure = fromLocal(TZ_ES, $('setDep').value).toISOString(); saveSettings(); } catch (e) { } });
-    $('setRoute').addEventListener('change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = C.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
+    $('setRoute').addEventListener('change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = P.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
     $('setVoice').addEventListener('change', () => { s.voice = $('setVoice').checked; saveSettings(); });
     $('setSound').addEventListener('change', () => { s.sound = $('setSound').checked; saveSettings(); });
     $('setSeamark').addEventListener('change', () => { s.seamark = $('setSeamark').checked; saveSettings(); applyBase(); });
+    $('setMa').addEventListener('change', () => { s.maOffset = $('setMa').value; saveSettings(); tickClocks(); if (S.solution) updateHud(S.solution); });
     num('thWindC', v => s.th.windCaution = v); num('thWindN', v => s.th.windNoGo = v); num('thGustC', v => s.th.gustCaution = v); num('thGustN', v => s.th.gustNoGo = v);
     num('thWaveC', v => s.th.waveCaution = v); num('thWaveN', v => s.th.waveNoGo = v); num('thCur', v => s.th.currentCaution = v);
     $('btnTestAlert').addEventListener('click', () => { ensureAudio(); alert('test', 'warn', 'Test alert. Ships come from your left. Steer 180.', {}); });
@@ -688,6 +664,7 @@
   async function preload(wx, tiles) {
     if (SINGLE) { toast('Single-file version: nothing to preload, the chart is built in'); return; }
     if (!navigator.onLine) { toast('You are offline'); return; }
+    if (!('caches' in window)) { toast('Offline storage needs https (or localhost). Open the app from its https address.'); return; }
     const prog = $('preProg'), txt = $('preText');
     const setP = (f, t) => { if (prog) prog.style.width = Math.round(f * 100) + '%'; if (txt) txt.textContent = t; };
     try { if (navigator.serviceWorker) { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } } catch (e) { }
@@ -700,7 +677,14 @@
           const u = urls.shift();
           try {
             const hit = await cache.match(u);
-            if (!hit) { const res = await fetch(u, { mode: 'no-cors', cache: 'no-store' }); if (res && (res.ok || res.type === 'opaque')) await cache.put(u, res); else failed++; }
+            if (!hit || hit.headers.get('X-Saily') === 'blank') {
+              let res = null;
+              try { res = await fetch(u, { mode: 'cors', cache: 'no-store' }); } catch (e) { res = null; }
+              if (!res) { try { res = await fetch(u, { mode: 'no-cors', cache: 'no-store' }); } catch (e) { res = null; } }
+              if (!res || res.headers.get('X-Saily') === 'blank') failed++;
+              else if (res.ok || res.type === 'opaque') await cache.put(u, res);
+              else failed++;
+            }
           } catch (e) { failed++; }
           done++; if (done % 10 === 0) setP(0.05 + 0.95 * done / (done + urls.length), `Tiles ${done}/${done + urls.length} (${failed} failed)`);
         }
@@ -724,12 +708,16 @@
   }
 
   // ---------- init ----------
+  document.title = 'Saily · ' + (P.title || P.name);
+  $('tzFrom').textContent = TZL_FROM; $('tzTo').textContent = TZL_TO;
+  $('hudEtaLabel').textContent = 'ETA ' + (P.destinationShort || 'destination');
+  $('startTitle').innerHTML = `<b>${P.name}</b><br>${P.description || ''}`;
   setNet();
   if (S.pos === null) { updateHudIdle(); }
   function updateHudIdle() {
     const w = WPS()[S.settings.wp];
     $('hudWpId').textContent = w.id; $('hudWpName').textContent = w.name;
-    $('hudRoute').textContent = S.route.id === 'tarifa' ? 'Tarifa crossing' : 'East crossing';
+    $('hudRoute').textContent = S.route.short || S.route.id;
     $('hudDtg').innerHTML = S.route.total + '<small> nm</small>';
   }
   window.SAILY = { S, map, processFix, startSim, stopSim, alert, preload, refreshWeather, onFix };

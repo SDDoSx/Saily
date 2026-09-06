@@ -14,6 +14,9 @@ from shapely.ops import unary_union
 
 SCRATCH = sys.argv[1] if len(sys.argv) > 1 else '.'
 OUT = sys.argv[2] if len(sys.argv) > 2 else 'site/chart-data.js'
+PASSAGE_FILE = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(__file__), '..', 'passages', 'strait-of-gibraltar.json')
+PASSAGE_OUT = os.path.join(os.path.dirname(OUT), 'passage.js')
+PZ = json.load(open(PASSAGE_FILE, encoding='utf-8'))
 
 def dm(d, m):
     return d + m / 60.0
@@ -177,39 +180,8 @@ itz = [
 ]
 free_area = [{'id': 'free_tm', 'name': 'Free navigation area off Tanger-Med (port approaches, ferries)', 'rings': geom_to_latlon(free_tm)}]
 
-# --- Routes -------------------------------------------------------------------
-# (lat, lon, id, name, note, arrival radius nm)
-ROUTE_TARIFA = [
-    (36.2882, -5.2703, 'SOTO', 'Sotogrande inner mouth', 'Inner harbour mouth, 80 m wide, opens S. 3 kn limit. VHF 9. Head S down the channel between the breakwater (E) and the beach (W).', 0.03),
-    (36.2856, -5.2710, 'SOTO-HEAD', 'Sotogrande breakwater head', 'Green light on the head 100 m to your east. Round it to port and turn ESE immediately: reported shoal 36 16.890N 5 16.276W lies 0.25 nm due S of here. Do not head S or SW.', 0.04),
-    (36.2825, -5.2630, 'SOTO-OUT', 'Sotogrande offing', 'Clear of the Guadiaro bar and the shoal. Set course for the east side of Gibraltar.', 0.15),
-    (36.1250, -5.3250, 'GIB-E', 'Gibraltar east side', 'Anchored ships in the eastern anchorage. Pass east of them. Keep 0.7 nm off the Rock.', 0.2),
-    (36.0980, -5.3450, 'EUROPA', 'Europa Point offing', 'Rounding Europa Point 0.7 nm off; small race off the point. Precautionary area begins 3 nm S: ship traffic converging on Algeciras, Ceuta and Tanger-Med. Stay in the northern inshore zone.', 0.2),
-    (36.0400, -5.4400, 'CARNERO', 'Punta Carnero offing', 'Algeciras Bay entrance: ships cross your track. Strong NW-NE tidal set along the Carnero shore; La Perla rocks (4.7 m, race close E of them) 1.2 nm S of the point are 0.5 nm N of this leg: hold the offing.', 0.2),
-    (35.9845, -5.6130, 'TARIFA', 'Tarifa Island offing', 'Narrow corridor: island 0.8 nm N, westbound lane 0.7 nm S. Overfalls and race off the island, worst with wind against tide. Tarifa-Tangier ferries cross here.', 0.2),
-    (35.9800, -5.7000, 'X-NORTH', 'Crossing point north', 'Turn to 180 T. Cross the TSS at right angles, do not slow down. First the WESTBOUND lane: ships come from your LEFT (east).', 0.15),
-    (35.8740, -5.7000, 'X-SOUTH', 'Crossing point south', 'Clear of the eastbound lane. Now in the Moroccan inshore zone. Anchorage Alpha 1.4 nm E. Banco de Fenix (15 m) lies on this leg: overfalls at max stream, slow down if the sea steepens.', 0.15),
-    (35.8350, -5.7650, 'MALABATA', 'Cap Malabata offing', 'Cap Malabata light 1.1 nm SE; Almirante Rock (6.3 m, breaks) 0.9 nm SE. Tangier Bay opens ahead. Ferries from Tarifa come down from the N at 30 kn.', 0.2),
-    (35.8020, -5.7870, 'TANG-N', 'Tangier port approach (ferry line)', 'Call Tanja Marina Bay on VHF 11 now. Jetty head light Fl(3) 12s 0.7 nm SSW. Stay on the deep-water ferry line; charted wreck (buoyed) and Buoree Rock (0.9 m) lie E of it. Buoys may be missing.', 0.15),
-    (35.7880, -5.7845, 'TANG-E', 'Marina access channel, point E', 'Start of the marked TMBI access channel (12 m), beside the ferry turning area. Follow it SW towards the marina entrance. Ferries turn here: keep clear.', 0.08),
-    (35.7836, -5.7925, 'TANG-F', 'Channel point F, off entrance', 'Green Jetee Est head 200 m to the W. Continue SW to the point S of the gap; do NOT turn W here, the jetty is in the way.', 0.05),
-    (35.7824, -5.7955, 'MAR-APP', 'South of marina entrance', 'Turn N. Entrance gap 120 m ahead: red Fl(3)R (C12) to port, green Fl(3)G to starboard. Shoal 0.9-2 m to your W/SW along the beach: do not drift west.', 0.04),
-    (35.7841, -5.7957, 'TANJA', 'Tanja Marina Bay entrance', 'Inside the gap heading N. Fuel dock to starboard, reception pontoon beyond it (high wall, fenders high). Q flag and Moroccan flag up. Marineros take lines.', 0.03),
-]
-
-def wp(id_):
-    return next(w for w in ROUTE_TARIFA if w[2] == id_)
-
-ROUTE_EAST = [
-    wp('SOTO'), wp('SOTO-HEAD'), wp('SOTO-OUT'), wp('GIB-E'), wp('EUROPA'),
-    (35.9420, -5.4250, 'G-SOUTH', 'South edge of precautionary area', 'Crossed the eastern precautionary area (no lanes, but converging ships). Enter the south-eastern inshore zone just S of point 16.', 0.2),
-    (35.9250, -5.4600, 'CIRES', 'Punta Cires offing', 'Small race off Punta Cires. Leaving the SE inshore zone into the Tanger-Med free area. Ferries and container ships turning into Tanger-Med ahead.', 0.2),
-    (35.9000, -5.5450, 'TMED-OFF', 'Off Tanger-Med', 'Passing 1 nm N of Tanger-Med breakwaters. Keep clear of ships manoeuvring. Enter the SW inshore zone.', 0.2),
-    (35.8680, -5.6500, 'KSAR', 'Off Ksar es-Seghir', 'SW inshore zone. Anchorage Alpha (ships at anchor) 1.3 nm SW: this leg passes 0.6 nm N of it.', 0.2),
-    wp('MALABATA'), wp('TANG-N'), wp('TANG-E'), wp('TANG-F'), wp('MAR-APP'), wp('TANJA'),
-]
-
-def route_obj(rid, name, wps, recommended, summary):
+# --- Routes come from the passage JSON -------------------------------------------
+def route_obj(rid, name, wps, recommended, summary, short=None):
     w = [{'lat': a, 'lon': b, 'id': i, 'name': n, 'note': note, 'radius': r} for a, b, i, n, note, r in wps]
     legs = []
     total = 0
@@ -218,14 +190,9 @@ def route_obj(rid, name, wps, recommended, summary):
         d = dist_nm(a, b)
         total += d
         legs.append({'from': wps[i][2], 'to': wps[i + 1][2], 'dist': round(d, 2), 'brg': round(bearing(a, b))})
-    return {'id': rid, 'name': name, 'recommended': recommended, 'summary': summary, 'waypoints': w, 'legs': legs, 'total': round(total, 1)}
+    return {'id': rid, 'short': short or rid, 'name': name, 'recommended': recommended, 'summary': summary, 'waypoints': w, 'legs': legs, 'total': round(total, 1)}
 
-routes = [
-    route_obj('tarifa', 'Recommended: Spanish inshore zone, right-angle crossing at 5 42W, Moroccan inshore zone', ROUTE_TARIFA, True,
-              'Follow the Spanish coast inside the northern inshore traffic zone to Tarifa, cross both lanes on 180 T (COLREG rule 10c), then follow the Moroccan coast to Tangier.'),
-    route_obj('east', 'Alternative: east crossing via the Gibraltar-Ceuta precautionary area, past Tanger-Med', ROUTE_EAST, False,
-              'Shorter but passes through the busiest converging traffic and the Tanger-Med port approaches. Use only if the Tarifa side is untenable (strong Levante).'),
-]
+routes = [route_obj(r['id'], r['name'], [(w['lat'], w['lon'], w['id'], w['name'], w.get('note', ''), w.get('radius', 0.1)) for w in r['waypoints']], r.get('recommended', False), r.get('summary', ''), r.get('short')) for r in PZ['routes']]
 
 # --- Verification: legs vs land and TSS polygons --------------------------------
 report = []
@@ -247,7 +214,8 @@ for row in report:
     print('LEG', row)
 # hazard crossings per leg (info)
 
-bad = [row for row in report if row[3] < 0.25 and not (row[1].startswith('SOTO') or row[1].startswith('MAR') or row[1].startswith('TANG-') or row[2].startswith('SOTO') or row[2] in ('MAR-APP', 'TANJA', 'TANG-F', 'TANG-E'))]
+harbour_ids = set(PZ.get('harbourWaypoints', ['SOTO', 'SOTO-HEAD', 'MAR-APP', 'TANJA', 'TANG-F', 'TANG-E']))
+bad = [row for row in report if row[3] < 0.25 and not (row[1] in harbour_ids or row[2] in harbour_ids)]
 if bad:
     print('WARNING: legs closer than 0.25 nm to land:', bad)
 
@@ -277,45 +245,9 @@ for e in H['elements']:
     if e['type'] == 'way' and t.get('seamark:type') == 'anchorage' and e.get('geometry') and len(e['geometry']) > 3:
         anchorages.append({'name': t.get('seamark:name') or t.get('name') or 'Anchorage', 'ring': [[round(p['lat'], 5), round(p['lon'], 5)] for p in e['geometry']]})
 
-hazards = [
-    {'id': 'soto_shoal', 'lat': 36.2815, 'lon': -5.27127, 'radius': 0.12, 'level': 'danger',
-     'name': 'Shoal at Guadiaro mouth (marina notice 20 Feb 2026)',
-     'note': 'Puerto Sotogrande reports a dangerous reduction of depth at 36 16.890N 5 16.276W, 500 m S of the breakwater head. Keep well clear; leave and approach from the E/SE.'},
-    {'id': 'la_perla', 'lat': 36.057, 'lon': -5.4262, 'radius': 0.3, 'level': 'caution',
-     'name': 'La Perla rocks (4.7 m) and Las Bajas', 'note': 'Pinnacle rocks 1.2 nm S of Punta Carnero light, race close E of them; strong NW-NE tidal set along the Carnero shore (Pub 131). Position derived from the pilot, approximate.'},
-    {'id': 'tarifa_race', 'lat': 35.9985, 'lon': -5.6100, 'radius': 1.0, 'level': 'caution',
-     'name': 'Tarifa overfalls / tide race',
-     'note': 'Steep breaking seas off Tarifa Island with wind against tide; strongest wind acceleration in the strait.'},
-    {'id': 'cabezos', 'lat': 36.017, 'lon': -5.70, 'radius': 0.8, 'level': 'caution',
-     'name': 'Bajo de los Cabezos race', 'note': 'Race of considerable violence at max stream; in heavy weather it can extend across the strait (Pub 131). Off route, 2 nm N of X-NORTH.'},
-    {'id': 'anch_alpha', 'lat': ANCH_ALPHA[0], 'lon': ANCH_ALPHA[1], 'radius': ANCH_ALPHA[2], 'level': 'caution',
-     'name': 'Anchorage Alpha (Tanger-Med ships)', 'note': 'Ships at anchor, 0.4 nm radius (IMO). Pass north of it.'},
-    {'id': 'fenix', 'lat': 35.867, 'lon': -5.717, 'radius': 0.6, 'level': 'caution',
-     'name': 'Banco de Fenix (15 m): race area', 'note': 'Rocky bank 3 nm NNE of Malabata. No grounding risk, but the most violent races on the Moroccan side at max stream, worse with wind against stream (Pub 131). Position approximate.'},
-    {'id': 'almirante', 'lat': 35.825, 'lon': -5.7486, 'radius': 0.3, 'level': 'caution',
-     'name': 'Almirante Rock (6.3 m)', 'note': '0.5 nm N of Cap Malabata, breaks in heavy seas, marked by a lit buoy (may be off station). Keep 1 nm off Malabata.'},
-    {'id': 'sevil', 'lat': 35.800, 'lon': -5.755, 'radius': 0.3, 'level': 'caution',
-     'name': 'Sevil du Burj shoal (3.6 m)', 'note': 'East part of Tangier Bay, 1 nm SSW of Malabata; Gandouri shoal (5.5 m) 0.7 nm SW of it. Positions approximate (Pub 131).'},
-    {'id': 'buoree', 'lat': 35.791, 'lon': -5.773, 'radius': 0.3, 'level': 'danger',
-     'name': 'Buoree Rock (0.9 m)', 'note': 'About 1 nm E of the main jetty head, marked by a lit buoy. Position approximate (Pub 131): stay on the ferry line N of the jetty head, do not cross the bay directly to the marina.'},
-    {'id': 'tang_wreck', 'lat': 35.7945, 'lon': -5.7838, 'radius': 0.15, 'level': 'caution',
-     'name': 'Charted wreck ENE of jetty head', 'note': 'Dangerous wreck about 0.5 nm ENE of the main jetty head, marked by a lit buoy (Pub 131, position approximate). Keep a lookout for the buoy.'},
-    {'id': 'tang_ferry', 'lat': 35.7912, 'lon': -5.7933, 'radius': 0.35, 'level': 'caution',
-     'name': 'Tangier port entrance: fast ferries', 'note': 'FRS / Intershipping fast ferries to Tarifa and cruise ships enter and leave here. Keep out of their way, keep to the marina side.'},
-    {'id': 'tang_shoal_w', 'lat': 35.7828, 'lon': -5.7978, 'radius': 0.07, 'level': 'danger',
-     'name': 'Shoal SW of the red head', 'note': 'Shoal water 0.9-2 m immediately S and SW of the Jetee Ouest head (C12) along the beach (TMBI chart). Approach the gap from the S/SE only.'},
-    {'id': 'tang_beach', 'lat': 35.7795, 'lon': -5.7900, 'radius': 0.2, 'level': 'danger',
-     'name': 'Tangier beach shallows', 'note': 'Shoal water along the beach S of the marina. Stay in the marked channel.'},
-    {'id': 'tmed_port', 'lat': 35.8880, 'lon': -5.5000, 'radius': 1.5, 'level': 'caution',
-     'name': 'Tanger-Med port approaches', 'note': 'Container ships and ferries manoeuvring; port control on VHF 12/16.'},
-    {'id': 'gib_anch', 'lat': 36.1400, 'lon': -5.3220, 'radius': 0.7, 'level': 'info',
-     'name': 'Gibraltar eastern anchorage', 'note': 'Ships at anchor around you east of the Rock: pass between them, watch for bunker barges alongside and anchor chains ahead of their bows.'},
-]
+hazards = PZ['hazards']
 
-places = {
-    'sotogrande': {'name': 'Puerto Sotogrande', 'lat': 36.2882, 'lon': -5.2703, 'vhf': '9', 'phone': '+34 956 790 000', 'tz': 'Europe/Madrid'},
-    'tangier': {'name': 'Tanja Marina Bay (Tanger Ville)', 'lat': 35.7836, 'lon': -5.7956, 'vhf': '11 / 16', 'phone': '+212 539 372 424', 'tz': 'Africa/Casablanca'},
-}
+places = PZ['places']
 
 def rings_from_mp(mp):
     out = []
@@ -338,21 +270,16 @@ for e in H['elements']:
     if e['type'] == 'way' and (t.get('seamark:type') == 'breakwater' or t.get('man_made') in ('breakwater', 'pier')) and e.get('geometry'):
         structures.append([[round(p['lat'], 5), round(p['lon'], 5)] for p in e['geometry']])
 
-labels = [
-    (35.95, -5.62, 'STRAIT OF GIBRALTAR', 'sea', 8), (36.288, -5.284, 'Sotogrande', 'town', 10), (36.14, -5.353, 'Gibraltar', 'town', 10),
-    (36.13, -5.455, 'Algeciras', 'town', 10), (36.013, -5.606, 'Tarifa', 'town', 10), (35.889, -5.32, 'Ceuta', 'town', 10),
-    (35.885, -5.505, 'Tanger-Med', 'town', 10), (35.772, -5.812, 'Tangier', 'town', 10), (35.84, -5.562, 'Ksar es-Seghir', 'town', 11),
-    (35.817, -5.750, 'Cap Malabata', 'cape', 11), (35.91, -5.483, 'Punta Cires', 'cape', 11), (36.077, -5.426, 'Punta Carnero', 'cape', 11),
-    (36.109, -5.346, 'Europa Point', 'cape', 11), (36.0, -5.61, 'Isla de Tarifa', 'cape', 12), (36.20, -5.40, 'BAY OF ALGECIRAS', 'sea', 11),
-    (35.80, -5.77, 'TANGIER BAY', 'sea', 12), (36.20, -5.08, 'ALBORAN SEA', 'sea', 9), (35.90, -6.0, 'ATLANTIC', 'sea', 9),
-]
+labels = PZ.get('labels', [])
+
 chart = {
     'meta': {
         'built': 'chart built by tools/build_chart.py',
         'sources': ['OpenStreetMap contributors (ODbL) - coastline, breakwaters, seamarks',
                     'IMO COLREG.2/Circ.66 Annex 1 (2014) - TSS In the Strait of Gibraltar, in force 1 June 2015',
                     'Puerto Sotogrande safety notice 20 Feb 2026 - Guadiaro shoal'],
-        'bbox': [35.65, -6.2, 36.45, -5.05],
+        'bbox': PZ.get('bbox', [35.65, -6.2, 36.45, -5.05]),
+        'passage': PZ['id'],
     },
     'land': land_rings,
     'landDetail': detail,
@@ -360,15 +287,17 @@ chart = {
     'tss': {'lanes': lanes, 'zones': zones, 'precautionary': precautionary, 'itz': itz, 'free': free_area,
             'points': {str(k): [round(v[0], 5), round(v[1], 5)] for k, v in P.items()}},
     'anchorages': anchorages,
-    'labels': [{'lat': l[0], 'lon': l[1], 'name': l[2], 'kind': l[3], 'z': l[4]} for l in labels],
     'aids': aids,
-    'hazards': hazards,
-    'routes': routes,
-    'places': places,
 }
+passage_out = dict(PZ)
+passage_out['routes'] = routes
+passage_out['labels'] = labels
 js = 'window.CHART = ' + json.dumps(chart, separators=(',', ':')) + ';\n'
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 open(OUT, 'w').write(js)
+pjs = 'window.PASSAGE = ' + json.dumps(passage_out, separators=(',', ':'), ensure_ascii=False) + ';\n'
+open(PASSAGE_OUT, 'w', encoding='utf-8').write(pjs)
 print('wrote', OUT, len(js), 'bytes;', 'aids', len(aids), 'anchorages', len(anchorages), 'structures', len(structures))
+print('wrote', PASSAGE_OUT, len(pjs.encode()), 'bytes; routes', [r['id'] for r in routes], 'hazards', len(hazards), 'cards', len(PZ.get('cards', [])))
 for r in routes:
     print(r['id'], 'total nm', r['total'], [(l['from'], l['to'], l['dist'], l['brg']) for l in r['legs']])

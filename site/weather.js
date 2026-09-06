@@ -1,7 +1,8 @@
 /* weather.js - Open-Meteo forecast + marine fetch, caching, thresholds and warnings. */
 (function (root) {
   'use strict';
-  const POINTS = [
+  const PZ = root.PASSAGE || {};
+  const POINTS = PZ.weatherPoints || [
     { id: 'soto', name: 'Sotogrande offing', lat: 36.27, lon: -5.24, routeNm: 0.5 },
     { id: 'europa', name: 'Europa Point / Strait east', lat: 36.08, lon: -5.36, routeNm: 12.5 },
     { id: 'tarifa', name: 'Tarifa', lat: 35.97, lon: -5.62, routeNm: 27.3 },
@@ -10,16 +11,16 @@
   ];
   const FC_VARS = 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,precipitation,temperature_2m,weather_code,cloud_cover';
   const MARINE_VARS = 'wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period,wind_wave_height,ocean_current_velocity,ocean_current_direction,sea_level_height_msl';
-  const TZ = 'Europe/Madrid';
+  const TZ = (PZ.tz && PZ.tz.from && PZ.tz.from.zone) || 'Europe/Madrid';
   const KEY = 'saily.weather.v1';
 
-  const DEFAULT_THRESHOLDS = {
-    windCaution: 14, windNoGo: 20,      // kn sustained at 10 m (expect +2-3 Bft at Tarifa / Punta Carnero)
+  const DEFAULT_THRESHOLDS = Object.assign({
+    windCaution: 14, windNoGo: 20,      // kn sustained at 10 m
     gustCaution: 22, gustNoGo: 30,      // kn
     waveCaution: 1.0, waveNoGo: 1.6,    // m significant wave height (36 ft planing hull)
     currentCaution: 2.0,                // kn
-    visCaution: 5000,                   // m (authority minimum 5 nm for strait crossings)
-  };
+    visCaution: 5000,                   // m
+  }, PZ.thresholds || {});
 
   function fcUrl(p, days) {
     return `https://api.open-meteo.com/v1/forecast?latitude=${p.lat}&longitude=${p.lon}&hourly=${FC_VARS}&daily=sunrise,sunset&wind_speed_unit=kn&timezone=${encodeURIComponent(TZ)}&forecast_days=${days}`;
@@ -34,7 +35,9 @@
     try {
       const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
+      const j = await r.json();
+      if (r.headers.get('X-Saily-Cache') === 'stale') j.__stale = true; // served by the service worker from its cache while offline
+      return j;
     } finally { clearTimeout(t); }
   }
 
@@ -68,20 +71,31 @@
     return rows;
   }
 
-  async function fetchAll(days, onProgress) {
+  /** fetch every point; keeps previous data for points that fail; detects stale (offline) responses */
+  async function fetchAll(days, onProgress, previous) {
     days = days || 3;
-    const out = { fetchedAt: Date.now(), points: {}, errors: [] };
-    let n = 0;
+    const now = Date.now();
+    const out = { fetchedAt: now, points: {}, errors: [], stale: false };
+    let n = 0, fresh = 0, staleCount = 0;
     for (const p of POINTS) {
       let fc = null, mar = null;
       try { fc = await fetchJson(fcUrl(p, days)); } catch (e) { out.errors.push(p.id + ' wind: ' + e.message); }
       try { mar = await fetchJson(marineUrl(p, days)); } catch (e) { out.errors.push(p.id + ' marine: ' + e.message); }
-      if (fc || mar) {
-        out.points[p.id] = { ...p, rows: mergeHourly(fc, mar), sunrise: fc && fc.daily ? fc.daily.sunrise : null, sunset: fc && fc.daily ? fc.daily.sunset : null, utcOffset: (fc || mar).utc_offset_seconds };
+      const stale = !!((fc && fc.__stale) || (mar && mar.__stale));
+      if ((fc || mar) && !stale) {
+        out.points[p.id] = { ...p, rows: mergeHourly(fc, mar), sunrise: fc && fc.daily ? fc.daily.sunrise : null, sunset: fc && fc.daily ? fc.daily.sunset : null, utcOffset: (fc || mar).utc_offset_seconds, fetchedAt: now };
+        fresh++;
+      } else if (previous && previous.points && previous.points[p.id]) {
+        out.points[p.id] = previous.points[p.id]; // keep what we had
+        if (stale) staleCount++;
+      } else if (fc || mar) { // stale but nothing better stored
+        out.points[p.id] = { ...p, rows: mergeHourly(fc, mar), sunrise: fc && fc.daily ? fc.daily.sunrise : null, sunset: fc && fc.daily ? fc.daily.sunset : null, utcOffset: (fc || mar).utc_offset_seconds, fetchedAt: (previous && previous.fetchedAt) || 0 };
+        staleCount++;
       }
       n++; if (onProgress) onProgress(n, POINTS.length);
     }
-    if (Object.keys(out.points).length) save(out);
+    if (fresh === 0) { out.stale = true; out.fetchedAt = (previous && previous.fetchedAt) || Math.min(...Object.values(out.points).map(x => x.fetchedAt || 0), now); }
+    if (Object.keys(out.points).length && fresh > 0) save(out);
     return out;
   }
 
@@ -166,10 +180,11 @@
 
   function overall(pass) {
     let level = 'ok'; const reasons = [];
+    if (!pass.length || pass.some(s => !s.row)) { level = 'na'; reasons.push('no forecast data for part of the planned passage: refresh online or change the departure time'); }
     for (const s of pass) {
       if (!s.verdict) continue;
       if (s.verdict.level === 'nogo') level = 'nogo';
-      else if (s.verdict.level === 'caution' && level === 'ok') level = 'caution';
+      else if (s.verdict.level === 'caution' && level !== 'nogo') level = 'caution';
       for (const r of s.verdict.reasons) reasons.push(`${s.point.name}: ${r}`);
     }
     return { level, reasons };

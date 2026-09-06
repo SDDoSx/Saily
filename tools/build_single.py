@@ -21,7 +21,8 @@ parts = ['<title>Saily</title>',
          '<script>\n' + leaflet_js + '\n</script>',
          '<script>\n' + rd('nav.js') + '\n</script>',
          '<script>\n' + rd('weather.js') + '\n</script>',
-         '<script>\n' + rd('chart-data.js') + '\n</script>']
+         '<script>\n' + rd('chart-data.js') + '\n</script>',
+         '<script>\n' + rd('passage.js') + '\n</script>']
 if snap:
     s = json.load(open(snap))
     parts.append('<script>window.SAILY_SINGLE = true; window.EMBEDDED_WX = ' + json.dumps(s, separators=(',', ':')) + ';</script>')

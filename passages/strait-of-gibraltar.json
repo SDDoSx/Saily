@@ -1,0 +1,669 @@
+{
+ "id": "strait-of-gibraltar",
+ "version": 1,
+ "name": "Sotogrande to Tanja Marina Bay, Tangier",
+ "title": "Sotogrande → Tangier",
+ "description": "Crossing of the Strait of Gibraltar from Puerto Sotogrande (Spain) to Tanja Marina Bay (Morocco) for a small planing motor yacht.",
+ "bbox": [
+  35.65,
+  -6.2,
+  36.45,
+  -5.05
+ ],
+ "tz": {
+  "from": {
+   "label": "ES",
+   "zone": "Europe/Madrid"
+  },
+  "to": {
+   "label": "MA",
+   "zone": "Africa/Casablanca",
+   "note": "Morocco is UTC+1 until 02:00 on 20 Sep 2026, then permanent UTC+0."
+  }
+ },
+ "vessel": {
+  "name": "Jeanneau Prestige 36",
+  "cruiseKn": 22,
+  "burnLph": 75,
+  "fuelL": 800,
+  "draftM": 1.0
+ },
+ "defaultDeparture": "13:30",
+ "destinationShort": "Tangier",
+ "sun": {
+  "lat": 35.78,
+  "lon": -5.8
+ },
+ "places": {
+  "sotogrande": {
+   "name": "Puerto Sotogrande",
+   "lat": 36.2882,
+   "lon": -5.2703,
+   "vhf": "9",
+   "phone": "+34 956 790 000",
+   "tz": "Europe/Madrid"
+  },
+  "tangier": {
+   "name": "Tanja Marina Bay (Tanger Ville)",
+   "lat": 35.7836,
+   "lon": -5.7956,
+   "vhf": "11 / 16",
+   "phone": "+212 539 372 424",
+   "tz": "Africa/Casablanca"
+  }
+ },
+ "routes": [
+  {
+   "id": "tarifa",
+   "short": "Tarifa crossing",
+   "name": "Recommended: Spanish inshore zone, right-angle crossing at 5 42W, Moroccan inshore zone",
+   "recommended": true,
+   "summary": "Follow the Spanish coast inside the northern inshore traffic zone to Tarifa, cross both lanes on 180 T (COLREG rule 10c), then follow the Moroccan coast to Tangier.",
+   "waypoints": [
+    {
+     "id": "SOTO",
+     "name": "Sotogrande inner mouth",
+     "lat": 36.2882,
+     "lon": -5.2703,
+     "radius": 0.03,
+     "note": "Inner harbour mouth, 80 m wide, opens S. 3 kn limit. VHF 9. Head S down the channel between the breakwater (E) and the beach (W)."
+    },
+    {
+     "id": "SOTO-HEAD",
+     "name": "Sotogrande breakwater head",
+     "lat": 36.2856,
+     "lon": -5.271,
+     "radius": 0.04,
+     "note": "Green light on the head 100 m to your east. Round it to port and turn ESE immediately: reported shoal 36 16.890N 5 16.276W lies 0.25 nm due S of here. Do not head S or SW."
+    },
+    {
+     "id": "SOTO-OUT",
+     "name": "Sotogrande offing",
+     "lat": 36.2825,
+     "lon": -5.263,
+     "radius": 0.15,
+     "note": "Clear of the Guadiaro bar and the shoal. Set course for the east side of Gibraltar."
+    },
+    {
+     "id": "GIB-E",
+     "name": "Gibraltar east side",
+     "lat": 36.125,
+     "lon": -5.325,
+     "radius": 0.2,
+     "note": "Anchored ships in the eastern anchorage. Pass east of them. Keep 0.7 nm off the Rock."
+    },
+    {
+     "id": "EUROPA",
+     "name": "Europa Point offing",
+     "lat": 36.098,
+     "lon": -5.345,
+     "radius": 0.2,
+     "note": "Rounding Europa Point 0.7 nm off; small race off the point. Precautionary area begins 3 nm S: ship traffic converging on Algeciras, Ceuta and Tanger-Med. Stay in the northern inshore zone."
+    },
+    {
+     "id": "CARNERO",
+     "name": "Punta Carnero offing",
+     "lat": 36.04,
+     "lon": -5.44,
+     "radius": 0.2,
+     "note": "Algeciras Bay entrance: ships cross your track. Strong NW-NE tidal set along the Carnero shore; La Perla rocks (4.7 m, race close E of them) 1.2 nm S of the point are 0.5 nm N of this leg: hold the offing."
+    },
+    {
+     "id": "TARIFA",
+     "name": "Tarifa Island offing",
+     "lat": 35.9845,
+     "lon": -5.613,
+     "radius": 0.2,
+     "note": "Narrow corridor: island 0.8 nm N, westbound lane 0.7 nm S. Overfalls and race off the island, worst with wind against tide. Tarifa-Tangier ferries cross here."
+    },
+    {
+     "id": "X-NORTH",
+     "name": "Crossing point north",
+     "lat": 35.98,
+     "lon": -5.7,
+     "radius": 0.15,
+     "note": "Turn to 180 T. Cross the TSS at right angles, do not slow down. First the WESTBOUND lane: ships come from your LEFT (east)."
+    },
+    {
+     "id": "X-SOUTH",
+     "name": "Crossing point south",
+     "lat": 35.874,
+     "lon": -5.7,
+     "radius": 0.15,
+     "note": "Clear of the eastbound lane. Now in the Moroccan inshore zone. Anchorage Alpha 1.4 nm E. Banco de Fenix (15 m) lies on this leg: overfalls at max stream, slow down if the sea steepens."
+    },
+    {
+     "id": "MALABATA",
+     "name": "Cap Malabata offing",
+     "lat": 35.835,
+     "lon": -5.765,
+     "radius": 0.2,
+     "note": "Cap Malabata light 1.1 nm SE; Almirante Rock (6.3 m, breaks) 0.9 nm SE. Tangier Bay opens ahead. Ferries from Tarifa come down from the N at 30 kn."
+    },
+    {
+     "id": "TANG-N",
+     "name": "Tangier port approach (ferry line)",
+     "lat": 35.802,
+     "lon": -5.787,
+     "radius": 0.15,
+     "note": "Call Tanja Marina Bay on VHF 11 now. Jetty head light Fl(3) 12s 0.7 nm SSW. Stay on the deep-water ferry line; charted wreck (buoyed) and Buoree Rock (0.9 m) lie E of it. Buoys may be missing."
+    },
+    {
+     "id": "TANG-E",
+     "name": "Marina access channel, point E",
+     "lat": 35.788,
+     "lon": -5.7845,
+     "radius": 0.08,
+     "note": "Start of the marked TMBI access channel (12 m), beside the ferry turning area. Follow it SW towards the marina entrance. Ferries turn here: keep clear."
+    },
+    {
+     "id": "TANG-F",
+     "name": "Channel point F, off entrance",
+     "lat": 35.7836,
+     "lon": -5.7925,
+     "radius": 0.05,
+     "note": "Green Jetee Est head 200 m to the W. Continue SW to the point S of the gap; do NOT turn W here, the jetty is in the way."
+    },
+    {
+     "id": "MAR-APP",
+     "name": "South of marina entrance",
+     "lat": 35.7824,
+     "lon": -5.7955,
+     "radius": 0.04,
+     "note": "Turn N. Entrance gap 120 m ahead: red Fl(3)R (C12) to port, green Fl(3)G to starboard. Shoal 0.9-2 m to your W/SW along the beach: do not drift west."
+    },
+    {
+     "id": "TANJA",
+     "name": "Tanja Marina Bay entrance",
+     "lat": 35.7841,
+     "lon": -5.7957,
+     "radius": 0.03,
+     "note": "Inside the gap heading N. Fuel dock to starboard, reception pontoon beyond it (high wall, fenders high). Q flag and Moroccan flag up. Marineros take lines."
+    }
+   ]
+  },
+  {
+   "id": "east",
+   "short": "East crossing",
+   "name": "Alternative: east crossing via the Gibraltar-Ceuta precautionary area, past Tanger-Med",
+   "recommended": false,
+   "summary": "Shorter but passes through the busiest converging traffic and the Tanger-Med port approaches. Use only if the Tarifa side is untenable (strong Levante).",
+   "waypoints": [
+    {
+     "id": "SOTO",
+     "name": "Sotogrande inner mouth",
+     "lat": 36.2882,
+     "lon": -5.2703,
+     "radius": 0.03,
+     "note": "Inner harbour mouth, 80 m wide, opens S. 3 kn limit. VHF 9. Head S down the channel between the breakwater (E) and the beach (W)."
+    },
+    {
+     "id": "SOTO-HEAD",
+     "name": "Sotogrande breakwater head",
+     "lat": 36.2856,
+     "lon": -5.271,
+     "radius": 0.04,
+     "note": "Green light on the head 100 m to your east. Round it to port and turn ESE immediately: reported shoal 36 16.890N 5 16.276W lies 0.25 nm due S of here. Do not head S or SW."
+    },
+    {
+     "id": "SOTO-OUT",
+     "name": "Sotogrande offing",
+     "lat": 36.2825,
+     "lon": -5.263,
+     "radius": 0.15,
+     "note": "Clear of the Guadiaro bar and the shoal. Set course for the east side of Gibraltar."
+    },
+    {
+     "id": "GIB-E",
+     "name": "Gibraltar east side",
+     "lat": 36.125,
+     "lon": -5.325,
+     "radius": 0.2,
+     "note": "Anchored ships in the eastern anchorage. Pass east of them. Keep 0.7 nm off the Rock."
+    },
+    {
+     "id": "EUROPA",
+     "name": "Europa Point offing",
+     "lat": 36.098,
+     "lon": -5.345,
+     "radius": 0.2,
+     "note": "Rounding Europa Point 0.7 nm off; small race off the point. Precautionary area begins 3 nm S: ship traffic converging on Algeciras, Ceuta and Tanger-Med. Stay in the northern inshore zone."
+    },
+    {
+     "id": "G-SOUTH",
+     "name": "South edge of precautionary area",
+     "lat": 35.942,
+     "lon": -5.425,
+     "radius": 0.2,
+     "note": "Crossed the eastern precautionary area (no lanes, but converging ships). Enter the south-eastern inshore zone just S of point 16."
+    },
+    {
+     "id": "CIRES",
+     "name": "Punta Cires offing",
+     "lat": 35.925,
+     "lon": -5.46,
+     "radius": 0.2,
+     "note": "Small race off Punta Cires. Leaving the SE inshore zone into the Tanger-Med free area. Ferries and container ships turning into Tanger-Med ahead."
+    },
+    {
+     "id": "TMED-OFF",
+     "name": "Off Tanger-Med",
+     "lat": 35.9,
+     "lon": -5.545,
+     "radius": 0.2,
+     "note": "Passing 1 nm N of Tanger-Med breakwaters. Keep clear of ships manoeuvring. Enter the SW inshore zone."
+    },
+    {
+     "id": "KSAR",
+     "name": "Off Ksar es-Seghir",
+     "lat": 35.868,
+     "lon": -5.65,
+     "radius": 0.2,
+     "note": "SW inshore zone. Anchorage Alpha (ships at anchor) 1.3 nm SW: this leg passes 0.6 nm N of it."
+    },
+    {
+     "id": "MALABATA",
+     "name": "Cap Malabata offing",
+     "lat": 35.835,
+     "lon": -5.765,
+     "radius": 0.2,
+     "note": "Cap Malabata light 1.1 nm SE; Almirante Rock (6.3 m, breaks) 0.9 nm SE. Tangier Bay opens ahead. Ferries from Tarifa come down from the N at 30 kn."
+    },
+    {
+     "id": "TANG-N",
+     "name": "Tangier port approach (ferry line)",
+     "lat": 35.802,
+     "lon": -5.787,
+     "radius": 0.15,
+     "note": "Call Tanja Marina Bay on VHF 11 now. Jetty head light Fl(3) 12s 0.7 nm SSW. Stay on the deep-water ferry line; charted wreck (buoyed) and Buoree Rock (0.9 m) lie E of it. Buoys may be missing."
+    },
+    {
+     "id": "TANG-E",
+     "name": "Marina access channel, point E",
+     "lat": 35.788,
+     "lon": -5.7845,
+     "radius": 0.08,
+     "note": "Start of the marked TMBI access channel (12 m), beside the ferry turning area. Follow it SW towards the marina entrance. Ferries turn here: keep clear."
+    },
+    {
+     "id": "TANG-F",
+     "name": "Channel point F, off entrance",
+     "lat": 35.7836,
+     "lon": -5.7925,
+     "radius": 0.05,
+     "note": "Green Jetee Est head 200 m to the W. Continue SW to the point S of the gap; do NOT turn W here, the jetty is in the way."
+    },
+    {
+     "id": "MAR-APP",
+     "name": "South of marina entrance",
+     "lat": 35.7824,
+     "lon": -5.7955,
+     "radius": 0.04,
+     "note": "Turn N. Entrance gap 120 m ahead: red Fl(3)R (C12) to port, green Fl(3)G to starboard. Shoal 0.9-2 m to your W/SW along the beach: do not drift west."
+    },
+    {
+     "id": "TANJA",
+     "name": "Tanja Marina Bay entrance",
+     "lat": 35.7841,
+     "lon": -5.7957,
+     "radius": 0.03,
+     "note": "Inside the gap heading N. Fuel dock to starboard, reception pontoon beyond it (high wall, fenders high). Q flag and Moroccan flag up. Marineros take lines."
+    }
+   ]
+  }
+ ],
+ "hazards": [
+  {
+   "id": "soto_shoal",
+   "lat": 36.2815,
+   "lon": -5.27127,
+   "radius": 0.12,
+   "level": "danger",
+   "name": "Shoal at Guadiaro mouth (marina notice 20 Feb 2026)",
+   "note": "Puerto Sotogrande reports a dangerous reduction of depth at 36 16.890N 5 16.276W, 500 m S of the breakwater head. Keep well clear; leave and approach from the E/SE."
+  },
+  {
+   "id": "la_perla",
+   "lat": 36.057,
+   "lon": -5.4262,
+   "radius": 0.3,
+   "level": "caution",
+   "name": "La Perla rocks (4.7 m) and Las Bajas",
+   "note": "Pinnacle rocks 1.2 nm S of Punta Carnero light, race close E of them; strong NW-NE tidal set along the Carnero shore (Pub 131). Position derived from the pilot, approximate."
+  },
+  {
+   "id": "tarifa_race",
+   "lat": 35.9985,
+   "lon": -5.61,
+   "radius": 1.0,
+   "level": "caution",
+   "name": "Tarifa overfalls / tide race",
+   "note": "Steep breaking seas off Tarifa Island with wind against tide; strongest wind acceleration in the strait."
+  },
+  {
+   "id": "cabezos",
+   "lat": 36.017,
+   "lon": -5.7,
+   "radius": 0.8,
+   "level": "caution",
+   "name": "Bajo de los Cabezos race",
+   "note": "Race of considerable violence at max stream; in heavy weather it can extend across the strait (Pub 131). Off route, 2 nm N of X-NORTH."
+  },
+  {
+   "id": "anch_alpha",
+   "lat": 35.850833333333334,
+   "lon": -5.6723333333333334,
+   "radius": 0.4,
+   "level": "caution",
+   "name": "Anchorage Alpha (Tanger-Med ships)",
+   "note": "Ships at anchor, 0.4 nm radius (IMO). Pass north of it."
+  },
+  {
+   "id": "fenix",
+   "lat": 35.867,
+   "lon": -5.717,
+   "radius": 0.6,
+   "level": "caution",
+   "name": "Banco de Fenix (15 m): race area",
+   "note": "Rocky bank 3 nm NNE of Malabata. No grounding risk, but the most violent races on the Moroccan side at max stream, worse with wind against stream (Pub 131). Position approximate."
+  },
+  {
+   "id": "almirante",
+   "lat": 35.825,
+   "lon": -5.7486,
+   "radius": 0.3,
+   "level": "caution",
+   "name": "Almirante Rock (6.3 m)",
+   "note": "0.5 nm N of Cap Malabata, breaks in heavy seas, marked by a lit buoy (may be off station). Keep 1 nm off Malabata."
+  },
+  {
+   "id": "sevil",
+   "lat": 35.8,
+   "lon": -5.755,
+   "radius": 0.3,
+   "level": "caution",
+   "name": "Sevil du Burj shoal (3.6 m)",
+   "note": "East part of Tangier Bay, 1 nm SSW of Malabata; Gandouri shoal (5.5 m) 0.7 nm SW of it. Positions approximate (Pub 131)."
+  },
+  {
+   "id": "buoree",
+   "lat": 35.791,
+   "lon": -5.773,
+   "radius": 0.3,
+   "level": "danger",
+   "name": "Buoree Rock (0.9 m)",
+   "note": "About 1 nm E of the main jetty head, marked by a lit buoy. Position approximate (Pub 131): stay on the ferry line N of the jetty head, do not cross the bay directly to the marina."
+  },
+  {
+   "id": "tang_wreck",
+   "lat": 35.7945,
+   "lon": -5.7838,
+   "radius": 0.15,
+   "level": "caution",
+   "name": "Charted wreck ENE of jetty head",
+   "note": "Dangerous wreck about 0.5 nm ENE of the main jetty head, marked by a lit buoy (Pub 131, position approximate). Keep a lookout for the buoy."
+  },
+  {
+   "id": "tang_ferry",
+   "lat": 35.7912,
+   "lon": -5.7933,
+   "radius": 0.35,
+   "level": "caution",
+   "name": "Tangier port entrance: fast ferries",
+   "note": "FRS / Intershipping fast ferries to Tarifa and cruise ships enter and leave here. Keep out of their way, keep to the marina side."
+  },
+  {
+   "id": "tang_shoal_w",
+   "lat": 35.7828,
+   "lon": -5.7978,
+   "radius": 0.07,
+   "level": "danger",
+   "name": "Shoal SW of the red head",
+   "note": "Shoal water 0.9-2 m immediately S and SW of the Jetee Ouest head (C12) along the beach (TMBI chart). Approach the gap from the S/SE only."
+  },
+  {
+   "id": "tang_beach",
+   "lat": 35.7795,
+   "lon": -5.79,
+   "radius": 0.2,
+   "level": "danger",
+   "name": "Tangier beach shallows",
+   "note": "Shoal water along the beach S of the marina. Stay in the marked channel."
+  },
+  {
+   "id": "tmed_port",
+   "lat": 35.888,
+   "lon": -5.5,
+   "radius": 1.5,
+   "level": "caution",
+   "name": "Tanger-Med port approaches",
+   "note": "Container ships and ferries manoeuvring; port control on VHF 12/16."
+  },
+  {
+   "id": "gib_anch",
+   "lat": 36.14,
+   "lon": -5.322,
+   "radius": 0.7,
+   "level": "info",
+   "name": "Gibraltar eastern anchorage",
+   "note": "Ships at anchor around you east of the Rock: pass between them, watch for bunker barges alongside and anchor chains ahead of their bows."
+  }
+ ],
+ "labels": [
+  {
+   "lat": 35.95,
+   "lon": -5.62,
+   "name": "STRAIT OF GIBRALTAR",
+   "kind": "sea",
+   "z": 8
+  },
+  {
+   "lat": 36.288,
+   "lon": -5.284,
+   "name": "Sotogrande",
+   "kind": "town",
+   "z": 10
+  },
+  {
+   "lat": 36.14,
+   "lon": -5.353,
+   "name": "Gibraltar",
+   "kind": "town",
+   "z": 10
+  },
+  {
+   "lat": 36.13,
+   "lon": -5.455,
+   "name": "Algeciras",
+   "kind": "town",
+   "z": 10
+  },
+  {
+   "lat": 36.013,
+   "lon": -5.606,
+   "name": "Tarifa",
+   "kind": "town",
+   "z": 10
+  },
+  {
+   "lat": 35.889,
+   "lon": -5.32,
+   "name": "Ceuta",
+   "kind": "town",
+   "z": 10
+  },
+  {
+   "lat": 35.885,
+   "lon": -5.505,
+   "name": "Tanger-Med",
+   "kind": "town",
+   "z": 10
+  },
+  {
+   "lat": 35.772,
+   "lon": -5.812,
+   "name": "Tangier",
+   "kind": "town",
+   "z": 10
+  },
+  {
+   "lat": 35.84,
+   "lon": -5.562,
+   "name": "Ksar es-Seghir",
+   "kind": "town",
+   "z": 11
+  },
+  {
+   "lat": 35.817,
+   "lon": -5.75,
+   "name": "Cap Malabata",
+   "kind": "cape",
+   "z": 11
+  },
+  {
+   "lat": 35.91,
+   "lon": -5.483,
+   "name": "Punta Cires",
+   "kind": "cape",
+   "z": 11
+  },
+  {
+   "lat": 36.077,
+   "lon": -5.426,
+   "name": "Punta Carnero",
+   "kind": "cape",
+   "z": 11
+  },
+  {
+   "lat": 36.109,
+   "lon": -5.346,
+   "name": "Europa Point",
+   "kind": "cape",
+   "z": 11
+  },
+  {
+   "lat": 36.0,
+   "lon": -5.61,
+   "name": "Isla de Tarifa",
+   "kind": "cape",
+   "z": 12
+  },
+  {
+   "lat": 36.2,
+   "lon": -5.4,
+   "name": "BAY OF ALGECIRAS",
+   "kind": "sea",
+   "z": 11
+  },
+  {
+   "lat": 35.8,
+   "lon": -5.77,
+   "name": "TANGIER BAY",
+   "kind": "sea",
+   "z": 12
+  },
+  {
+   "lat": 36.2,
+   "lon": -5.08,
+   "name": "ALBORAN SEA",
+   "kind": "sea",
+   "z": 9
+  },
+  {
+   "lat": 35.9,
+   "lon": -6.0,
+   "name": "ATLANTIC",
+   "kind": "sea",
+   "z": 9
+  }
+ ],
+ "weatherPoints": [
+  {
+   "id": "soto",
+   "name": "Sotogrande offing",
+   "lat": 36.27,
+   "lon": -5.24,
+   "routeNm": 0.5
+  },
+  {
+   "id": "europa",
+   "name": "Europa Point / Strait east",
+   "lat": 36.08,
+   "lon": -5.36,
+   "routeNm": 12.5
+  },
+  {
+   "id": "tarifa",
+   "name": "Tarifa",
+   "lat": 35.97,
+   "lon": -5.62,
+   "routeNm": 27.3
+  },
+  {
+   "id": "cross",
+   "name": "Mid-crossing (TSS)",
+   "lat": 35.92,
+   "lon": -5.7,
+   "routeNm": 34.5
+  },
+  {
+   "id": "tangier",
+   "name": "Tangier Bay",
+   "lat": 35.81,
+   "lon": -5.77,
+   "routeNm": 43.0
+  }
+ ],
+ "thresholds": {
+  "windCaution": 14,
+  "windNoGo": 20,
+  "gustCaution": 22,
+  "gustNoGo": 30,
+  "waveCaution": 1.0,
+  "waveNoGo": 1.6,
+  "currentCaution": 2.0,
+  "visCaution": 5000
+ },
+ "harbourSpeedKn": 4,
+ "checklist": [
+  "Weather checked in the app for the whole passage window (wind, gusts, waves, wind vs current), and Spanish forecast (AEMET Estrecho) or Windy cross-checked.",
+  "Preload done in Setup while on wifi: app shell, forecast, map tiles. Airplane-mode test: app opens and shows the chart.",
+  "Phone at 100 %, charging cable and power bank on deck; phone mounted with a clear sky view; auto-lock off (the app requests wake lock, but check).",
+  "Route loaded in the boat plotter too (GPX or keyed in); paper copy of waypoints and contacts.",
+  "Fuel: full tanks, at least 30 % reserve after the planned burn; engine checks done (oil, coolant, belts, raw water strainers).",
+  "Lifejackets worn on deck, kill cord, EPIRB/PLB if aboard, flares in date, VHF tested on 16, handheld VHF charged.",
+  "Documents: passports, boat registration, insurance (Morocco covered), skipper licence, crew list ×4, boat stamp if you have one.",
+  "Flags: Moroccan courtesy flag and Q flag ready.",
+  "Marina office told; Tanja Marina Bay booked or called (VHF 9 on approach).",
+  "Crew briefing: lane crossing (ships from the LEFT then the RIGHT), what \"give way\" means at 22 kn, who watches which sector, seasickness pills taken early.",
+  "Timezone: watches to Morocco time on arrival (1 hour back)."
+ ],
+ "cards": [
+  {
+   "id": "colreg",
+   "title": "Crossing the traffic lanes (COLREG rule 10)",
+   "html": "<div class=\"card\"><h2>Crossing the traffic lanes (COLREG rule 10)</h2><ul>\n      <li>Stay in the <b>inshore traffic zones</b> (green dashed) along both coasts. Do not use the lanes as a route.</li>\n      <li>Cross the scheme <b>on a heading at right angles</b> to the traffic flow (here 180° T going south). Heading, not ground track: aim the bow at 180° and accept the set.</li>\n      <li>The north lane is <b>westbound</b>: ships come from your <b>left</b>. The south lane is <b>eastbound</b>: ships come from your <b>right</b>. Big ships do 15 to 22 kn; a ship 3 nm away is on you in 8 minutes.</li>\n      <li>You are the give-way vessel to anyone in a lane if you are crossing under 20 m LOA (rule 10j): do not impede them. Slow down or speed up early, never cut close ahead.</li>\n      <li>Keep VHF 16 on. Tarifa Traffic (VTS) works VHF 10 and watches the whole Strait on radar and AIS. If in doubt, call them: \"Tarifa Traffic, this is motor yacht [name], position ..., crossing southbound, request traffic information.\"</li>\n      <li>Precautionary areas (magenta dotted) have no lanes but ships turn and converge there. The eastern one (Gibraltar to Ceuta) is the busiest water in the Strait.</li></ul></div>"
+  },
+  {
+   "id": "departure",
+   "title": "Sotogrande (departure)",
+   "html": "<div class=\"card\"><h2>Sotogrande (departure)</h2><div class=\"kv\">\n      <div>Marina</div><div>Puerto Sotogrande · VHF 9 (office 09:00-21:00) · +34 956 790 000 · WhatsApp +34 639 347 807</div>\n      <div>Layout</div><div>Inner mouth 80 m wide (4.5 m) opens SOUTH at 36°17.29'N 5°16.22'W; a 250 m channel runs south between the breakwater (east) and the beach to the breakwater head with its green light at 36°17.15'N 5°16.19'W. Leaving: go south down the channel, round the head to port, then turn ESE to SOTO-OUT. Speed limit 3 kn near the mouth and inside (port rules art. 37).</div>\n      <div>Hazard</div><div>Marina safety notice of 20 Feb 2026: dangerous shoaling at 36°16.890'N 5°16.276'W, 500 m south of the head (bearing 195°), and a voluntary exclusion zone off the Guadiaro river mouth. No notice lifting it was found. Ask the Capitanía on VHF 9 before leaving; do not run south or south-west from the head.</div>\n      <div>Sea at entrance</div><div>Swell at the mouth with E/SE winds; noticeable ebb current at the entrance; recurrent silting.</div>\n      <div>Leaving Spain</div><div>Spanish-flag private boats without professional crew need no \"despacho\" (RD 186/2023). Sotogrande is not a Schengen border post: EU/EEA/Swiss crew need nothing; non-EU passport holders (UK, US...) should get their Schengen exit recorded (EES) at La Línea, Algeciras or Tarifa police, or accept the overstay risk on return. Morocco does not ask for a Spanish exit stamp.</div>\n      <div>Carry</div><div>Passports, boat registration, insurance certificate valid for Morocco, skipper licence (ICC or national), radio licence, crew list ×4, a sheet with the boat's technical data.</div></div></div>"
+  },
+  {
+   "id": "arrival",
+   "title": "Tangier (arrival)",
+   "html": "<div class=\"card\"><h2>Tangier (arrival)</h2><div class=\"kv\">\n      <div>Marina</div><div>Tanja Marina Bay (Tanger Ville) · VHF <b>11</b> (harbourmaster 11/16) · Tangier Traffic (VTS) VHF 69, alt 68 · port pilots VHF 12</div>\n      <div>Contact</div><div>Capitainerie 24 h: +212 539 372 424 · Office: +212 539 33 17 17 · info@tanjamarinabay.ma (send registration, insurance, passports and crew list ahead; reservation advised, a berth is not guaranteed on arrival)</div>\n      <div>Hours</div><div>Office Mon-Fri 09:00-19:00, Sat 10:00-14:00 (2026 guide), <b>closed Sunday</b>; capitainerie, marineros and fuel 24/7; police and customs posts on site. Arrive before 18:00 Morocco time and clear in daylight; departure clearance is daytime only.</div>\n      <div>Approach</div><div>Tangier Bay opens NE. Keep at least 1 nm off Cap Malabata (Almirante Rock 6.3 m, 0.5 nm north of it, breaks in heavy seas). Do not cut across the bay: shoals lie in its east and south (Sevil du Burj 3.6 m, Gandouri 5.5 m, Buoree Rock 0.9 m about 1 nm east of the main jetty head, a wreck 0.5 nm ENE of it). Come in from the NE on the ferry line towards the jetty head Fl(3) 12s, then follow the marked marina channel. Buoys are reported off station or missing: rely on bearings and daylight.</div>\n      <div>Entrance</div><div>35°47.016'N 005°47.736'W, 140 m wide at the SE corner of the basin, between the Jetée Est head Fl(3)G 10s (starboard) and the Jetée Ouest head Fl(3)R 10s (port). Enter heading N/NW. Shoal 0.9-2 m immediately south of the red head and along the beach: never approach from the beach side. Fuel dock just inside, reception pontoon beyond it (high concrete edge, 1.7-2 m tidal range: fenders high).</div>\n      <div>Traffic</div><div>Fast ferries from Tarifa and cruise ships use the north side of the outer harbour and a turning area in the middle. Give way, keep to the marina side. No anchoring within 500 m of the marina breakwaters (Moroccan law).</div>\n      <div>Formalities</div><div>Q flag and Moroccan courtesy flag. Police, customs and port authority in one building by the reception pontoon: 15-90 min, no charge. Customs form D716 (temporary admission of the boat): keep the blue and white copies aboard and present them on departure. Declare alcohol, medicines, drones (drones are held until you leave). Visa-free 90 days for EU, UK, US, CA, AU, CH and most others.</div>\n      <div>Cost</div><div>2026 rate for a 12 m x 4 m boat: 281 MAD per night in high season (to 30 Sep), about 26 EUR; access card deposit.</div>\n      <div>Time</div><div>Morocco is UTC+1 (1 h behind Spain) until 02:00 on Sunday 20 Sep 2026, when it moves to permanent UTC+0 (2 h behind Spain). The MA clock in this app uses your phone's time-zone database: check it against a local clock after 20 Sep.</div></div></div>"
+  },
+  {
+   "id": "emergency",
+   "title": "Emergency and radio",
+   "html": "<div class=\"card\"><h2>Emergency and radio</h2><div class=\"kv\">\n      <div>Distress</div><div>VHF 16 (DSC 70): MAYDAY / PAN PAN with the position shown on the Navigate tab.</div>\n      <div>Salvamento Marítimo</div><div><b>+34 900 202 202</b> (24 h, free) · Spain 112</div>\n      <div>Tarifa Traffic</div><div>VTS for the Strait (radar, AIS): VHF <b>10</b> (67 alt), watch 16, MMSI 002240994, +34 956 684 740 / 684 757. Weather and traffic bulletins on VHF 10 at 00:15, 04:15, 08:15, 12:15, 16:15, 20:15 UTC (14:15 and 18:15 Spain time). A yacht need not file a GIBREP report, but announcing the crossing is advised and contact is mandatory in fog.</div>\n      <div>Algeciras Traffic</div><div>VHF 74 (15), MMSI 002241001, +34 956 580 930 (Bay of Algeciras).</div>\n      <div>Tangier Traffic</div><div>VHF <b>69</b> (68 alt); bulletins 02:15, 06:15, 10:15, 14:15, 18:15, 22:15 UTC.</div>\n      <div>Gibraltar</div><div>Gibraltar VTS VHF 12, watch 16, +350 200 46254 (24 h).</div>\n      <div>Morocco</div><div>MRCC Rabat +212 5 37 62 58 77 · MRSC Tanger +212 5 39 93 20 90 (currency unverified: use VHF 16 first) · Tanger harbourmaster VHF 11/16 · Police 19 · Gendarmerie 177 · Fire/ambulance 15 · 112 from a mobile.</div></div><p class=\"muted\">Compiled from IMO MSC.300(87), NGA Pub 131, Salvamento Marítimo and port sources (Sep 2026). Confirm before departure and keep a paper copy.</p></div>"
+  },
+  {
+   "id": "sea",
+   "title": "Sea and current notes (NGA Pub 131, Ifremer)",
+   "html": "<div class=\"card\"><h2>Sea and current notes (NGA Pub 131, Ifremer)</h2><ul>\n      <li>Surface flow sets <b>east</b> into the Med, 1-2 kn mid-strait and up to 3 kn inshore; at Tarifa it is almost always eastward (3+ kn measured at HW+2). Mid-strait the east-going stream starts about <b>HW Gibraltar</b> and the west-going about 6 h later, earlier towards both shores.</li>\n      <li><b>Punta Carnero</b>: strong NW-NE tidal set along the coast, \"numerous accidents\"; dangers to 0.2 nm off, La Perla rocks (4.7 m) 1.2 nm south. Keep the CARNERO offing.</li>\n      <li><b>Tarifa</b>: races off the island; Bajo de los Cabezos race 5 nm NW (off route) can extend across the strait in heavy weather.</li>\n      <li><b>Banco de Fenix</b> (15 m, 3 nm NNE of Malabata) and the banks between Malabata and Hejar Lesfar: the most violent races on the Moroccan side at max stream. The route passes just north of it; at springs (10-14 Sep 2026) with wind against stream expect breaking overfalls there and north of Tangier.</li>\n      <li>Wind at Tarifa and Punta Carnero is commonly <b>2-3 Beaufort above</b> the area forecast. The local whale-boat operator stays in port from 21 kn of Levante. Fog forms in the early morning when a Levante dies and can last into the afternoon.</li>\n      <li>Tunny nets up to 7 nm offshore in season (white flag with black A by day, red over white lights at night). Whale speed limit 13 kn applies April to August only.</li></ul></div>"
+  }
+ ],
+ "weatherNotes": "<div class=\"card\"><h2>How to read the Strait</h2><ul><li><b>Levante</b> (E wind) and <b>Poniente</b> (W wind) funnel through the Strait; the wind is strongest between Tarifa and Tangier and can be 10 to 15 kn more than the forecast at the ends.</li><li>The surface flow runs <b>eastward</b> into the Mediterranean (1 to 2 kn, up to 3 kn off Tarifa) with the tidal stream on top. A Levante blowing <b>against</b> that eastward flow builds short, steep seas: the \"wind against current\" column flags it.</li><li>Crossing on a plane at 20+ kn in 1.5 m short seas is punishing; over 2 m or 25 kn sustained, do not go with this boat and crew.</li><li>Fog is possible in September, mostly mornings on the Atlantic side. Below 2 km visibility, crossing the lanes without radar or AIS is not sensible.</li></ul></div>"
+}
