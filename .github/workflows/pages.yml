@@ -1,8 +1,10 @@
 name: Deploy Saily to GitHub Pages
 
 on:
+  # main only: the github-pages environment allows no other branch, and a second run in the "pages"
+  # concurrency group cancels the main deploy before failing on the environment rule.
   push:
-    branches: [main, "claude/marine-nav-app-yacht-erflpd"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

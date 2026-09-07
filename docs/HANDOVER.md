@@ -6,9 +6,11 @@ could deploy (the `github-pages` environment only allows `main`). Both refs are 
 ## Live
 
 - **GitHub Pages: https://sddosx.github.io/Saily/** — Pages is now enabled (Settings, Pages, Source = GitHub
-  Actions) and `.github/workflows/pages.yml` publishes `site/` on every push to `main` or the branch. Verified
-  in a browser: chart, service worker controlling, forecast fetched for all five points, no console errors.
-  This is the URL to add to the Home Screen.
+  Actions) and `.github/workflows/pages.yml` publishes `site/` on every push to `main`. Verified in a browser:
+  chart, service worker controlling, forecast fetched for all five points, no console errors. This is the URL to
+  add to the Home Screen. The workflow no longer triggers on the working branch: the `github-pages` environment
+  allows only `main`, so a branch run failed on the environment rule *and*, sharing the `pages` concurrency
+  group with `cancel-in-progress`, cancelled the main deploy first. **Deploy by pushing `main`.**
 - Claude artifact (single file, forecast embedded):
   https://claude.ai/code/artifact/a5c6333e-2d58-474f-9b47-a16309f9d55b — built from `dist/saily.html`. Note the
   artifact viewer blocks page-initiated downloads, so GPX and track export are dead there; they work on Pages.
