@@ -839,20 +839,6 @@
       }
     }
   }
-  const ZONE_TEXT = {
-    west_wb: ['danger', 'Entering the WESTBOUND traffic lane. Ships come from your LEFT, from the east. Keep crossing at right angles, do not slow down.', 'Clear of the westbound lane.'],
-    west_eb: ['danger', 'Entering the EASTBOUND traffic lane. Ships come from your RIGHT, from the west. Keep crossing at right angles.', 'Clear of the eastbound lane.'],
-    east_wb: ['danger', 'Entering the WESTBOUND traffic lane (east part). Ships come from the east. Cross at right angles.', 'Clear of the westbound lane.'],
-    east_eb: ['danger', 'Entering the EASTBOUND traffic lane (east part). Ships come from the west. Cross at right angles.', 'Clear of the eastbound lane.'],
-    zone_b: ['warn', 'In the separation zone. Keep crossing, do not linger.', null],
-    zone_a: ['warn', 'In the separation zone. Keep crossing, do not linger.', null],
-    prec_east: ['warn', 'Entering the precautionary area. Ships converge from Algeciras, Gibraltar, Ceuta and Tanger-Med. Sharp lookout.', 'Leaving the precautionary area.'],
-    prec_tm: ['warn', 'Entering the Tanger-Med precautionary area. Ships turning into and out of the port.', 'Leaving the precautionary area.'],
-    itz_n: ['info', 'In the Spanish inshore traffic zone. Stay north of the lanes.', 'Leaving the Spanish inshore zone.'],
-    itz_se: ['info', 'In the south-eastern inshore zone (Morocco).', null],
-    itz_sw: ['info', 'In the Moroccan inshore traffic zone. Follow the coast to Tangier.', 'Leaving the Moroccan inshore zone.'],
-    free_tm: ['warn', 'Off Tanger-Med: ferries and container ships manoeuvring. Keep clear of the port approaches.', 'Clear of the Tanger-Med approaches.'],
-  };
   const DIRWORD = { N: 'north', NNE: 'north-north-east', NE: 'north-east', ENE: 'east-north-east', E: 'east', ESE: 'east-south-east', SE: 'south-east', SSE: 'south-south-east', S: 'south', SSW: 'south-south-west', SW: 'south-west', WSW: 'west-south-west', W: 'west', WNW: 'west-north-west', NW: 'north-west', NNW: 'north-north-west' };
   const dirWord = deg => DIRWORD[N.compass16(deg)] || N.compass16(deg);
   function laneFlowDeg(l) { return l.flowDeg != null ? l.flowDeg : (l.flow === 'W' ? 270 : 90); }
@@ -873,14 +859,14 @@
         if (S.zonePending[z.id] !== inside) { S.zonePending[z.id] = inside; continue; }
         S.zonePending[z.id] = undefined;
         S.zone[z.id] = inside;
-        const t = ZONE_TEXT[z.id]; if (!t) continue;
+        // Wording comes from the passage's own TSS data (level/enter/leave), so any passage gets zone alerts.
         if (inside && z.flow) { // traffic lane: side of traffic from the flow bearing and our leg course (COG only when off track)
           const flow = laneFlowDeg(z), fromName = dirWord(N.norm360(flow + 180));
           const side = trafficSide(flow, sol) || 'LEFT';
           alert('zone-' + z.id, 'danger', `Entering the ${z.flow === 'W' ? 'WESTBOUND' : 'EASTBOUND'} traffic lane. Ships come from your ${side}, from the ${fromName}. Cross on ${N.fmtBrg(crossingTarget(flow, sol.legBrg))}, do not slow down.`, { cooldown: 30 });
         }
-        else if (inside) alert('zone-' + z.id, t[0], t[1], { cooldown: 30 });
-        else if (t[2]) alert('zoneout-' + z.id, 'info', t[2], { cooldown: 30 });
+        else if (inside && z.enter) alert('zone-' + z.id, z.level || 'warn', z.enter, { cooldown: 30 });
+        else if (!inside && z.leave) alert('zoneout-' + z.id, 'info', z.leave, { cooldown: 30 });
       }
     }
   }
