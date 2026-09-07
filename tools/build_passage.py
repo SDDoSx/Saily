@@ -29,7 +29,10 @@ def main(argv=None):
     validate_passage = _load('validate_passage', 'tools/validate_passage.py')
 
     passage_file = argv[0] if argv else build_chart.DEFAULT_PASSAGE
-    out = argv[1] if len(argv) > 1 else os.path.join(ROOT, 'site', 'passage.js')
+    import json
+    with open(passage_file, encoding='utf-8') as f:
+        pid = json.load(f)['id']
+    out = argv[1] if len(argv) > 1 else os.path.join(ROOT, 'site', 'passages', pid, 'passage.js')
 
     reports = validate_passage.validate_files(passage_file)
     bad = False

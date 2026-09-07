@@ -73,12 +73,21 @@ const OUT = path.join(__dirname, 'out');
     for (const [k, ok] of Object.entries(wxWiring)) if (!ok) errors.push(`weather.js is not reading the passage's ${k} (script order in index.html)`);
     // service worker + offline reload
     await page.click('#tabs button[data-view=nav]');
-    const swReady = await page.evaluate(async () => { const reg = await navigator.serviceWorker.ready; await new Promise(r => setTimeout(r, 1500)); return !!reg.active; });
+    // Bounded, and asserted: app.js is loaded dynamically by boot.js, so a registration that waits on the
+    // window "load" event never runs and the app silently stops working offline. Never hang here.
+    const swReady = await page.evaluate(async () => {
+      const reg = await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 20000))]);
+      if (!reg) return false;
+      await new Promise(r => setTimeout(r, 1500));
+      return !!reg.active;
+    });
     console.log('SW active:', swReady);
+    if (!swReady) errors.push('service worker never activated: the app would not work offline');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
     const ctl = await page.evaluate(() => !!navigator.serviceWorker.controller);
     console.log('SW controlling after reload:', ctl);
+    if (!ctl) errors.push('service worker is not controlling the page after a reload');
     await ctx.setOffline(true);
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(e => errors.push('offline reload failed: ' + e.message));
     await page.waitForTimeout(1500);

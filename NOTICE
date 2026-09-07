@@ -5,7 +5,7 @@ with every copy. The software itself is MIT (see LICENSE); the items below keep
 their own terms. Background and obligations for forks: docs/LICENSING.md.
 
 1. OpenStreetMap: Open Database License (ODbL) 1.0
-   Files: site/chart-data.js (land polygons, harbour detail, breakwaters and
+   Files: site/passages/<id>/chart-data.js (land polygons, harbour detail, breakwaters and
    piers, anchorages, lights, buoys, beacons, wrecks, rocks, obstructions);
    dist/saily.html and tools/out/saily-standalone.html, which embed it; the
    Overpass extracts coast.json and harbours.json and the land_*.json files in
@@ -13,7 +13,7 @@ their own terms. Background and obligations for forks: docs/LICENSING.md.
    (c) OpenStreetMap contributors. Data available under the Open Database
    License: https://www.openstreetmap.org/copyright
    https://opendatacommons.org/licenses/odbl/1-0/
-   site/chart-data.js is a Derivative Database (ODbL section 1.0): it may be
+   site/passages/<id>/chart-data.js is a Derivative Database (ODbL section 1.0): it may be
    used and redistributed only under ODbL 1.0, with this attribution
    (section 4.3) and share-alike (section 4.4). It is not MIT. The data date is
    the osm3s.timestamp_osm_base field of coast.json / harbours.json (the
@@ -23,8 +23,8 @@ their own terms. Background and obligations for forks: docs/LICENSING.md.
 2. IMO COLREG.2/Circ.66, Annex 1, "In the Strait of Gibraltar" (traffic
    separation scheme adopted 21 November 2014, in force 1 June 2015).
    Files: passages/strait-of-gibraltar.tss.json (positions, in the app's own
-   words for the notes), site/chart-data.js (tss block),
-   passages/strait-of-gibraltar.json and site/passage.js (briefing text).
+   words for the notes), site/passages/<id>/chart-data.js (tss block),
+   passages/strait-of-gibraltar.json and site/passages/<id>/passage.js (briefing text).
    The geographical positions that define the scheme are reproduced as facts;
    positions are not copyrightable. The text of the circular is (c)
    International Maritime Organization and is not reproduced. The scheme in
@@ -32,7 +32,7 @@ their own terms. Background and obligations for forks: docs/LICENSING.md.
 
 3. NGA Pub 131, Sailing Directions (Enroute) Western Mediterranean, National
    Geospatial-Intelligence Agency, United States of America.
-   Files: passages/strait-of-gibraltar.json and site/passage.js (hazard notes
+   Files: passages/strait-of-gibraltar.json and site/passages/<id>/passage.js (hazard notes
    and pilotage remarks marked "Pub 131").
    A work of the United States Government: public domain (17 U.S.C. 105).
 

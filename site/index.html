@@ -498,13 +498,9 @@ setTimeout(function () {
   </nav>
 </div>
 <script src="vendor/leaflet/leaflet.min.js"></script>
-<!-- Data before code: weather.js reads PASSAGE for its sample points, thresholds and time zone at load
-     time, so the passage has to exist first or it silently falls back to its own built-in defaults. -->
-<script src="chart-data.js"></script>
-<script src="passage.js"></script>
-<script src="nav.js"></script>
-<script src="weather.js"></script>
-<script src="ais.js"></script>
-<script src="app.js"></script>
+<!-- boot.js picks the passage from passages/index.json, then loads its data and the app around it, in
+     that order: weather.js reads PASSAGE for its sample points, thresholds and time zone the moment it
+     runs, so the data has to exist first. -->
+<script src="boot.js"></script>
 </body>
 </html>

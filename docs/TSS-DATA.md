@@ -1,7 +1,7 @@
 # Traffic separation scheme data (`passages/<id>.tss.json`)
 
 A traffic separation scheme is described once, declaratively, in a JSON file next to the passage that uses it.
-`tools/build_chart.py` turns it into the polygons of the `tss` block of `site/chart-data.js`; the app draws them,
+`tools/build_chart.py` turns it into the polygons of the `tss` block of `site/passages/<id>/chart-data.js`; the app draws them,
 runs its point-in-polygon zone alerts against them and (soon) reads the alert text and flow direction from them
 instead of hard-coding them. The schema is `schema/tss.schema.json`; `tools/validate_passage.py` checks the file
 (schema plus the rules below) and the builder refuses to run on an invalid one.
@@ -156,4 +156,4 @@ come together, `separationZone` exists, every element has `enter` text, alert te
 (a: points 1-2, b: points 3-4-5), four lanes (c, d westbound; e, f eastbound), two precautionary areas (g east,
 h Tanger-Med), the northern, south-eastern and south-western inshore traffic zones, the free navigation area off
 Tanger-Med, and Anchorage Alpha. It reproduces the previous hard-coded chart byte for byte; regenerate with
-`python3 tools/build_chart.py <scratch> site/chart-data.js` and diff.
+`python3 tools/build_chart.py <scratch>` and diff.

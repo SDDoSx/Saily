@@ -9,8 +9,8 @@ fork must do, and where each notice lives. The binding texts are [`LICENSE`](../
 | What | Where | Terms | A fork must |
 |---|---|---|---|
 | Code | `site/*.js` except the two generated files, `site/index.html`, `site/sw.js`, `tools/`, `tests/` | MIT | keep the copyright and permission notice |
-| Passage definition | `passages/*.json`, `site/passage.js` | MIT text written for this project; quotes facts from IMO, NGA Pub 131 and port notices | keep the source citations inside the notes |
-| Vector chart | `site/chart-data.js`; embedded in `dist/saily.html` and `tools/out/saily-standalone.html` | **ODbL 1.0** (OpenStreetMap derivative database) | show "© OpenStreetMap contributors", share-alike, keep `NOTICE` |
+| Passage definition | `passages/*.json`, `site/passages/<id>/passage.js` | MIT text written for this project; quotes facts from IMO, NGA Pub 131 and port notices | keep the source citations inside the notes |
+| Vector chart | `site/passages/<id>/chart-data.js`; embedded in `dist/saily.html` and `tools/out/saily-standalone.html` | **ODbL 1.0** (OpenStreetMap derivative database) | show "© OpenStreetMap contributors", share-alike, keep `NOTICE` |
 | TSS geometry | `passages/strait-of-gibraltar.tss.json` (positions), `chart-data.js` `tss` block | IMO COLREG.2/Circ.66 positions cited as facts | not copy the circular's text; verify against the scheme in force |
 | Pilotage notes | `passages/strait-of-gibraltar.json` | NGA Pub 131, public domain | keep the "Pub 131" citation |
 | Forecast fixtures and snapshots | `tools/fixtures/fc.json`, `tools/fixtures/marine.json`, `tools/out/wx_snapshot.json`, the forecast inside `dist/saily.html` | Open-Meteo, CC BY 4.0 | keep "Weather data by Open-Meteo.com" |
@@ -23,14 +23,14 @@ Everything that is not data is MIT (`LICENSE`, second half). That covers the app
 `ais.js`, `sw.js`, `index.html`), the build and test tools, the workflows and the docs. Copy, change and sell it;
 keep the notice.
 
-`passages/*.json` and the generated `site/passage.js` are treated as code: the route, the spoken notes, the checklist
+`passages/*.json` and the generated `site/passages/<id>/passage.js` are treated as code: the route, the spoken notes, the checklist
 and the briefing cards were written for this project. They *cite* facts from the IMO circular, NGA Pub 131 and the port
 notices (positions, depths, light characteristics, VHF channels). Keep those citations when you edit the notes so the
 next person can verify them.
 
 ## Vector chart: OpenStreetMap under the ODbL
 
-`site/chart-data.js` is built by `tools/build_chart.py` from OpenStreetMap data fetched by `tools/fetch_osm.py`
+`site/passages/<id>/chart-data.js` is built by `tools/build_chart.py` from OpenStreetMap data fetched by `tools/fetch_osm.py`
 (coastline ways, `seamark:*` nodes and ways, breakwaters and piers). Under the
 [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/) that file is a **Derivative Database**:
 OSM data extracted, polygonised, simplified and rounded. The map the app draws from it is a **Produced Work**.
@@ -42,7 +42,7 @@ What the ODbL requires, and how Saily meets it:
   puts it in the Leaflet attribution control (`chart-data.js` also carries `meta.sources`) and on the About card. Do
   not remove or hide either.
 - **Share-alike (section 4.4).** If you publicly use a modified chart (new bbox, another passage, extra seamarks) you
-  must offer that chart under the ODbL. The simple way is what this repository does: keep `site/chart-data.js`
+  must offer that chart under the ODbL. The simple way is what this repository does: keep `site/passages/<id>/chart-data.js`
   committed in a public repository and reproducible with the two commands in `docs/ADAPTING.md`. Do not merge data
   whose licence is incompatible with the ODbL into it, in particular official electronic or raster chart data from a
   hydrographic office, which is copyrighted and not share-alike.
@@ -115,7 +115,7 @@ before a passage: notices expire.
 ## Checklist for forks and new passages
 
 1. Keep `LICENSE`, `NOTICE`, `site/vendor/leaflet/LICENSE` and this page with every copy, including single-file builds.
-2. Keep `site/chart-data.js` public and reproducible (ODbL share-alike) and the OpenStreetMap attribution visible.
+2. Keep `site/passages/<id>/chart-data.js` public and reproducible (ODbL share-alike) and the OpenStreetMap attribution visible.
 3. Add every new data source to `NOTICE` with its terms. Never paste geometry from official charts (ENC, raster) or
    commercial chart products into the chart: hydrographic office data is copyrighted and not ODbL-compatible.
 4. Update `meta.sources` in `tools/build_chart.py` so the About card lists your sources.

@@ -15,7 +15,7 @@
    first, it needs shapely):
    ```
    python3 tools/fetch_osm.py passages/<your-id>.json <scratch>
-   python3 tools/build_chart.py <scratch> site/chart-data.js passages/<your-id>.json
+   python3 tools/build_chart.py <scratch> "" passages/<your-id>.json
    ```
    `fetch_osm.py` queries Overpass for the `natural=coastline` ways and the `seamark:type` / `man_made` harbour
    structures in the bbox, stores them as `coast.json` and `harbours.json`, and polygonises land with the OSM left-hand
@@ -32,10 +32,23 @@
    geometry from a map database without checking it against the IMO circular in force, and say who checked it in
    `checkedBy`. `python3 tools/validate_passage.py passages/<your-id>.json` checks both files; the builder runs it
    first and refuses invalid data (`docs/PASSAGE-FORMAT.md` lists every field of the passage file).
-4. Re-run `python3 tools/build_chart.py <scratch> site/chart-data.js passages/<your-id>.json` after every waypoint
+4. Re-run `python3 tools/build_chart.py <scratch> "" passages/<your-id>.json` after every waypoint
    change. The script prints every leg's distance to land and which TSS polygons it crosses; fix waypoints until only
    the deliberate crossings remain.
-5. Run `node --test tests/*.test.js`, then `node tools/replay.js --write` and read the printed sequence of lane, zone and
+   The build writes `site/passages/<your-id>/chart-data.js` and `passage.js`; the output path is derived from the
+   passage `id`, so you do not name it. For metadata-only edits afterwards -- a title, a note, a waypoint, the
+   checklist -- `python3 tools/build_passage.py passages/<your-id>.json` rewrites `passage.js` alone, with no
+   Overpass fetch.
+5. Add your passage to the catalogue so the app can offer it, `site/passages/index.json`:
+   ```json
+   { "id": "<your-id>", "title": "Short → Name", "name": "Longer name", "description": "One sentence.",
+     "chart": "passages/<your-id>/chart-data.js", "passage": "passages/<your-id>/passage.js" }
+   ```
+   With more than one entry a Passage picker appears at the top of Setup. `"default": true` marks the one a
+   fresh install opens, and the one the single-file build embeds. `tools/stamp_build.py` adds every bundled
+   passage to the service worker's precache list, so switching passage works offline too. Settings, track and
+   alert log are kept per passage, so switching does not disturb the other one.
+6. Run `node --test tests/*.test.js`, then `node tools/replay.js --write` and read the printed sequence of lane, zone and
    waypoint alerts for every route and speed before committing `passages/<your-id>.expected.json` (see `docs/TESTING.md`).
    Run `node tools/e2e.js`, then test on the phone in simulation mode.
 

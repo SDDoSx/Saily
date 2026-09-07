@@ -6,16 +6,16 @@ The data bundled with the software is NOT covered by the MIT License. Each data
 file keeps the terms of its source; the full list is in NOTICE and the
 explanation in docs/LICENSING.md. In short:
 
-- site/chart-data.js, and every file that embeds it (dist/saily.html,
+- site/passages/<id>/chart-data.js, and every file that embeds it (dist/saily.html,
   tools/out/saily-standalone.html): a Derivative Database of OpenStreetMap
   data, (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0.
   Attribution and share-alike apply. It may only be redistributed under ODbL.
 - Traffic separation scheme positions from IMO COLREG.2/Circ.66 (in
-  passages/strait-of-gibraltar.tss.json and site/chart-data.js): reproduced as
+  passages/strait-of-gibraltar.tss.json and site/passages/<id>/chart-data.js): reproduced as
   facts. The circular itself is (c) International Maritime Organization and is
   not reproduced.
 - Pilotage notes quoting NGA Pub 131, Sailing Directions (Enroute) Western
-  Mediterranean (in passages/*.json and site/passage.js): a work of the
+  Mediterranean (in passages/*.json and site/passages/<id>/passage.js): a work of the
   United States Government, public domain.
 - tools/fixtures/fc.json, tools/fixtures/marine.json, tools/out/wx_snapshot.json
   and the forecast embedded in dist/saily.html: weather data by

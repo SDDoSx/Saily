@@ -69,7 +69,7 @@ Nothing is blocking. Candidates, in rough order of value:
 2. Clear the two eslint warnings (dead locals) or give `staleCount` the use it was written for (a count in the
    stale-forecast banner).
 3. `tools/fetch_wx.py` has no test and no fixture; the golden build test does not cover it.
-4. Re-run `tools/fetch_osm.py` + `tools/build_chart.py` against current OSM and diff `site/chart-data.js`: the
+4. Re-run `tools/fetch_osm.py` + `tools/build_chart.py` against current OSM and diff `site/passages/<id>/chart-data.js`: the
    shipped chart is from a 2026-07-27 coastline extract and nothing re-checks it.
 5. `docs/ADAPTING.md` has not been walked end to end for a second passage.
 

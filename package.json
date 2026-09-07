@@ -20,7 +20,7 @@
     "test:build": "python3 tests/build/test_build_chart.py",
     "validate": "python3 tools/validate_passage.py --strict && python3 tests/build/test_validate_passage.py",
     "fetch:osm": "python3 tools/fetch_osm.py passages/strait-of-gibraltar.json ${SAILY_SCRATCH:-/tmp/saily-data}",
-    "build:chart": "python3 tools/build_chart.py ${SAILY_SCRATCH:-/tmp/saily-data} site/chart-data.js",
+    "build:chart": "python3 tools/build_chart.py ${SAILY_SCRATCH:-/tmp/saily-data}",
     "build:passage": "python3 tools/build_passage.py",
     "build:single": "python3 tools/build_single.py dist/saily.html tools/out/wx_snapshot.json"
   },

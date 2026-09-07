@@ -32,8 +32,10 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
 - **Readable at any hour**: Automatic, Dark, Daylight (glare) and Night colours; night is red-amber on black so it does
   not spoil your night vision, switches itself at sunset with an undo toast, and dims further on request. Big-numbers
   mode drops the chart for the figures that matter, with a Chart button to bring it back. (Setup, Colours.)
-- **Passage as data**: `passages/*.json` holds the route, hazards, places, weather points, thresholds and briefing; the
-  build script turns it into the chart. See `docs/ADAPTING.md`.
+- **Passage as data**: `passages/*.json` holds the route, hazards, places, weather points, thresholds, time zones and
+  briefing; the build turns it into a chart under `site/passages/<id>/`, and `site/passages/index.json` lists what is
+  bundled. No place name appears anywhere in the app code. Add a directory and a catalogue line and the app offers your
+  passage, with its own settings, track and offline cache. See `docs/ADAPTING.md`.
 
 ## Deploy (GitHub Pages)
 The workflow `.github/workflows/pages.yml` publishes `site/` on every push to `main` or this branch.
@@ -67,8 +69,8 @@ global Playwright; a local `node_modules` takes precedence.
 - `npm run validate` and `npm run test:build` check the passage/TSS JSON against `schema/` and golden-test the chart
   pipeline on a fixture.
 - `python3 tools/fetch_osm.py passages/strait-of-gibraltar.json <scratch-dir>` fetches the OSM extracts, then
-  `python3 tools/build_chart.py <scratch-dir> site/chart-data.js` regenerates the chart. For passage metadata
-  alone (titles, notes, waypoints, checklists) `npm run build:passage` rewrites `site/passage.js` without it.
+  `python3 tools/build_chart.py <scratch-dir>` regenerates the chart into `site/passages/<id>/`. For passage metadata
+  alone (titles, notes, waypoints, checklists) `npm run build:passage` rewrites `site/passages/<id>/passage.js` without it.
 - `node -e "require('./site/nav.js')"` for the pure geodesy functions.
 - `npm start` serves `site/` locally.
 

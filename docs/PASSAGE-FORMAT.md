@@ -2,8 +2,8 @@
 
 One JSON file describes everything that is specific to a passage: the chart area, the marinas, the routes with
 their spoken waypoint notes, the hazards, the place labels, the weather sample points and thresholds, the briefing
-cards and checklist, and the traffic separation scheme file. `tools/build_chart.py` copies it to `site/passage.js`
-(adding leg distances and bearings) and builds `site/chart-data.js` from it; `tools/fetch_osm.py` uses `bbox` and
+cards and checklist, and the traffic separation scheme file. `tools/build_chart.py` copies it to `site/passages/<id>/passage.js`
+(adding leg distances and bearings) and builds `site/passages/<id>/chart-data.js` from it; `tools/fetch_osm.py` uses `bbox` and
 `places` to fetch the OpenStreetMap inputs. The schema is `schema/passage.schema.json`; `tools/validate_passage.py`
 validates the file and its TSS file and the builder refuses to run on an invalid one.
 
@@ -88,8 +88,8 @@ built-in checker for the subset of JSON Schema the two schemas use otherwise, wi
 `passages/strait-of-gibraltar.json`: three routes (`tarifa` recommended, `east`, `return`), 15 hazards, 18
 labels, 5 weather points, thresholds for a 36 ft planing motor yacht, an 11-item checklist and 5 briefing cards.
 Its TSS is `passages/strait-of-gibraltar.tss.json`. Build with
-`python3 tools/build_chart.py <scratch> site/chart-data.js` after `python3 tools/fetch_osm.py passages/strait-of-gibraltar.json <scratch>`.
+`python3 tools/build_chart.py <scratch>` after `python3 tools/fetch_osm.py passages/strait-of-gibraltar.json <scratch>`.
 
 If you only changed passage metadata -- a title, a note, a time zone, a checklist, a waypoint -- and not the
 coastline, run `python3 tools/build_passage.py` (or `npm run build:passage`) instead. It validates the file and
-rewrites `site/passage.js` alone, so editing a label does not mean re-fetching a coastline from Overpass.
+rewrites `site/passages/<id>/passage.js` alone, so editing a label does not mean re-fetching a coastline from Overpass.

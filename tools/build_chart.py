@@ -350,7 +350,7 @@ def write_outputs(chart, passage_out, out, passage_out_path):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     scratch = argv[0] if len(argv) > 0 else '.'
-    out = argv[1] if len(argv) > 1 else 'site/chart-data.js'
+    out = argv[1] if len(argv) > 1 else os.path.join('site', 'passages', json.load(open(argv[2] if len(argv) > 2 else DEFAULT_PASSAGE, encoding='utf-8'))['id'], 'chart-data.js')
     passage_file = argv[2] if len(argv) > 2 else DEFAULT_PASSAGE
     passage_out_path = os.path.join(os.path.dirname(out), 'passage.js')
     reports = validate_passage.validate_files(passage_file)

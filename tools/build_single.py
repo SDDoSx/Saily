@@ -7,6 +7,9 @@ ROOT = os.path.join(os.path.dirname(__file__), '..', 'site')
 out = sys.argv[1]
 snap = sys.argv[2] if len(sys.argv) > 2 else None
 def rd(p): return open(os.path.join(ROOT, p), encoding='utf-8').read()
+# One passage per single-file build: the catalogue's default. boot.js is not inlined; the data is already here.
+CATALOGUE = json.loads(rd('passages/index.json'))
+DEFAULT = next((p for p in CATALOGUE if p.get('default')), CATALOGUE[0])
 html = rd('index.html')
 # body markup between <body> and </body>, minus script tags
 body = html.split('<body>', 1)[1].split('</body>', 1)[0]
@@ -20,8 +23,8 @@ parts = ['<title>Saily</title>',
          body,
          '<script>\n' + leaflet_js + '\n</script>',
          # Data before code: weather.js reads PASSAGE at load time (sample points, thresholds, time zone).
-         '<script>\n' + rd('chart-data.js') + '\n</script>',
-         '<script>\n' + rd('passage.js') + '\n</script>',
+         '<script>\n' + rd(DEFAULT['chart']) + '\n</script>',
+         '<script>\n' + rd(DEFAULT['passage']) + '\n</script>',
          '<script>\n' + rd('nav.js') + '\n</script>',
          '<script>\n' + rd('weather.js') + '\n</script>',
          '<script>\n' + rd('ais.js') + '\n</script>']

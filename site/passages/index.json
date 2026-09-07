@@ -1,0 +1,11 @@
+[
+  {
+    "id": "strait-of-gibraltar",
+    "title": "Sotogrande → Tangier",
+    "name": "Sotogrande to Tanja Marina Bay, Tangier",
+    "description": "Crossing of the Strait of Gibraltar from Puerto Sotogrande (Spain) to Tanja Marina Bay (Morocco) for a small planing motor yacht.",
+    "default": true,
+    "chart": "passages/strait-of-gibraltar/chart-data.js",
+    "passage": "passages/strait-of-gibraltar/passage.js"
+  }
+]

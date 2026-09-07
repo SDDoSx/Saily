@@ -4,12 +4,14 @@ Saily is deliberately small: a static page, no framework, no build step for the 
 Everything a helmsman needs offline is shipped inside the page.
 
 ```
-passages/<id>.json  ──► tools/build_chart.py ──► site/passage.js   (routes with legs, hazards, places, labels,
+passages/<id>.json  ──► tools/build_chart.py ──► site/passages/<id>/passage.js   (routes with legs, hazards, places, labels,
 OSM extracts (scratch)        │  (validates with                    weather points, thresholds, briefing cards)
-passages/<id>.tss.json ───────┴── validate_passage.py) ► site/chart-data.js (land polygons, harbour detail, breakwaters,
+passages/<id>.tss.json ───────┴── validate_passage.py) ► site/passages/<id>/chart-data.js (land polygons, harbour detail, breakwaters,
   (IMO TSS positions, alert texts;                                  TSS lanes/zones/ITZ with alert texts and flowDeg,
    schema/*.schema.json)                                            anchorages, lights/buoys)
-site/index.html   markup + CSS (instrument-panel layout, phone portrait/landscape, desktop two-column)
+site/passages/index.json  the catalogue: what is bundled, which is the default, where each one's files are
+site/index.html   markup + CSS (design tokens, instrument-panel layout, phone portrait/landscape, desktop two-column)
+site/boot.js      picks the passage, loads its data, then the app: data always before the code that reads it
 site/nav.js       pure geodesy: distance, bearing, cross-track, along-track, solve(), smoothing, sun, GPX
 site/weather.js   Open-Meteo forecast + marine client, hourly merge, thresholds, passage check, tide extremes
 site/app.js       state, GPS, alerts (beeps + prioritised speech), map layers, HUD, pages, preload, simulation

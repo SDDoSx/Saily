@@ -6,7 +6,12 @@
   const C = window.CHART, N = window.NAV, W = window.WX, P = window.PASSAGE;
   const SINGLE = !!window.SAILY_SINGLE; // single-file build (hosted artifact): no service worker, no raster tiles, embedded forecast
   const TZ_ES = P.tz.from.zone, TZ_MA = P.tz.to.zone, TZL_FROM = P.tz.from.label, TZL_TO = P.tz.to.label;
-  const KEY = 'saily.settings.v2', TRACK_KEY = 'saily.track.v1', LOG_KEY = 'saily.alertlog.v1';
+  // Settings, track and alert log are per passage: a route id or a waypoint index from another crossing
+  // is meaningless here, and a track from the Strait does not belong on a Solent chart.
+  const PID = window.SAILY_PASSAGE_ID || (window.PASSAGE && window.PASSAGE.id) || 'default';
+  const suffix = PID === 'strait-of-gibraltar' ? '' : '.' + PID;   // the original keys stay put, so nobody loses their setup
+  const KEY = 'saily.settings.v2' + suffix, TRACK_KEY = 'saily.track.v1' + suffix, LOG_KEY = 'saily.alertlog.v1' + suffix;
+  const PASSAGE_KEY = 'saily.passage.id';
   const MS_TO_KN = 1.943844;
 
   // ---------- time helpers ----------
@@ -1176,7 +1181,9 @@
   function renderMore() {
     const el = $('morePage'); const s = S.settings;
     // Ordered by what matters at sea: the passage first, then what you hear, then what you see.
+    const cat = window.SAILY_PASSAGES || [];
     let h = `<div class="card"><h2>Passage</h2>
+      ${cat.length > 1 ? `<label class="field"><span>Passage</span><select id="setPassage">${cat.map(c => `<option value="${esc(c.id)}" ${c.id === PID ? 'selected' : ''}>${esc(c.title || c.name || c.id)}</option>`).join('')}</select></label>` : ''}
       <label class="field"><span>Planned cruise speed (kn)</span><input type="number" id="setSpeed" min="5" max="40" step="1" value="${s.speed}"></label>
       <label class="field"><span>Planned departure (${TZL_FROM})</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
       <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${esc(r.id)}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${esc(r.short || r.id)})</option>`).join('')}</select></label>
@@ -1223,6 +1230,12 @@
     el.innerHTML = h;
     const num = (id, f) => $(id).addEventListener('change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
     num('setSpeed', v => { s.speed = v; });
+    const psel = $('setPassage');
+    if (psel) psel.addEventListener('change', () => {
+      if (S.navigating && !confirm('Switch passage while navigating? Navigation will stop.')) { psel.value = PID; return; }
+      try { localStorage.setItem(PASSAGE_KEY, psel.value); } catch (e) { }
+      location.reload();
+    });
     $('setDep').addEventListener('change', () => { try { s.departure = fromLocal(TZ_ES, $('setDep').value).toISOString(); saveSettings(); } catch (e) { } });
     $('setRoute').addEventListener('change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = P.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
     $('setVoice').addEventListener('change', () => { s.voice = $('setVoice').checked; saveSettings(); });
@@ -1337,7 +1350,10 @@
 
   // ---------- service worker ----------
   if ('serviceWorker' in navigator && !SINGLE) {
-    window.addEventListener('load', () => {
+    // boot.js loads this file dynamically, so "load" may already have fired: waiting for it would mean
+    // the service worker never registers and the app is never available offline.
+    const onLoaded = fn => (document.readyState === 'complete' ? fn() : window.addEventListener('load', fn));
+    onLoaded(() => {
       navigator.serviceWorker.register('sw.js').then(reg => {
         S.swReg = reg;
         const offer = () => { if (reg.waiting) showUpdateBar(reg); };
