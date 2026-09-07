@@ -1521,39 +1521,108 @@ setTimeout(function () {
   const N = root.NAV;
   const A = {
     targets: new Map(), ws: null, status: 'off', key: '', bbox: null, onUpdate: null, onAlarm: null, own: null,
-    retry: 0, timer: null, lastMsgAt: 0, alarmed: {},
+    retry: 0, timer: null, quiet: null, lastMsgAt: 0, alarmed: {},
+    frames: 0, openedAt: 0, detail: '', lastError: '', onStatus: null,
     cpaWarnNm: 0.5, tcpaWarnMin: 12, staleMin: 10,
   };
+  const URL_STREAM = 'wss://stream.aisstream.io/v0/stream';
+  // aisstream takes any two opposite corners but is not documented to normalise them; send SW then NE.
+  function boxOf(bbox) {
+    const s = Math.min(bbox[0], bbox[2]), w = Math.min(bbox[1], bbox[3]);
+    const n = Math.max(bbox[0], bbox[2]), e = Math.max(bbox[1], bbox[3]);
+    return [[s, w], [n, e]];
+  }
+  function setStatus(status, detail) {
+    A.status = status; if (detail !== undefined) A.detail = detail;
+    if (A.onStatus) try { A.onStatus(A.status, A.detail); } catch (e) { }
+  }
+  /** aisstream closes on a late or malformed subscription and on a bad key: say which, don't fail silently. */
+  function closeReason(ev) {
+    const code = ev && ev.code, why = (ev && ev.reason || '').trim();
+    if (why) return `closed: ${why}`;
+    if (A.frames === 0 && A.openedAt && Date.now() - A.openedAt < 15000) {
+      return `closed ${code || '?'} right after subscribing: the key is usually the reason (check it at aisstream.io)`;
+    }
+    return `closed ${code || '?'}`;
+  }
   function connect(key, bbox) {
     disconnect();
-    A.key = key; A.bbox = bbox;
-    if (!key) { A.status = 'no key'; return; }
-    if (!('WebSocket' in root)) { A.status = 'no websocket'; return; }
+    A.key = key; A.bbox = bbox; A.frames = 0; A.openedAt = 0;
+    if (!key) { setStatus('no key', 'paste an aisstream.io key'); return; }
+    if (!('WebSocket' in root)) { setStatus('no websocket', 'this browser cannot stream AIS'); return; }
+    if (!bbox || bbox.length !== 4) { setStatus('error', 'no area to subscribe to'); return; }
     try {
-      A.status = 'connecting';
-      const ws = new WebSocket('wss://stream.aisstream.io/v0/stream');
+      setStatus('connecting', '');
+      const ws = new WebSocket(URL_STREAM);
       A.ws = ws;
-      ws.onopen = () => { A.retry = 0; A.status = 'connected'; ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: [[[bbox[0], bbox[1]], [bbox[2], bbox[3]]]], FilterMessageTypes: ['PositionReport', 'ShipStaticData', 'StandardClassBPositionReport'] })); };
-      ws.onmessage = ev => { try { ingest(JSON.parse(ev.data)); } catch (e) { } };
-      ws.onerror = () => { A.status = 'error'; };
-      ws.onclose = () => { if (A.ws === ws) { A.ws = null; if (A.key) { A.status = 'reconnecting'; A.retry++; A.timer = setTimeout(() => connect(A.key, A.bbox), Math.min(60000, 2000 * Math.pow(2, A.retry))); } } };
-    } catch (e) { A.status = 'error'; }
+      ws.onopen = () => {
+        A.retry = 0; A.openedAt = Date.now();
+        const box = boxOf(bbox);
+        // The subscription must arrive within 3 s of the socket opening or aisstream closes it.
+        ws.send(JSON.stringify({
+          APIKey: key,
+          BoundingBoxes: [box],
+          FilterMessageTypes: ['PositionReport', 'StandardClassBPositionReport', 'ExtendedClassBPositionReport', 'ShipStaticData', 'StaticDataReport'],
+        }));
+        setStatus('connected', `subscribed to ${box[0][0].toFixed(2)},${box[0][1].toFixed(2)} .. ${box[1][0].toFixed(2)},${box[1][1].toFixed(2)}`);
+        // A key that is accepted but sees no traffic looks exactly like a key that was rejected. Say which.
+        clearTimeout(A.quiet);
+        A.quiet = setTimeout(() => {
+          if (A.ws === ws && A.frames === 0) setStatus('connected', 'no messages yet: the key works only if this changes; otherwise check it, or the area may simply be quiet');
+        }, 30000);
+      };
+      ws.onmessage = ev => {
+        A.frames++;
+        let msg = null;
+        try { msg = JSON.parse(ev.data); } catch (e) { A.lastError = String(ev.data).slice(0, 200); setStatus('error', A.lastError); return; }
+        // aisstream reports a bad key or a malformed subscription as a plain frame, then closes.
+        const err = msg && (msg.error || msg.Error || (!msg.MetaData && typeof msg.message === 'string' && msg.message));
+        if (err) { A.lastError = String(err).slice(0, 200); setStatus('rejected', A.lastError); return; }
+        ingest(msg);
+      };
+      ws.onerror = () => { if (A.ws === ws) setStatus('error', 'the connection failed (network, or the browser blocked it)'); };
+      ws.onclose = ev => {
+        clearTimeout(A.quiet);
+        if (A.ws !== ws) return;
+        A.ws = null;
+        if (!A.key) return;
+        A.retry++;
+        const wait = Math.min(60000, 2000 * Math.pow(2, A.retry));
+        setStatus('reconnecting', `${A.lastError || closeReason(ev)}; retrying in ${Math.round(wait / 1000)} s`);
+        A.timer = setTimeout(() => connect(A.key, A.bbox), wait);
+      };
+    } catch (e) { setStatus('error', String(e && e.message || e)); }
   }
-  function disconnect() { clearTimeout(A.timer); if (A.ws) { const w = A.ws; A.ws = null; try { w.close(); } catch (e) { } } A.status = A.key ? 'stopped' : 'off'; }
+  function disconnect() {
+    clearTimeout(A.timer); clearTimeout(A.quiet);
+    if (A.ws) { const w = A.ws; A.ws = null; try { w.close(); } catch (e) { } }
+    setStatus(A.key ? 'stopped' : 'off', '');
+  }
+  /** AIS names are @-padded to a fixed width; some feeds pass the padding through. */
+  function cleanName(v) { return String(v).replace(/@+/g, ' ').replace(/\s+/g, ' ').trim(); }
   /** aisstream message -> target */
   function ingest(msg) {
     if (!msg || !msg.MetaData) return;
     const md = msg.MetaData, mmsi = md.MMSI; if (!mmsi) return;
     const t = A.targets.get(mmsi) || { mmsi, name: '', lat: null, lon: null, cog: null, sog: null, hdg: null, type: null, t: 0 };
-    if (md.ShipName && !t.name) t.name = String(md.ShipName).trim();
-    const pr = msg.Message && (msg.Message.PositionReport || msg.Message.StandardClassBPositionReport);
+    if (md.ShipName && !t.name) t.name = cleanName(md.ShipName);
+    const m = msg.Message || {};
+    // Class A (1/2/3), Class B (18) and Class B extended (19) all carry a position.
+    const pr = m.PositionReport || m.StandardClassBPositionReport || m.ExtendedClassBPositionReport;
     if (pr) {
       t.lat = pr.Latitude != null ? pr.Latitude : md.latitude; t.lon = pr.Longitude != null ? pr.Longitude : md.longitude;
       t.cog = (pr.Cog != null && pr.Cog < 360) ? pr.Cog : null; t.sog = (pr.Sog != null && pr.Sog < 102) ? pr.Sog : null;
       t.hdg = (pr.TrueHeading != null && pr.TrueHeading < 360) ? pr.TrueHeading : null; t.t = Date.now();
     }
-    const sd = msg.Message && msg.Message.ShipStaticData;
-    if (sd) { if (sd.Name) t.name = String(sd.Name).trim(); if (sd.Type != null) t.type = sd.Type; }
+    const sd = m.ShipStaticData;
+    if (sd) { if (sd.Name) t.name = cleanName(sd.Name); if (sd.Type != null) t.type = sd.Type; }
+    // Class B static (24) comes in two parts: A carries the name, B the ship type.
+    const sdr = m.StaticDataReport;
+    if (sdr) {
+      const a = sdr.ReportA, b = sdr.ReportB;
+      if (a && a.Name) t.name = cleanName(a.Name);
+      if (b && b.ShipType != null) t.type = b.ShipType;
+    }
     if (t.lat == null) return;
     A.targets.set(mmsi, t); A.lastMsgAt = Date.now();
     if (A.onUpdate) A.onUpdate(t);
@@ -1594,6 +1663,7 @@ setTimeout(function () {
   const TYPES = { 3: 'special', 5: 'special', 6: 'passenger', 7: 'cargo', 8: 'tanker', 9: 'other' };
   function typeName(code) { if (code == null) return ''; if (code === 30) return 'fishing'; if (code === 36 || code === 37) return 'sailing/pleasure'; if (code >= 40 && code < 50) return 'high-speed craft'; if (code >= 60 && code < 70) return 'passenger'; if (code >= 70 && code < 80) return 'cargo'; if (code >= 80 && code < 90) return 'tanker'; return TYPES[Math.floor(code / 10)] || ''; }
   root.AIS = A; A.connect = connect; A.disconnect = disconnect; A.ingest = ingest; A.cpa = cpa; A.ranked = ranked; A.typeName = typeName; A.prune = prune;
+  A.boxOf = boxOf; A.cleanName = cleanName;
 })(typeof self !== 'undefined' ? self : this);
 
 </script>
@@ -1647,6 +1717,8 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     return N.fmtTime(new Date(d.getTime() + parseInt(o, 10) * 60000), 'UTC');
   }
   const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ${TZL_FROM} · ${fmtMA(d)} ${TZL_TO}`;
+  /** Escape text that came from outside the app (feed errors, ship names) before it goes into innerHTML. */
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------- state ----------
   const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, theme: 'auto', dim: 0, bigHud: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false };
@@ -2337,8 +2409,9 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     if (!window.AIS || t.lat == null) return;
     const c = AIS.cpa(AIS.own, t), risk = aisRisk(c);
     let m = aisMarkers.get(t.mmsi);
-    const label = `${t.name || t.mmsi}${t.sog != null ? ' ' + t.sog.toFixed(0) + ' kn' : ''}`;
-    const popup = `<b>${t.name || 'MMSI ' + t.mmsi}</b>${AIS.typeName(t.type) || 'ship'} · COG ${N.fmtBrg(t.cog)} · ${t.sog != null ? t.sog.toFixed(1) : '--'} kn${c ? '<br>range ' + N.fmtNm(c.range) + ' nm, bearing ' + N.fmtBrg(c.brg) + (c.tcpa !== null && c.tcpa > 0 ? '<br>CPA ' + N.fmtNm(c.cpa) + ' nm in ' + Math.round(c.tcpa) + ' min' : '<br>opening') : ''}<br>${Math.round((Date.now() - t.t) / 1000)} s ago`;
+    // Names arrive from a public feed: escape them before they reach innerHTML.
+    const label = `${esc(t.name || t.mmsi)}${t.sog != null ? ' ' + t.sog.toFixed(0) + ' kn' : ''}`;
+    const popup = `<b>${esc(t.name || 'MMSI ' + t.mmsi)}</b>${AIS.typeName(t.type) || 'ship'} · COG ${N.fmtBrg(t.cog)} · ${t.sog != null ? t.sog.toFixed(1) : '--'} kn${c ? '<br>range ' + N.fmtNm(c.range) + ' nm, bearing ' + N.fmtBrg(c.brg) + (c.tcpa !== null && c.tcpa > 0 ? '<br>CPA ' + N.fmtNm(c.cpa) + ' nm in ' + Math.round(c.tcpa) + ' min' : '<br>opening') : ''}<br>${Math.round((Date.now() - t.t) / 1000)} s ago`;
     if (!m) { m = L.marker([t.lat, t.lon], { pane: 'vessel', icon: aisIcon(t, risk) }).bindPopup(popup).bindTooltip(label, { permanent: true, direction: 'right', offset: [10, 0], className: 'aislabel' }); aisGroup.addLayer(m); aisMarkers.set(t.mmsi, m); }
     else { m.setLatLng([t.lat, t.lon]); m.setIcon(aisIcon(t, risk)); m.getPopup().setContent(popup); m.setTooltipContent(label); }
     m.setOpacity(Date.now() - t.t > 120000 ? 0.35 : 1); // no report for 2 min: fade, the position is a guess
@@ -2364,10 +2437,25 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
   function aisApply() {
     if (!window.AIS) return;
     AIS.onUpdate = aisDraw; AIS.onAlarm = aisAlarm;
+    AIS.onStatus = () => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); };
     const key = (S.settings.aisKey || '').trim();
     if (S.settings.aisOn && key && !S.sim) AIS.connect(key, P.bbox); else AIS.disconnect();
   }
-  function aisStatusText() { if (!window.AIS) return 'module missing'; const n = AIS.targets.size; return `${AIS.status}${n ? ', ' + n + ' targets' : ''}${AIS.lastMsgAt ? ', last message ' + Math.round((Date.now() - AIS.lastMsgAt) / 1000) + ' s ago' : ''}`; }
+  /** Why there are no ships on the screen, in one line. Silence here is what makes a bad key look like a bad app. */
+  function aisStatusText() {
+    if (!window.AIS) return 'module missing';
+    const key = (S.settings.aisKey || '').trim();
+    if (!S.settings.aisOn) return key ? 'off: switch on "Show live ships" above' : 'off: paste an aisstream.io key to switch on';
+    if (!key) return 'no key yet: paste your aisstream.io key above';
+    if (S.sim) return 'paused while the demo simulation is running (the demo shows its own ships)';
+    const n = AIS.targets.size;
+    const bits = [AIS.status];
+    if (n) bits.push(`${n} ship${n > 1 ? 's' : ''} in the area`);
+    if (AIS.frames) bits.push(`${AIS.frames} messages`);
+    if (AIS.lastMsgAt) bits.push(`last ${Math.round((Date.now() - AIS.lastMsgAt) / 1000)} s ago`);
+    const detail = AIS.detail ? `<br><span class="muted">${esc(AIS.detail)}</span>` : '';
+    return esc(bits.join(', ')) + detail;
+  }
   // synthetic ships for the demo: exercise the CPA alarms without a key
   let simShips = null;
   function simShipsTick(dt) {
@@ -2782,11 +2870,14 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
       <label class="field"><span>OpenSeaMap buoys/lights overlay</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
       <label class="field"><span>Morocco clock (MA)</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option><option value="60" ${s.maOffset === '60' ? 'selected' : ''}>UTC+1 (until 20 Sep 2026)</option><option value="0" ${s.maOffset === '0' ? 'selected' : ''}>UTC+0 (from 20 Sep 2026)</option></select></label>
       <div class="row" style="margin-top:8px"><button class="btn" id="btnTestAlert">Test alert</button><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
-    h += `<div class="card"><h2>Ships (AIS)</h2><p class="muted">Live ship positions need an AIS feed. No public feed covers the Strait of Gibraltar without an account: <b>aisstream.io</b> gives a free key (sign in with GitHub, no payment). Paste it here and the app streams ships in the passage area, draws them with their course, computes closest point of approach (CPA) and time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes. Coverage comes from volunteer shore receivers: not every ship, and up to a minute late. The demo simulation shows three synthetic ships so you can see how it looks.</p>
-      <label class="field"><span>Enable AIS targets</span><input type="checkbox" id="setAisOn" ${s.aisOn ? 'checked' : ''}></label>
-      <label class="field"><span>aisstream.io API key</span><input type="password" id="setAisKey" value="${(s.aisKey || '').replace(/"/g, '&quot;')}" placeholder="paste key" autocomplete="off"></label>
+    h += `<div class="card"><h2>Ships (AIS)</h2><p class="muted">Live ship positions need an AIS feed. No public feed covers the Strait of Gibraltar without an account: <b>aisstream.io</b> gives a free key (sign in with GitHub, no payment). Paste it below and the app streams ships in the passage area, draws them with their course, computes closest point of approach (CPA) and time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes.</p>
+      <p class="muted"><b>This needs mobile data and it is not a lookout.</b> Coverage comes from volunteer shore receivers: not every ship, up to a minute late, and nothing at all once you lose signal mid-strait. A real AIS receiver on the boat (or the plotter's own AIS) is the only version of this that works offshore. Treat what you see here as a hint about traffic, never as the traffic.</p>
+      <p class="muted">Nothing showing? The status line below says why. "connected" with no messages for a minute usually means the key was refused; "rejected" prints what the server said. The demo simulation shows three synthetic ships so you can see how it looks, and live AIS pauses while it runs.</p>
+      <label class="field"><span>aisstream.io API key</span><input type="text" id="setAisKey" value="${esc(s.aisKey || '')}" placeholder="paste key here" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="field"><span>Show live ships</span><input type="checkbox" id="setAisOn" ${s.aisOn ? 'checked' : ''}></label>
       <label class="field"><span>Show demo ships in the simulation</span><input type="checkbox" id="setAisDemo" ${s.aisDemo !== false ? 'checked' : ''}></label>
-      <div class="muted">Status: <span id="aisStatus">${aisStatusText()}</span></div></div>`;
+      <div class="row" style="margin-top:8px"><button class="btn" id="btnAisTest">Test the key</button></div>
+      <div class="muted" style="margin-top:8px">Status: <span id="aisStatus">${aisStatusText()}</span></div></div>`;
     h += `<div class="card"><h2>Chart layers</h2>
       <label class="field"><span>Depth shading and contours (EMODnet, online only)</span><input type="checkbox" id="setDepth" ${s.depth ? 'checked' : ''}></label>
       <p class="muted">EMODnet bathymetry is a gridded model (about 100 m cells), fine for seeing banks and the shelf, not for the last metres in a harbour. Charted rocks, wrecks and obstructions from OpenStreetMap are drawn as red asterisks with a 0.1 nm alarm circle; the app also warns when land or rocks lie on your heading within four minutes at your speed.</p></div>`;
@@ -2812,11 +2903,30 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     $('setTheme').addEventListener('change', () => { s.theme = $('setTheme').value; saveSettings(); applyTheme(); });
     $('setDim').addEventListener('input', () => { s.dim = Number($('setDim').value) / 100; saveSettings(); applyTheme(); $('setDim').previousElementSibling.textContent = `Night dimmer (${Math.round(s.dim * 100)}%)`; });
     $('setBigHud').addEventListener('change', () => { s.bigHud = $('setBigHud').checked; saveSettings(); applyTheme(); });
-    $('setAisOn').addEventListener('change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); setTimeout(() => { const el = $('aisStatus'); if (el) el.textContent = aisStatusText(); }, 1500); });
-    $('setAisKey').addEventListener('change', () => { s.aisKey = $('setAisKey').value.trim(); saveSettings(); aisApply(); });
+    const aisRefresh = () => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); };
+    $('setAisOn').addEventListener('change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); aisRefresh(); setTimeout(aisRefresh, 1500); });
+    // A pasted key is the whole intent: switch AIS on with it rather than making the user find a second control.
+    const aisKeyChanged = () => {
+      const v = $('setAisKey').value.trim();
+      if (v === (s.aisKey || '')) return;
+      s.aisKey = v;
+      if (v && !s.aisOn) { s.aisOn = true; $('setAisOn').checked = true; toast('AIS switched on'); }
+      saveSettings(); aisApply(); aisRefresh(); setTimeout(aisRefresh, 2000);
+    };
+    $('setAisKey').addEventListener('change', aisKeyChanged);
+    $('setAisKey').addEventListener('blur', aisKeyChanged);
+    $('setAisKey').addEventListener('paste', () => setTimeout(aisKeyChanged, 0));
+    $('btnAisTest').addEventListener('click', () => {
+      aisKeyChanged();
+      if (!(s.aisKey || '').trim()) { toast('Paste a key first'); return; }
+      if (S.sim) { toast('Stop the demo simulation first'); return; }
+      aisApply();
+      $('aisStatus').innerHTML = 'testing…';
+      let n = 0; const iv = setInterval(() => { aisRefresh(); if (++n > 12) clearInterval(iv); }, 2500);
+    });
     $('setAisDemo').addEventListener('change', () => { s.aisDemo = $('setAisDemo').checked; saveSettings(); });
     $('setDepth').addEventListener('change', () => { s.depth = $('setDepth').checked; saveSettings(); applyBase(); });
-    if (!S.aisStatusTimer) S.aisStatusTimer = setInterval(() => { const el = $('aisStatus'); if (el) el.textContent = aisStatusText(); }, 5000);
+    if (!S.aisStatusTimer) S.aisStatusTimer = setInterval(() => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); }, 5000);
     $('setSound').addEventListener('change', () => { s.sound = $('setSound').checked; saveSettings(); });
     $('setSeamark').addEventListener('change', () => { s.seamark = $('setSeamark').checked; saveSettings(); applyBase(); });
     $('setMa').addEventListener('change', () => { s.maOffset = $('setMa').value; saveSettings(); tickClocks(); if (S.solution) updateHud(S.solution); });
