@@ -134,3 +134,29 @@ test('typeName maps AIS ship type codes', () => {
   assert.strictEqual(AIS.typeName(80), 'tanker');
   assert.strictEqual(AIS.typeName(null), '');
 });
+
+test('boxOf normalises a passage bbox to south-west then north-east', () => {
+  // passage bbox is [south, west, north, east]; aisstream is not documented to normalise the corners.
+  assert.deepStrictEqual(AIS.boxOf([35.7, -5.9, 36.4, -5.1]), [[35.7, -5.9], [36.4, -5.1]]);
+  // corners the other way round must still come out south-west first
+  assert.deepStrictEqual(AIS.boxOf([36.4, -5.1, 35.7, -5.9]), [[35.7, -5.9], [36.4, -5.1]]);
+});
+
+test('cleanName strips the @ padding AIS names carry', () => {
+  assert.strictEqual(AIS.cleanName('MAERSK KOWLOON@@@@@'), 'MAERSK KOWLOON');
+  assert.strictEqual(AIS.cleanName('  SPACED   OUT  '), 'SPACED OUT');
+  assert.strictEqual(AIS.cleanName('@@@@'), '');
+});
+
+test('ingest reads Class B extended positions and Class B static names', () => {
+  resetAis();
+  AIS.ingest({ MetaData: { MMSI: 77, latitude: 36, longitude: -5.5 },
+    Message: { ExtendedClassBPositionReport: { Latitude: 36, Longitude: -5.5, Cog: 270, Sog: 6.5 } } });
+  AIS.ingest({ MetaData: { MMSI: 77 },
+    Message: { StaticDataReport: { ReportA: { Name: 'LITTLE BOAT@@' }, ReportB: { ShipType: 37 } } } });
+  const t = AIS.targets.get(77);
+  assert.strictEqual(t.name, 'LITTLE BOAT');
+  assert.strictEqual(t.type, 37);
+  assert.strictEqual(t.sog, 6.5);
+  assert.strictEqual(AIS.typeName(t.type), 'sailing/pleasure');
+});

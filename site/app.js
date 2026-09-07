@@ -38,6 +38,8 @@
     return N.fmtTime(new Date(d.getTime() + parseInt(o, 10) * 60000), 'UTC');
   }
   const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ${TZL_FROM} · ${fmtMA(d)} ${TZL_TO}`;
+  /** Escape text that came from outside the app (feed errors, ship names) before it goes into innerHTML. */
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------- state ----------
   const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, theme: 'auto', dim: 0, bigHud: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false };
@@ -728,8 +730,9 @@
     if (!window.AIS || t.lat == null) return;
     const c = AIS.cpa(AIS.own, t), risk = aisRisk(c);
     let m = aisMarkers.get(t.mmsi);
-    const label = `${t.name || t.mmsi}${t.sog != null ? ' ' + t.sog.toFixed(0) + ' kn' : ''}`;
-    const popup = `<b>${t.name || 'MMSI ' + t.mmsi}</b>${AIS.typeName(t.type) || 'ship'} · COG ${N.fmtBrg(t.cog)} · ${t.sog != null ? t.sog.toFixed(1) : '--'} kn${c ? '<br>range ' + N.fmtNm(c.range) + ' nm, bearing ' + N.fmtBrg(c.brg) + (c.tcpa !== null && c.tcpa > 0 ? '<br>CPA ' + N.fmtNm(c.cpa) + ' nm in ' + Math.round(c.tcpa) + ' min' : '<br>opening') : ''}<br>${Math.round((Date.now() - t.t) / 1000)} s ago`;
+    // Names arrive from a public feed: escape them before they reach innerHTML.
+    const label = `${esc(t.name || t.mmsi)}${t.sog != null ? ' ' + t.sog.toFixed(0) + ' kn' : ''}`;
+    const popup = `<b>${esc(t.name || 'MMSI ' + t.mmsi)}</b>${AIS.typeName(t.type) || 'ship'} · COG ${N.fmtBrg(t.cog)} · ${t.sog != null ? t.sog.toFixed(1) : '--'} kn${c ? '<br>range ' + N.fmtNm(c.range) + ' nm, bearing ' + N.fmtBrg(c.brg) + (c.tcpa !== null && c.tcpa > 0 ? '<br>CPA ' + N.fmtNm(c.cpa) + ' nm in ' + Math.round(c.tcpa) + ' min' : '<br>opening') : ''}<br>${Math.round((Date.now() - t.t) / 1000)} s ago`;
     if (!m) { m = L.marker([t.lat, t.lon], { pane: 'vessel', icon: aisIcon(t, risk) }).bindPopup(popup).bindTooltip(label, { permanent: true, direction: 'right', offset: [10, 0], className: 'aislabel' }); aisGroup.addLayer(m); aisMarkers.set(t.mmsi, m); }
     else { m.setLatLng([t.lat, t.lon]); m.setIcon(aisIcon(t, risk)); m.getPopup().setContent(popup); m.setTooltipContent(label); }
     m.setOpacity(Date.now() - t.t > 120000 ? 0.35 : 1); // no report for 2 min: fade, the position is a guess
@@ -755,10 +758,25 @@
   function aisApply() {
     if (!window.AIS) return;
     AIS.onUpdate = aisDraw; AIS.onAlarm = aisAlarm;
+    AIS.onStatus = () => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); };
     const key = (S.settings.aisKey || '').trim();
     if (S.settings.aisOn && key && !S.sim) AIS.connect(key, P.bbox); else AIS.disconnect();
   }
-  function aisStatusText() { if (!window.AIS) return 'module missing'; const n = AIS.targets.size; return `${AIS.status}${n ? ', ' + n + ' targets' : ''}${AIS.lastMsgAt ? ', last message ' + Math.round((Date.now() - AIS.lastMsgAt) / 1000) + ' s ago' : ''}`; }
+  /** Why there are no ships on the screen, in one line. Silence here is what makes a bad key look like a bad app. */
+  function aisStatusText() {
+    if (!window.AIS) return 'module missing';
+    const key = (S.settings.aisKey || '').trim();
+    if (!S.settings.aisOn) return key ? 'off: switch on "Show live ships" above' : 'off: paste an aisstream.io key to switch on';
+    if (!key) return 'no key yet: paste your aisstream.io key above';
+    if (S.sim) return 'paused while the demo simulation is running (the demo shows its own ships)';
+    const n = AIS.targets.size;
+    const bits = [AIS.status];
+    if (n) bits.push(`${n} ship${n > 1 ? 's' : ''} in the area`);
+    if (AIS.frames) bits.push(`${AIS.frames} messages`);
+    if (AIS.lastMsgAt) bits.push(`last ${Math.round((Date.now() - AIS.lastMsgAt) / 1000)} s ago`);
+    const detail = AIS.detail ? `<br><span class="muted">${esc(AIS.detail)}</span>` : '';
+    return esc(bits.join(', ')) + detail;
+  }
   // synthetic ships for the demo: exercise the CPA alarms without a key
   let simShips = null;
   function simShipsTick(dt) {
@@ -1173,11 +1191,14 @@
       <label class="field"><span>OpenSeaMap buoys/lights overlay</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
       <label class="field"><span>Morocco clock (MA)</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option><option value="60" ${s.maOffset === '60' ? 'selected' : ''}>UTC+1 (until 20 Sep 2026)</option><option value="0" ${s.maOffset === '0' ? 'selected' : ''}>UTC+0 (from 20 Sep 2026)</option></select></label>
       <div class="row" style="margin-top:8px"><button class="btn" id="btnTestAlert">Test alert</button><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
-    h += `<div class="card"><h2>Ships (AIS)</h2><p class="muted">Live ship positions need an AIS feed. No public feed covers the Strait of Gibraltar without an account: <b>aisstream.io</b> gives a free key (sign in with GitHub, no payment). Paste it here and the app streams ships in the passage area, draws them with their course, computes closest point of approach (CPA) and time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes. Coverage comes from volunteer shore receivers: not every ship, and up to a minute late. The demo simulation shows three synthetic ships so you can see how it looks.</p>
-      <label class="field"><span>Enable AIS targets</span><input type="checkbox" id="setAisOn" ${s.aisOn ? 'checked' : ''}></label>
-      <label class="field"><span>aisstream.io API key</span><input type="password" id="setAisKey" value="${(s.aisKey || '').replace(/"/g, '&quot;')}" placeholder="paste key" autocomplete="off"></label>
+    h += `<div class="card"><h2>Ships (AIS)</h2><p class="muted">Live ship positions need an AIS feed. No public feed covers the Strait of Gibraltar without an account: <b>aisstream.io</b> gives a free key (sign in with GitHub, no payment). Paste it below and the app streams ships in the passage area, draws them with their course, computes closest point of approach (CPA) and time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes.</p>
+      <p class="muted"><b>This needs mobile data and it is not a lookout.</b> Coverage comes from volunteer shore receivers: not every ship, up to a minute late, and nothing at all once you lose signal mid-strait. A real AIS receiver on the boat (or the plotter's own AIS) is the only version of this that works offshore. Treat what you see here as a hint about traffic, never as the traffic.</p>
+      <p class="muted">Nothing showing? The status line below says why. "connected" with no messages for a minute usually means the key was refused; "rejected" prints what the server said. The demo simulation shows three synthetic ships so you can see how it looks, and live AIS pauses while it runs.</p>
+      <label class="field"><span>aisstream.io API key</span><input type="text" id="setAisKey" value="${esc(s.aisKey || '')}" placeholder="paste key here" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="field"><span>Show live ships</span><input type="checkbox" id="setAisOn" ${s.aisOn ? 'checked' : ''}></label>
       <label class="field"><span>Show demo ships in the simulation</span><input type="checkbox" id="setAisDemo" ${s.aisDemo !== false ? 'checked' : ''}></label>
-      <div class="muted">Status: <span id="aisStatus">${aisStatusText()}</span></div></div>`;
+      <div class="row" style="margin-top:8px"><button class="btn" id="btnAisTest">Test the key</button></div>
+      <div class="muted" style="margin-top:8px">Status: <span id="aisStatus">${aisStatusText()}</span></div></div>`;
     h += `<div class="card"><h2>Chart layers</h2>
       <label class="field"><span>Depth shading and contours (EMODnet, online only)</span><input type="checkbox" id="setDepth" ${s.depth ? 'checked' : ''}></label>
       <p class="muted">EMODnet bathymetry is a gridded model (about 100 m cells), fine for seeing banks and the shelf, not for the last metres in a harbour. Charted rocks, wrecks and obstructions from OpenStreetMap are drawn as red asterisks with a 0.1 nm alarm circle; the app also warns when land or rocks lie on your heading within four minutes at your speed.</p></div>`;
@@ -1203,11 +1224,30 @@
     $('setTheme').addEventListener('change', () => { s.theme = $('setTheme').value; saveSettings(); applyTheme(); });
     $('setDim').addEventListener('input', () => { s.dim = Number($('setDim').value) / 100; saveSettings(); applyTheme(); $('setDim').previousElementSibling.textContent = `Night dimmer (${Math.round(s.dim * 100)}%)`; });
     $('setBigHud').addEventListener('change', () => { s.bigHud = $('setBigHud').checked; saveSettings(); applyTheme(); });
-    $('setAisOn').addEventListener('change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); setTimeout(() => { const el = $('aisStatus'); if (el) el.textContent = aisStatusText(); }, 1500); });
-    $('setAisKey').addEventListener('change', () => { s.aisKey = $('setAisKey').value.trim(); saveSettings(); aisApply(); });
+    const aisRefresh = () => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); };
+    $('setAisOn').addEventListener('change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); aisRefresh(); setTimeout(aisRefresh, 1500); });
+    // A pasted key is the whole intent: switch AIS on with it rather than making the user find a second control.
+    const aisKeyChanged = () => {
+      const v = $('setAisKey').value.trim();
+      if (v === (s.aisKey || '')) return;
+      s.aisKey = v;
+      if (v && !s.aisOn) { s.aisOn = true; $('setAisOn').checked = true; toast('AIS switched on'); }
+      saveSettings(); aisApply(); aisRefresh(); setTimeout(aisRefresh, 2000);
+    };
+    $('setAisKey').addEventListener('change', aisKeyChanged);
+    $('setAisKey').addEventListener('blur', aisKeyChanged);
+    $('setAisKey').addEventListener('paste', () => setTimeout(aisKeyChanged, 0));
+    $('btnAisTest').addEventListener('click', () => {
+      aisKeyChanged();
+      if (!(s.aisKey || '').trim()) { toast('Paste a key first'); return; }
+      if (S.sim) { toast('Stop the demo simulation first'); return; }
+      aisApply();
+      $('aisStatus').innerHTML = 'testing…';
+      let n = 0; const iv = setInterval(() => { aisRefresh(); if (++n > 12) clearInterval(iv); }, 2500);
+    });
     $('setAisDemo').addEventListener('change', () => { s.aisDemo = $('setAisDemo').checked; saveSettings(); });
     $('setDepth').addEventListener('change', () => { s.depth = $('setDepth').checked; saveSettings(); applyBase(); });
-    if (!S.aisStatusTimer) S.aisStatusTimer = setInterval(() => { const el = $('aisStatus'); if (el) el.textContent = aisStatusText(); }, 5000);
+    if (!S.aisStatusTimer) S.aisStatusTimer = setInterval(() => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); }, 5000);
     $('setSound').addEventListener('change', () => { s.sound = $('setSound').checked; saveSettings(); });
     $('setSeamark').addEventListener('change', () => { s.seamark = $('setSeamark').checked; saveSettings(); applyBase(); });
     $('setMa').addEventListener('change', () => { s.maOffset = $('setMa').value; saveSettings(); tickClocks(); if (S.solution) updateHud(S.solution); });
