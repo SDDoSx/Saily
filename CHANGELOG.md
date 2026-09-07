@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.12.0 (2026-09-07)
+Interface rebuilt on a design system, and the passage became something you choose rather than something the
+app is compiled around.
+- Design tokens: one type scale, one spacing scale, one radius scale, and surfaces named by role. Every theme
+  redefines the same token set, so daylight and night stay consistent by construction.
+- The helm reads as one instrument rather than eight identical cards: hairline dividers over a single well,
+  bearing and distance to the waypoint set larger than the rest, a header that truncates instead of wrapping,
+  and environment readings that no longer cut themselves off. Alerts show three lines instead of two.
+- Setup is seven sections in the order they matter at sea, with switches instead of raw checkboxes, selects
+  that show their whole option text, and the long explanations behind a summary. The start screen no longer
+  scrolls its own title out of view.
+- Weather: the repeated CAUTION pills under the verdict are gone; reasons are a list with a severity stripe
+  and the measurement leading. A WMO weather code was being printed as a measurement ("Fog 45"); coded
+  conditions now print no magnitude.
+- Passages: `site/passages/index.json` is a catalogue, `site/boot.js` picks one and loads its data before the
+  code that reads it, and a picker appears in Setup once more than one is bundled. Generated data moved to
+  `site/passages/<id>/`. Settings, track and alert log are kept per passage. The service worker's precache list
+  is generated from what is bundled, so switching passage works offline.
+- No place name is left in the app code: the page title, ETA label, daylight note, destination-clock offsets
+  and return-route button all come from the passage (`title`, `destinationShort`, `sunNote`, `tz.to.offsets`,
+  `route.isReturn`).
+- `tools/build_passage.py` regenerates `passage.js` from the passage JSON alone, with no Overpass fetch.
+- AIS: a pasted key switches AIS on by itself, and every failure now says why -- close code and reason, the
+  server's own error text, the subscribed bounding box, the message count, and a watchdog that separates a
+  refused key from a quiet area. Class B extended positions and Class B static reports are subscribed too, so
+  small craft appear with their names. Ship names and feed errors are escaped before they reach the page.
+
+### Fixed
+- Zone alerts were driven by a table in `app.js` keyed by the Strait's own zone ids, and any id it did not
+  recognise was skipped: another passage would have got no lane or zone warnings at all. They come from the
+  passage data now.
+- `weather.js` loaded before `passage.js` and captured `PASSAGE` as undefined, so it silently used its own
+  built-in sample points, thresholds and time zone. Another passage would have been judged on the Strait of
+  Gibraltar's weather. Data now loads first, and e2e asserts it.
+- Its fallback was five fixed coordinates in the Strait; it samples the passage's own route instead.
+- The service worker registered on the window `load` event, which has already fired when `boot.js` loads
+  `app.js`: the app would have stopped working offline. e2e asserts the worker activates rather than hanging.
+- `fetch_osm.py` wrote `land_osm.json` as a bare Polygon when the bbox held one connected land mass, and
+  `build_chart.load_land` crashed on it. `overpass_get` catches `http.client.HTTPException` (a cut transfer).
+- The cross-track bar's starboard tint was a hard-coded cyan that stayed cyan in night mode.
+
 ## 0.11.0 (2026-09-07)
 Safety and trust pass driven by a six-lens critique and adversarial review, plus a reproducible chart build.
 - Guards: land-ahead bounded by the verified route (harbour legs on track excluded), fix-quality gate (jumps rejected,
