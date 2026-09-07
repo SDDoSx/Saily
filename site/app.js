@@ -32,12 +32,17 @@
     const today = toLocalInput(TZ_ES, new Date()).slice(0, 10);
     return fromLocal(TZ_ES, today + 'T' + (P.defaultDeparture || '13:30')).toISOString();
   }
-  function fmtMA(d) { // Morocco time: device tz database by default; manual UTC offset override in Setup (Morocco moves to UTC+0 on 20 Sep 2026)
+  // Destination-zone clock: the phone's time zone database by default, or a manual UTC offset from
+  // passage.tz.to.offsets when a country is mid-change and the database on the phone may be stale.
+  function fmtMA(d) {
     const o = S.settings && S.settings.maOffset;
     if (o === undefined || o === 'auto') return N.fmtTime(d, TZ_MA);
     return N.fmtTime(new Date(d.getTime() + parseInt(o, 10) * 60000), 'UTC');
   }
   const bothTimes = d => `${N.fmtTime(d, TZ_ES)} ${TZL_FROM} · ${fmtMA(d)} ${TZL_TO}`;
+  const DEST_NAME = P.destinationShort || 'destination';   // the short name for headings and ETA labels
+  const TZ_OFFSETS = (P.tz.to && P.tz.to.offsets) || [];   // manual UTC offsets offered in Setup
+  const returnRoute = () => P.routes.find(r => r.isReturn) || null;
   /** Escape text that came from outside the app (feed errors, ship names) before it goes into innerHTML. */
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -464,11 +469,11 @@
     if (Date.now() - S.completeSince > 120000 && $('completeBar').classList.contains('hidden') && !S.completeShown) {
       S.completeShown = true;
       const t = S.trip; const hrs = t ? (Date.now() - t.startedAt) / 3600000 : 0;
-      $('completeBar').innerHTML = `<span><b>Passage complete.</b> ${t ? N.fmtNm(t.dist, 1) + ' nm in ' + N.fmtDur(hrs * 3600) + ', avg ' + (hrs > 0.02 ? (t.dist / hrs).toFixed(1) : '--') + ' kn, max ' + t.maxSog.toFixed(1) + ' kn, fuel about ' + Math.round(hrs * (P.vessel.burnLph || 75)) + ' L.' : ''}</span><button class="btn primary" id="btnStopNav">Stop</button><button class="btn" id="btnKeepGps">Keep GPS</button>${P.routes.some(r => r.id === 'return') ? '<button class="btn" id="btnPlanReturn">Plan return</button>' : ''}`;
+      $('completeBar').innerHTML = `<span><b>Passage complete.</b> ${t ? N.fmtNm(t.dist, 1) + ' nm in ' + N.fmtDur(hrs * 3600) + ', avg ' + (hrs > 0.02 ? (t.dist / hrs).toFixed(1) : '--') + ' kn, max ' + t.maxSog.toFixed(1) + ' kn, fuel about ' + Math.round(hrs * (P.vessel.burnLph || 75)) + ' L.' : ''}</span><button class="btn primary" id="btnStopNav">Stop</button><button class="btn" id="btnKeepGps">Keep GPS</button>${returnRoute() ? '<button class="btn" id="btnPlanReturn">Plan return</button>' : ''}`;
       $('completeBar').classList.remove('hidden');
       $('btnStopNav').addEventListener('click', () => { S.navigating = false; stopGps(); try { S.wakeLock && S.wakeLock.release(); } catch (e) { } localStorage.removeItem('saily.nav.v1'); $('completeBar').classList.add('hidden'); toast('Navigation stopped; track kept'); });
       $('btnKeepGps').addEventListener('click', () => $('completeBar').classList.add('hidden'));
-      const pr = $('btnPlanReturn'); if (pr) pr.addEventListener('click', () => { S.settings.routeId = 'return'; S.settings.wp = 1; const d = new Date(); d.setDate(d.getDate() + 1); S.settings.departure = fromLocal(TZ_ES, toLocalInput(TZ_ES, d).slice(0, 10) + 'T09:00').toISOString(); S.route = P.routes.find(r => r.id === 'return'); S.zone = {}; S.approached = {}; S.arrivedFinal = false; S.trip = null; S.completeShown = false; saveSettings(); drawRoutes(); $('completeBar').classList.add('hidden'); showView('plan'); toast('Return route planned for tomorrow 09:00'); });
+      const pr = $('btnPlanReturn'); if (pr) pr.addEventListener('click', () => { const rr = returnRoute(); if (!rr) return; S.settings.routeId = rr.id; S.settings.wp = 1; const d = new Date(); d.setDate(d.getDate() + 1); S.settings.departure = fromLocal(TZ_ES, toLocalInput(TZ_ES, d).slice(0, 10) + 'T09:00').toISOString(); S.route = rr; S.zone = {}; S.approached = {}; S.arrivedFinal = false; S.trip = null; S.completeShown = false; saveSettings(); drawRoutes(); $('completeBar').classList.add('hidden'); showView('plan'); toast('Return route planned for tomorrow 09:00'); });
     }
   }
 
@@ -1078,7 +1083,7 @@
       if (mode === 'now') {
         const ab = W.abortCompare(d, S.route.waypoints, doneNm, S.route.total, new Date(), S.sog, S.settings.speed, S.settings.th);
         const line = (label, v, min, n) => `<b>${label}:</b> ${n ? tagFor(v) + ' ' + N.fmtDur(min * 60) + (v.governing ? ', ' + v.governing.text : '') : 'no forecast point that way'}`;
-        h += `<p>${line('Carry on to ' + (P.destinationShort || 'destination'), ab.on, ab.onMin, ab.onPass.length)}<br>${line('Turn back', ab.back, ab.backMin, ab.backPass.length)}</p>`;
+        h += `<p>${line('Carry on to ' + DEST_NAME, ab.on, ab.onMin, ab.onPass.length)}<br>${line('Turn back', ab.back, ab.backMin, ab.backPass.length)}</p>`;
       }
       h += `<div class="tbl"><table><tr><th>Point</th><th>Pass at</th><th>Wind</th><th>Gust</th><th>Waves</th><th>Swell</th><th>Current</th><th>Wind/cur</th><th>Vis</th><th></th></tr>`;
       for (const s of pass) {
@@ -1136,7 +1141,7 @@
     let cum = 0;
     let h = `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${x.id}" ${x.id === r.id ? 'checked' : ''}> ${x.recommended ? 'Recommended' : 'Alternative'}</label>`).join('')}</div>
       <p><b>${r.name}</b></p><p>${r.summary}</p>
-      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA Tangier</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (P.vessel.burnLph || 75))} L at a planning burn of ${P.vessel.burnLph || 75} L/h (${P.vessel.name || 'planning figure'}; tanks ${P.vessel.fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
+      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (P.vessel.burnLph || 75))} L at a planning burn of ${P.vessel.burnLph || 75} L/h (${P.vessel.name || 'planning figure'}; tanks ${P.vessel.fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
     h += `<div class="card"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
     r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
     h += `</table></div><p class="muted">Courses are true. Apply your compass variation (about 1° W here) and deviation if steering by compass.</p></div>`;
@@ -1157,7 +1162,7 @@
       <h3>Lights within 2 nm of the route</h3><div class="tbl"><table><tr><th>Name</th><th>Character</th><th>Position</th></tr>${lightRows || '<tr><td colspan="3">none charted</td></tr>'}</table></div>
       <h3>Radio</h3><p>${Object.values(P.places).map(pl => `${pl.name}: VHF ${pl.vhf}${pl.phone ? ', ' + pl.phone : ''}`).join(' · ')} · Distress VHF 16 / DSC 70</p></div>`;
     const sun = N.sunTimes(new Date(), P.sun.lat, P.sun.lon);
-    h += `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at Tangier. Plan to be berthed with daylight to spare: the marina entrance and the port traffic are much harder at night.</p></div>`;
+    h += `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at ${esc(DEST_NAME)}.${P.sunNote ? ' ' + esc(P.sunNote) : ''}</p></div>`;
     el.innerHTML = h;
     const bp = $('btnPrint'); if (bp) bp.addEventListener('click', () => window.print());
     el.querySelectorAll('input[name=route]').forEach(i => i.addEventListener('change', () => { S.settings.routeId = i.value; S.settings.wp = 1; saveSettings(); S.route = P.routes.find(x => x.id === i.value); S.zone = {}; S.approached = {}; drawRoutes(); renderPlan(); if (S.pos) processFix(); }));
@@ -1175,7 +1180,7 @@
       <label class="field"><span>Planned cruise speed (kn)</span><input type="number" id="setSpeed" min="5" max="40" step="1" value="${s.speed}"></label>
       <label class="field"><span>Planned departure (${TZL_FROM})</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
       <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${esc(r.id)}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${esc(r.short || r.id)})</option>`).join('')}</select></label>
-      <label class="field"><span>${esc(TZL_TO)} clock</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option><option value="60" ${s.maOffset === '60' ? 'selected' : ''}>UTC+1 (until 20 Sep 2026)</option><option value="0" ${s.maOffset === '0' ? 'selected' : ''}>UTC+0 (from 20 Sep 2026)</option></select></label>
+      <label class="field"><span>${esc(TZL_TO)} clock</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option>${TZ_OFFSETS.map(o => `<option value="${o.minutes}" ${String(s.maOffset) === String(o.minutes) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
       <div class="row" style="margin-top:12px"><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
     h += `<div class="card"><h2>Alerts and sound</h2>
       <label class="field"><span>Spoken alerts</span><input type="checkbox" id="setVoice" ${s.voice ? 'checked' : ''}></label>
@@ -1409,7 +1414,8 @@
   // ---------- init ----------
   document.title = 'Saily · ' + (P.title || P.name);
   $('tzFrom').textContent = TZL_FROM; $('tzTo').textContent = TZL_TO;
-  $('hudEtaLabel').textContent = 'ETA ' + (P.destinationShort || 'destination');
+  $('hudEtaLabel').textContent = 'ETA ' + DEST_NAME;
+  document.title = P.title ? 'Saily · ' + P.title : 'Saily';
   $('startTitle').innerHTML = `<b>${esc(P.name)}</b>${P.description ? `<br><span class="muted small">${esc(P.description)}</span>` : ''}`;
   setNet(); renderWxOverlay(); renderSeaLine(); aisApply(); renderWxDot();
   if (!SINGLE) tryResume();

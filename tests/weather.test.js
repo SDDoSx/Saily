@@ -210,3 +210,27 @@ test('nearestPoint picks the closest fetched point', () => {
   assert.strictEqual(WX.nearestPoint(d, { lat: 36.2, lon: -5.3 }).id, 'soto');
   assert.strictEqual(WX.nearestPoint(null, { lat: 36, lon: -5 }), null);
 });
+
+test('pointsFromRoute samples a route when the passage names no weather points', () => {
+  const route = {
+    recommended: true,
+    waypoints: [
+      { id: 'A', name: 'Start', lat: 50.75, lon: -1.30 }, { id: 'B', name: 'Two', lat: 50.70, lon: -1.20 },
+      { id: 'C', name: 'Three', lat: 50.66, lon: -1.10 }, { id: 'D', name: 'Four', lat: 50.60, lon: -1.02 },
+      { id: 'E', name: 'Five', lat: 50.55, lon: -0.95 }, { id: 'F', name: 'End', lat: 50.50, lon: -0.90 },
+    ],
+    legs: [{ dist: 4.1 }, { dist: 3.6 }, { dist: 3.9 }, { dist: 3.7 }, { dist: 4.0 }],
+  };
+  const pts = WX.pointsFromRoute({ routes: [route] }, 5);
+  assert.strictEqual(pts.length, 5);
+  assert.strictEqual(pts[0].id, 'A', 'starts at the first waypoint');
+  assert.strictEqual(pts[pts.length - 1].id, 'F', 'ends at the last waypoint');
+  assert.strictEqual(pts[0].routeNm, 0);
+  assert.strictEqual(pts[pts.length - 1].routeNm, 19.3, 'cumulative leg distance along the route');
+  for (let i = 1; i < pts.length; i++) assert.ok(pts[i].routeNm >= pts[i - 1].routeNm, 'routeNm never decreases');
+  // a short route yields the waypoints it has, not padding
+  assert.strictEqual(WX.pointsFromRoute({ routes: [{ waypoints: route.waypoints.slice(0, 3), legs: [{ dist: 1 }, { dist: 2 }] }] }, 5).length, 3);
+  // nothing to sample: no points, and certainly not another sea's coordinates
+  assert.deepStrictEqual(WX.pointsFromRoute({}, 5), []);
+  assert.deepStrictEqual(WX.pointsFromRoute({ routes: [{ waypoints: [{ id: 'X', lat: 0, lon: 0 }] }] }, 5), []);
+});

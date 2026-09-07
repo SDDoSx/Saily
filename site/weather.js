@@ -2,13 +2,27 @@
 (function (root) {
   'use strict';
   const PZ = root.PASSAGE || {};
-  const POINTS = PZ.weatherPoints || [
-    { id: 'soto', name: 'Sotogrande offing', lat: 36.27, lon: -5.24, routeNm: 0.5 },
-    { id: 'europa', name: 'Europa Point / Strait east', lat: 36.08, lon: -5.36, routeNm: 12.5 },
-    { id: 'tarifa', name: 'Tarifa', lat: 35.97, lon: -5.62, routeNm: 27.3 },
-    { id: 'cross', name: 'Mid-crossing (TSS)', lat: 35.92, lon: -5.70, routeNm: 34.5 },
-    { id: 'tangier', name: 'Tangier Bay', lat: 35.81, lon: -5.77, routeNm: 43.0 },
-  ];
+  /** Sample points along the route, for a passage that does not name its own.
+      Never fall back to fixed coordinates: a passage elsewhere would be judged on another sea's weather. */
+  function pointsFromRoute(pz, want) {
+    const r = (pz.routes || []).find(x => x.recommended) || (pz.routes || [])[0];
+    if (!r || !r.waypoints || r.waypoints.length < 2) return [];
+    const legs = r.legs || [];
+    let cum = 0;
+    const marks = r.waypoints.map((w, i) => {
+      if (i > 0 && legs[i - 1]) cum += legs[i - 1].dist;
+      return { id: w.id, name: w.name || w.id, lat: w.lat, lon: w.lon, routeNm: Math.round(cum * 10) / 10 };
+    });
+    if (marks.length <= want) return marks;
+    const step = (marks.length - 1) / (want - 1);
+    const out = [];
+    for (let i = 0; i < want; i++) {
+      const m = marks[Math.round(i * step)];
+      if (!out.some(x => x.id === m.id)) out.push(m);
+    }
+    return out;
+  }
+  const POINTS = (PZ.weatherPoints && PZ.weatherPoints.length) ? PZ.weatherPoints : pointsFromRoute(PZ, 5);
   const FC_VARS = 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,precipitation,temperature_2m,weather_code,cloud_cover';
   const MARINE_VARS = 'wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period,wind_wave_height,ocean_current_velocity,ocean_current_direction,sea_level_height_msl';
   const TZ = (PZ.tz && PZ.tz.from && PZ.tz.from.zone) || 'Europe/Madrid';
@@ -286,5 +300,5 @@
 
   const WMO = { 0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 80: 'Showers', 81: 'Showers', 82: 'Violent showers', 95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Thunderstorm w/ hail' };
 
-  root.WX = { POINTS, DEFAULT_THRESHOLDS, KEYNAME, UNIT, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, remainingPassage, abortCompare, coverageEnd, overall, nearestPoint, madridLocalIso, WMO, TZ };
+  root.WX = { POINTS, DEFAULT_THRESHOLDS, KEYNAME, UNIT, pointsFromRoute, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, remainingPassage, abortCompare, coverageEnd, overall, nearestPoint, madridLocalIso, WMO, TZ };
 })(typeof self !== 'undefined' ? self : this);

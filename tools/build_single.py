@@ -19,11 +19,12 @@ parts = ['<title>Saily</title>',
          '<style>\n' + leaflet_css + '\n' + style + '\n#app{font-size:15px}\n</style>',
          body,
          '<script>\n' + leaflet_js + '\n</script>',
+         # Data before code: weather.js reads PASSAGE at load time (sample points, thresholds, time zone).
+         '<script>\n' + rd('chart-data.js') + '\n</script>',
+         '<script>\n' + rd('passage.js') + '\n</script>',
          '<script>\n' + rd('nav.js') + '\n</script>',
          '<script>\n' + rd('weather.js') + '\n</script>',
-         '<script>\n' + rd('ais.js') + '\n</script>',
-         '<script>\n' + rd('chart-data.js') + '\n</script>',
-         '<script>\n' + rd('passage.js') + '\n</script>']
+         '<script>\n' + rd('ais.js') + '\n</script>']
 if snap:
     s = json.load(open(snap))
     parts.append('<script>window.SAILY_SINGLE = true; window.EMBEDDED_WX = ' + json.dumps(s, separators=(',', ':')) + ';</script>')

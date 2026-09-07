@@ -89,3 +89,7 @@ built-in checker for the subset of JSON Schema the two schemas use otherwise, wi
 labels, 5 weather points, thresholds for a 36 ft planing motor yacht, an 11-item checklist and 5 briefing cards.
 Its TSS is `passages/strait-of-gibraltar.tss.json`. Build with
 `python3 tools/build_chart.py <scratch> site/chart-data.js` after `python3 tools/fetch_osm.py passages/strait-of-gibraltar.json <scratch>`.
+
+If you only changed passage metadata -- a title, a note, a time zone, a checklist, a waypoint -- and not the
+coastline, run `python3 tools/build_passage.py` (or `npm run build:passage`) instead. It validates the file and
+rewrites `site/passage.js` alone, so editing a label does not mean re-fetching a coastline from Overpass.

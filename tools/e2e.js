@@ -62,6 +62,15 @@ const OUT = path.join(__dirname, 'out');
     await page.click('#btnNight'); await page.evaluate(() => { window.SAILY.S.settings.theme = 'dark'; window.SAILY.applyTheme(); }); await page.click('#btnMore');
     const wxState = await page.evaluate(() => ({ hasWx: !!window.SAILY.S.wx, pts: window.SAILY.S.wx ? Object.keys(window.SAILY.S.wx.points) : [], errors: window.SAILY.S.wx ? window.SAILY.S.wx.errors : null }));
     console.log('Weather state:', JSON.stringify(wxState));
+    // weather.js captures PASSAGE at load time: if it is loaded first, every passage silently gets the
+    // Strait of Gibraltar's sample points and a 36 ft planing hull's thresholds. Script order matters.
+    const wxWiring = await page.evaluate(() => ({
+      points: window.WX.POINTS === window.PASSAGE.weatherPoints,
+      tz: window.WX.TZ === window.PASSAGE.tz.from.zone,
+      thresholds: Object.entries(window.PASSAGE.thresholds || {}).every(([k, v]) => window.WX.DEFAULT_THRESHOLDS[k] === v),
+    }));
+    console.log('Weather reads the passage:', JSON.stringify(wxWiring));
+    for (const [k, ok] of Object.entries(wxWiring)) if (!ok) errors.push(`weather.js is not reading the passage's ${k} (script order in index.html)`);
     // service worker + offline reload
     await page.click('#tabs button[data-view=nav]');
     const swReady = await page.evaluate(async () => { const reg = await navigator.serviceWorker.ready; await new Promise(r => setTimeout(r, 1500)); return !!reg.active; });

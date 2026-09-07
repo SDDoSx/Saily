@@ -67,7 +67,8 @@ global Playwright; a local `node_modules` takes precedence.
 - `npm run validate` and `npm run test:build` check the passage/TSS JSON against `schema/` and golden-test the chart
   pipeline on a fixture.
 - `python3 tools/fetch_osm.py passages/strait-of-gibraltar.json <scratch-dir>` fetches the OSM extracts, then
-  `python3 tools/build_chart.py <scratch-dir> site/chart-data.js` regenerates the chart.
+  `python3 tools/build_chart.py <scratch-dir> site/chart-data.js` regenerates the chart. For passage metadata
+  alone (titles, notes, waypoints, checklists) `npm run build:passage` rewrites `site/passage.js` without it.
 - `node -e "require('./site/nav.js')"` for the pure geodesy functions.
 - `npm start` serves `site/` locally.
 

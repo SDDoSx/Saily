@@ -8,7 +8,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Saily">
 <meta name="theme-color" content="#0b1a2b">
-<title>Saily · Sotogrande → Tangier</title>
+<!-- The passage sets the real title at boot (app.js); this is the fallback before it loads. -->
+<title>Saily</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
@@ -497,11 +498,13 @@ setTimeout(function () {
   </nav>
 </div>
 <script src="vendor/leaflet/leaflet.min.js"></script>
+<!-- Data before code: weather.js reads PASSAGE for its sample points, thresholds and time zone at load
+     time, so the passage has to exist first or it silently falls back to its own built-in defaults. -->
+<script src="chart-data.js"></script>
+<script src="passage.js"></script>
 <script src="nav.js"></script>
 <script src="weather.js"></script>
 <script src="ais.js"></script>
-<script src="chart-data.js"></script>
-<script src="passage.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

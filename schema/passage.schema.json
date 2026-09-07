@@ -1,196 +1,565 @@
 {
- "$schema": "https://json-schema.org/draft/2020-12/schema",
- "$id": "https://github.com/SDDoSx/Saily/schema/passage.schema.json",
- "title": "Saily passage definition",
- "description": "One passage: chart area, routes with spoken waypoint notes, hazards, place labels, weather points, thresholds and briefing. Read by tools/build_chart.py (which writes site/passage.js) and tools/fetch_osm.py. Format: docs/PASSAGE-FORMAT.md. Unknown top-level keys are allowed and copied to passage.js unchanged; the objects inside are strict.",
- "type": "object",
- "required": ["id", "name", "bbox", "places", "routes", "hazards"],
- "properties": {
-  "$schema": {"type": "string"},
-  "id": {"$ref": "#/$defs/slug", "description": "Passage id; names passages/<id>.json, <id>.expected.json and chart meta.passage."},
-  "version": {"type": "integer", "minimum": 1},
-  "name": {"type": "string", "minLength": 1},
-  "title": {"type": "string", "minLength": 1, "description": "Short title for the start screen and the tab."},
-  "description": {"type": "string"},
-  "bbox": {"$ref": "#/$defs/bbox", "description": "Chart area [south, west, north, east] in decimal degrees; also the Overpass extract area."},
-  "tz": {
-   "type": "object",
-   "required": ["from", "to"],
-   "additionalProperties": false,
-   "properties": {
-    "from": {"$ref": "#/$defs/tz"},
-    "to": {"$ref": "#/$defs/tz"}
-   }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SDDoSx/Saily/schema/passage.schema.json",
+  "title": "Saily passage definition",
+  "description": "One passage: chart area, routes with spoken waypoint notes, hazards, place labels, weather points, thresholds and briefing. Read by tools/build_chart.py (which writes site/passage.js) and tools/fetch_osm.py. Format: docs/PASSAGE-FORMAT.md. Unknown top-level keys are allowed and copied to passage.js unchanged; the objects inside are strict.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "bbox",
+    "places",
+    "routes",
+    "hazards"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "$ref": "#/$defs/slug",
+      "description": "Passage id; names passages/<id>.json, <id>.expected.json and chart meta.passage."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short title for the start screen and the tab."
+    },
+    "description": {
+      "type": "string"
+    },
+    "bbox": {
+      "$ref": "#/$defs/bbox",
+      "description": "Chart area [south, west, north, east] in decimal degrees; also the Overpass extract area."
+    },
+    "tz": {
+      "type": "object",
+      "required": [
+        "from",
+        "to"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/tz"
+        },
+        "to": {
+          "$ref": "#/$defs/tz"
+        }
+      }
+    },
+    "vessel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "cruiseKn": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "burnLph": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fuelL": {
+          "type": "number",
+          "minimum": 0
+        },
+        "draftM": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "defaultDeparture": {
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+      "description": "Local time (departure zone) proposed for the passage check, HH:MM."
+    },
+    "destinationShort": {
+      "type": "string"
+    },
+    "sun": {
+      "type": "object",
+      "required": [
+        "lat",
+        "lon"
+      ],
+      "additionalProperties": false,
+      "description": "Where sunrise and sunset are computed.",
+      "properties": {
+        "lat": {
+          "$ref": "#/$defs/lat"
+        },
+        "lon": {
+          "$ref": "#/$defs/lon"
+        }
+      }
+    },
+    "places": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Marinas and ports keyed by a short id; fetch_osm.py writes a land_<key>.json harbour detail extract for each.",
+      "propertyNames": {
+        "$ref": "#/$defs/slug"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/place"
+      }
+    },
+    "harbourWaypoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/waypointId"
+      },
+      "uniqueItems": true,
+      "description": "Waypoint ids inside harbours: legs touching them are exempt from the 0.25 nm land-clearance check and from the land-ahead guard when on track."
+    },
+    "harbourSpeedKn": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    },
+    "hazards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/hazard"
+      }
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/label"
+      }
+    },
+    "weatherPoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/weatherPoint"
+      },
+      "description": "Open-Meteo sample points along the route; routeNm must not decrease along the list (checked by tools/validate_passage.py)."
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Go / caution / no-go limits; missing keys fall back to weather.js defaults.",
+      "properties": {
+        "windCaution": {
+          "type": "number",
+          "minimum": 0
+        },
+        "windNoGo": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gustCaution": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gustNoGo": {
+          "type": "number",
+          "minimum": 0
+        },
+        "waveCaution": {
+          "type": "number",
+          "minimum": 0
+        },
+        "waveNoGo": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currentCaution": {
+          "type": "number",
+          "minimum": 0
+        },
+        "visCaution": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Metres."
+        }
+      }
+    },
+    "checklist": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/card"
+      }
+    },
+    "weatherNotes": {
+      "type": "string"
+    },
+    "weatherVhf": {
+      "type": "string"
+    },
+    "variationDeg": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180,
+      "description": "Magnetic variation, east positive."
+    },
+    "tss": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\.json$",
+      "description": "Traffic separation scheme file (schema/tss.schema.json), relative to this file. Omit when the area has no scheme."
+    },
+    "sunNote": {
+      "type": "string",
+      "maxLength": 400,
+      "description": "One sentence of local advice shown under sunrise and sunset on the Plan tab."
+    }
   },
-  "vessel": {
-   "type": "object",
-   "additionalProperties": false,
-   "properties": {
-    "name": {"type": "string"},
-    "cruiseKn": {"type": "number", "exclusiveMinimum": 0},
-    "burnLph": {"type": "number", "minimum": 0},
-    "fuelL": {"type": "number", "minimum": 0},
-    "draftM": {"type": "number", "minimum": 0}
-   }
-  },
-  "defaultDeparture": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$", "description": "Local time (departure zone) proposed for the passage check, HH:MM."},
-  "destinationShort": {"type": "string"},
-  "sun": {
-   "type": "object",
-   "required": ["lat", "lon"],
-   "additionalProperties": false,
-   "description": "Where sunrise and sunset are computed.",
-   "properties": {"lat": {"$ref": "#/$defs/lat"}, "lon": {"$ref": "#/$defs/lon"}}
-  },
-  "places": {
-   "type": "object",
-   "minProperties": 1,
-   "description": "Marinas and ports keyed by a short id; fetch_osm.py writes a land_<key>.json harbour detail extract for each.",
-   "propertyNames": {"$ref": "#/$defs/slug"},
-   "additionalProperties": {"$ref": "#/$defs/place"}
-  },
-  "harbourWaypoints": {
-   "type": "array",
-   "items": {"$ref": "#/$defs/waypointId"},
-   "uniqueItems": true,
-   "description": "Waypoint ids inside harbours: legs touching them are exempt from the 0.25 nm land-clearance check and from the land-ahead guard when on track."
-  },
-  "harbourSpeedKn": {"type": "number", "exclusiveMinimum": 0},
-  "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/route"}},
-  "hazards": {"type": "array", "items": {"$ref": "#/$defs/hazard"}},
-  "labels": {"type": "array", "items": {"$ref": "#/$defs/label"}},
-  "weatherPoints": {"type": "array", "items": {"$ref": "#/$defs/weatherPoint"}, "description": "Open-Meteo sample points along the route; routeNm must not decrease along the list (checked by tools/validate_passage.py)."},
-  "thresholds": {
-   "type": "object",
-   "additionalProperties": false,
-   "description": "Go / caution / no-go limits; missing keys fall back to weather.js defaults.",
-   "properties": {
-    "windCaution": {"type": "number", "minimum": 0},
-    "windNoGo": {"type": "number", "minimum": 0},
-    "gustCaution": {"type": "number", "minimum": 0},
-    "gustNoGo": {"type": "number", "minimum": 0},
-    "waveCaution": {"type": "number", "minimum": 0},
-    "waveNoGo": {"type": "number", "minimum": 0},
-    "currentCaution": {"type": "number", "minimum": 0},
-    "visCaution": {"type": "number", "minimum": 0, "description": "Metres."}
-   }
-  },
-  "checklist": {"type": "array", "items": {"type": "string", "minLength": 1}},
-  "cards": {"type": "array", "items": {"$ref": "#/$defs/card"}},
-  "weatherNotes": {"type": "string"},
-  "weatherVhf": {"type": "string"},
-  "variationDeg": {"type": "number", "minimum": -180, "maximum": 180, "description": "Magnetic variation, east positive."},
-  "tss": {"type": "string", "minLength": 1, "pattern": "\\.json$", "description": "Traffic separation scheme file (schema/tss.schema.json), relative to this file. Omit when the area has no scheme."}
- },
- "$defs": {
-  "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
-  "waypointId": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]*$", "description": "Upper-case waypoint id as spoken and shown on the HUD."},
-  "lat": {"type": "number", "minimum": -90, "maximum": 90},
-  "lon": {"type": "number", "minimum": -180, "maximum": 180},
-  "bbox": {
-   "type": "array",
-   "minItems": 4,
-   "maxItems": 4,
-   "prefixItems": [{"$ref": "#/$defs/lat"}, {"$ref": "#/$defs/lon"}, {"$ref": "#/$defs/lat"}, {"$ref": "#/$defs/lon"}],
-   "items": false
-  },
-  "tz": {
-   "type": "object",
-   "required": ["label", "zone"],
-   "additionalProperties": false,
-   "properties": {
-    "label": {"type": "string", "minLength": 1, "maxLength": 6},
-    "zone": {"type": "string", "minLength": 1, "description": "IANA time zone name, e.g. Europe/Madrid."},
-    "note": {"type": "string"}
-   }
-  },
-  "place": {
-   "type": "object",
-   "required": ["name", "lat", "lon"],
-   "additionalProperties": false,
-   "properties": {
-    "name": {"type": "string", "minLength": 1},
-    "lat": {"$ref": "#/$defs/lat"},
-    "lon": {"$ref": "#/$defs/lon"},
-    "vhf": {"type": "string"},
-    "phone": {"type": "string"},
-    "tz": {"type": "string"},
-    "detailBox": {"$ref": "#/$defs/bbox", "description": "Harbour detail extract area for fetch_osm.py; default +/- 0.025 deg around the place."}
-   }
-  },
-  "waypoint": {
-   "type": "object",
-   "required": ["id", "name", "lat", "lon"],
-   "additionalProperties": false,
-   "properties": {
-    "id": {"$ref": "#/$defs/waypointId"},
-    "name": {"type": "string", "minLength": 1},
-    "lat": {"$ref": "#/$defs/lat"},
-    "lon": {"$ref": "#/$defs/lon"},
-    "radius": {"type": "number", "exclusiveMinimum": 0, "default": 0.1, "description": "Arrival radius in nautical miles."},
-    "note": {"type": "string", "description": "Read aloud on arrival: an instruction the helmsman can act on."}
-   }
-  },
-  "route": {
-   "type": "object",
-   "required": ["id", "name", "waypoints"],
-   "additionalProperties": false,
-   "properties": {
-    "id": {"$ref": "#/$defs/slug"},
-    "short": {"type": "string", "minLength": 1},
-    "name": {"type": "string", "minLength": 1},
-    "recommended": {"type": "boolean"},
-    "summary": {"type": "string"},
-    "waypoints": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/waypoint"}}
-   }
-  },
-  "hazard": {
-   "type": "object",
-   "required": ["id", "lat", "lon", "radius", "level", "name", "note"],
-   "additionalProperties": false,
-   "properties": {
-    "id": {"$ref": "#/$defs/slug"},
-    "lat": {"$ref": "#/$defs/lat"},
-    "lon": {"$ref": "#/$defs/lon"},
-    "radius": {"type": "number", "exclusiveMinimum": 0, "description": "Nautical miles."},
-    "level": {"type": "string", "enum": ["danger", "caution", "info"], "description": "danger pre-warns 0.15 nm out and alarms inside; caution and info are spoken once inside."},
-    "name": {"type": "string", "minLength": 1},
-    "note": {"type": "string", "minLength": 1}
-   }
-  },
-  "label": {
-   "type": "object",
-   "required": ["lat", "lon", "name", "kind", "z"],
-   "additionalProperties": false,
-   "properties": {
-    "lat": {"$ref": "#/$defs/lat"},
-    "lon": {"$ref": "#/$defs/lon"},
-    "name": {"type": "string", "minLength": 1},
-    "kind": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "CSS class of the label: sea, town, cape, island, ..."},
-    "z": {"type": "integer", "minimum": 0, "maximum": 20, "description": "Minimum zoom level the label appears at."}
-   }
-  },
-  "weatherPoint": {
-   "type": "object",
-   "required": ["id", "name", "lat", "lon", "routeNm"],
-   "additionalProperties": false,
-   "properties": {
-    "id": {"$ref": "#/$defs/slug"},
-    "name": {"type": "string", "minLength": 1},
-    "lat": {"$ref": "#/$defs/lat"},
-    "lon": {"$ref": "#/$defs/lon"},
-    "routeNm": {"type": "number", "minimum": 0, "description": "Distance from departure along the recommended route; the forecast is sampled at the time the boat gets there."}
-   }
-  },
-  "card": {
-   "type": "object",
-   "required": ["id", "title", "html"],
-   "additionalProperties": false,
-   "properties": {
-    "id": {"$ref": "#/$defs/slug"},
-    "title": {"type": "string", "minLength": 1},
-    "html": {"type": "string", "minLength": 1}
-   }
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "waypointId": {
+      "type": "string",
+      "pattern": "^[A-Z0-9][A-Z0-9_-]*$",
+      "description": "Upper-case waypoint id as spoken and shown on the HUD."
+    },
+    "lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "lon": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "bbox": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/lat"
+        },
+        {
+          "$ref": "#/$defs/lon"
+        },
+        {
+          "$ref": "#/$defs/lat"
+        },
+        {
+          "$ref": "#/$defs/lon"
+        }
+      ],
+      "items": false
+    },
+    "tz": {
+      "type": "object",
+      "required": [
+        "label",
+        "zone"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6
+        },
+        "zone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "IANA time zone name, e.g. Europe/Madrid."
+        },
+        "note": {
+          "type": "string"
+        },
+        "offsets": {
+          "type": "array",
+          "description": "Manual UTC-offset choices for this zone, offered in Setup when the phone time zone database is wrong or ambiguous. Automatic is always offered first.",
+          "items": {
+            "type": "object",
+            "required": [
+              "minutes",
+              "label"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "minutes": {
+                "type": "integer",
+                "minimum": -840,
+                "maximum": 840,
+                "description": "Offset from UTC in minutes."
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              }
+            }
+          }
+        }
+      }
+    },
+    "place": {
+      "type": "object",
+      "required": [
+        "name",
+        "lat",
+        "lon"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lat": {
+          "$ref": "#/$defs/lat"
+        },
+        "lon": {
+          "$ref": "#/$defs/lon"
+        },
+        "vhf": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "tz": {
+          "type": "string"
+        },
+        "detailBox": {
+          "$ref": "#/$defs/bbox",
+          "description": "Harbour detail extract area for fetch_osm.py; default +/- 0.025 deg around the place."
+        }
+      }
+    },
+    "waypoint": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "lat",
+        "lon"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/waypointId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lat": {
+          "$ref": "#/$defs/lat"
+        },
+        "lon": {
+          "$ref": "#/$defs/lon"
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 0.1,
+          "description": "Arrival radius in nautical miles."
+        },
+        "note": {
+          "type": "string",
+          "description": "Read aloud on arrival: an instruction the helmsman can act on."
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "waypoints"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "short": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "waypoints": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/waypoint"
+          }
+        },
+        "isReturn": {
+          "type": "boolean",
+          "description": "True for the route that runs back to the start. The app offers it when the passage completes."
+        }
+      }
+    },
+    "hazard": {
+      "type": "object",
+      "required": [
+        "id",
+        "lat",
+        "lon",
+        "radius",
+        "level",
+        "name",
+        "note"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "lat": {
+          "$ref": "#/$defs/lat"
+        },
+        "lon": {
+          "$ref": "#/$defs/lon"
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Nautical miles."
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "danger",
+            "caution",
+            "info"
+          ],
+          "description": "danger pre-warns 0.15 nm out and alarms inside; caution and info are spoken once inside."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": [
+        "lat",
+        "lon",
+        "name",
+        "kind",
+        "z"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lat": {
+          "$ref": "#/$defs/lat"
+        },
+        "lon": {
+          "$ref": "#/$defs/lon"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "CSS class of the label: sea, town, cape, island, ..."
+        },
+        "z": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Minimum zoom level the label appears at."
+        }
+      }
+    },
+    "weatherPoint": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "lat",
+        "lon",
+        "routeNm"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lat": {
+          "$ref": "#/$defs/lat"
+        },
+        "lon": {
+          "$ref": "#/$defs/lon"
+        },
+        "routeNm": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Distance from departure along the recommended route; the forecast is sampled at the time the boat gets there."
+        }
+      }
+    },
+    "card": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "html"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
   }
- }
 }

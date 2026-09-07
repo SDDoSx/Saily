@@ -203,7 +203,7 @@ def build_tss(tss, land_xy):
     return out, check_polys
 
 # --- Routes come from the passage JSON -------------------------------------------
-def route_obj(rid, name, wps, recommended, summary, short=None):
+def route_obj(rid, name, wps, recommended, summary, short=None, is_return=False):
     w = [{'lat': a, 'lon': b, 'id': i, 'name': n, 'note': note, 'radius': r} for a, b, i, n, note, r in wps]
     legs = []
     total = 0
@@ -212,10 +212,13 @@ def route_obj(rid, name, wps, recommended, summary, short=None):
         d = dist_nm(a, b)
         total += d
         legs.append({'from': wps[i][2], 'to': wps[i + 1][2], 'dist': round(d, 2), 'brg': round(bearing(a, b))})
-    return {'id': rid, 'short': short or rid, 'name': name, 'recommended': recommended, 'summary': summary, 'waypoints': w, 'legs': legs, 'total': round(total, 1)}
+    out = {'id': rid, 'short': short or rid, 'name': name, 'recommended': recommended, 'summary': summary, 'waypoints': w, 'legs': legs, 'total': round(total, 1)}
+    if is_return:
+        out['isReturn'] = True
+    return out
 
 def build_routes(PZ):
-    return [route_obj(r['id'], r['name'], [(w['lat'], w['lon'], w['id'], w['name'], w.get('note', ''), w.get('radius', 0.1)) for w in r['waypoints']], r.get('recommended', False), r.get('summary', ''), r.get('short')) for r in PZ['routes']]
+    return [route_obj(r['id'], r['name'], [(w['lat'], w['lon'], w['id'], w['name'], w.get('note', ''), w.get('radius', 0.1)) for w in r['waypoints']], r.get('recommended', False), r.get('summary', ''), r.get('short'), r.get('isReturn', False)) for r in PZ['routes']]
 
 # --- Verification: legs vs land and TSS polygons --------------------------------
 def check_legs(routes, land_xy, check_polys):
