@@ -1,0 +1,310 @@
+{
+ "_": "Leg check of the bundled routes against the shipped chart, computed by shapely via tools/build_chart.check_legs. tests/build/test_build_chart.py regenerates and compares it; tests/nav.test.js asserts the JavaScript port in nav.js agrees. Regenerate with UPDATE_GOLDEN=1 python3 tests/build/test_build_chart.py.",
+ "lat0": 35.95,
+ "legs": [
+  {
+   "route": "tarifa",
+   "from": "SOTO",
+   "to": "SOTO-HEAD",
+   "landNm": 0.0,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "SOTO-HEAD",
+   "to": "SOTO-OUT",
+   "landNm": 0.04,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "SOTO-OUT",
+   "to": "GIB-E",
+   "landNm": 0.38,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "GIB-E",
+   "to": "EUROPA",
+   "landNm": 0.34,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "EUROPA",
+   "to": "CARNERO",
+   "landNm": 0.65,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "CARNERO",
+   "to": "TARIFA",
+   "landNm": 0.82,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "TARIFA",
+   "to": "X-NORTH",
+   "landNm": 0.94,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "X-NORTH",
+   "to": "X-SOUTH",
+   "landNm": 2.18,
+   "crosses": [
+    "west_eb",
+    "west_wb",
+    "zone_b"
+   ]
+  },
+  {
+   "route": "tarifa",
+   "from": "X-SOUTH",
+   "to": "MALABATA",
+   "landNm": 1.26,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "MALABATA",
+   "to": "TANG-N",
+   "landNm": 0.71,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "TANG-N",
+   "to": "TANG-E",
+   "landNm": 0.39,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "TANG-E",
+   "to": "TANG-F",
+   "landNm": 0.11,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "TANG-F",
+   "to": "MAR-APP",
+   "landNm": 0.04,
+   "crosses": []
+  },
+  {
+   "route": "tarifa",
+   "from": "MAR-APP",
+   "to": "TANJA",
+   "landNm": 0.03,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "SOTO",
+   "to": "SOTO-HEAD",
+   "landNm": 0.0,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "SOTO-HEAD",
+   "to": "SOTO-OUT",
+   "landNm": 0.04,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "SOTO-OUT",
+   "to": "GIB-E",
+   "landNm": 0.38,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "GIB-E",
+   "to": "EUROPA",
+   "landNm": 0.34,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "EUROPA",
+   "to": "G-SOUTH",
+   "landNm": 0.65,
+   "crosses": [
+    "prec_east"
+   ]
+  },
+  {
+   "route": "east",
+   "from": "G-SOUTH",
+   "to": "CIRES",
+   "landNm": 0.63,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "CIRES",
+   "to": "TMED-OFF",
+   "landNm": 0.4,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "TMED-OFF",
+   "to": "KSAR",
+   "landNm": 1.24,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "KSAR",
+   "to": "MALABATA",
+   "landNm": 0.98,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "MALABATA",
+   "to": "TANG-N",
+   "landNm": 0.71,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "TANG-N",
+   "to": "TANG-E",
+   "landNm": 0.39,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "TANG-E",
+   "to": "TANG-F",
+   "landNm": 0.11,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "TANG-F",
+   "to": "MAR-APP",
+   "landNm": 0.04,
+   "crosses": []
+  },
+  {
+   "route": "east",
+   "from": "MAR-APP",
+   "to": "TANJA",
+   "landNm": 0.03,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "TANJA",
+   "to": "MAR-APP",
+   "landNm": 0.03,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "MAR-APP",
+   "to": "TANG-F",
+   "landNm": 0.04,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "TANG-F",
+   "to": "TANG-E",
+   "landNm": 0.11,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "TANG-E",
+   "to": "TANG-N",
+   "landNm": 0.39,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "TANG-N",
+   "to": "MALABATA",
+   "landNm": 0.71,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "MALABATA",
+   "to": "X-SOUTH",
+   "landNm": 1.26,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "X-SOUTH",
+   "to": "X-NORTH",
+   "landNm": 2.18,
+   "crosses": [
+    "west_eb",
+    "west_wb",
+    "zone_b"
+   ]
+  },
+  {
+   "route": "return",
+   "from": "X-NORTH",
+   "to": "TARIFA",
+   "landNm": 0.94,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "TARIFA",
+   "to": "CARNERO",
+   "landNm": 0.82,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "CARNERO",
+   "to": "EUROPA",
+   "landNm": 0.65,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "EUROPA",
+   "to": "GIB-E",
+   "landNm": 0.34,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "GIB-E",
+   "to": "SOTO-OUT",
+   "landNm": 0.38,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "SOTO-OUT",
+   "to": "SOTO-HEAD",
+   "landNm": 0.04,
+   "crosses": []
+  },
+  {
+   "route": "return",
+   "from": "SOTO-HEAD",
+   "to": "SOTO",
+   "landNm": 0.0,
+   "crosses": []
+  }
+ ]
+}

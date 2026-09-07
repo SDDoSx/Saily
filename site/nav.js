@@ -61,6 +61,109 @@
   }
   function pointInRings(p, rings) { return rings.some(r => pointInRing(p, r)); }
 
+  // ---------- route verification: distance from a leg to land, and which areas it crosses ----------
+  // A local equirectangular projection into nautical miles. Over a passage-sized box this is accurate to
+  // well under a metre, and it makes segment geometry ordinary planar arithmetic. lat0 must be the centre
+  // of the area being measured: scaling longitude by cos(35.95 deg) at 60 N would understate x by 60%.
+  function projector(lat0) {
+    const kx = Math.cos(toRad(lat0)) * 60, ky = 60;
+    return {
+      lat0, kx, ky,
+      toXY: ll => [ll[1] * kx, ll[0] * ky],
+      toLL: xy => [xy[1] / ky, xy[0] / kx],
+    };
+  }
+  /** squared distance from point p to segment ab, all [x, y] */
+  function ptSegSq(p, a, b) {
+    const vx = b[0] - a[0], vy = b[1] - a[1];
+    const l2 = vx * vx + vy * vy;
+    let t = l2 === 0 ? 0 : ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const dx = p[0] - (a[0] + t * vx), dy = p[1] - (a[1] + t * vy);
+    return { d2: dx * dx + dy * dy, at: [a[0] + t * vx, a[1] + t * vy] };
+  }
+  function segsCross(a, b, c, d) {
+    const s = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    const d1 = s(c, d, a), d2 = s(c, d, b), d3 = s(a, b, c), d4 = s(a, b, d);
+    if (((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0))) return true;
+    const on = (p, q, r) => s(p, q, r) === 0 && Math.min(p[0], q[0]) <= r[0] && r[0] <= Math.max(p[0], q[0]) &&
+      Math.min(p[1], q[1]) <= r[1] && r[1] <= Math.max(p[1], q[1]);
+    return on(c, d, a) || on(c, d, b) || on(a, b, c) || on(a, b, d);
+  }
+  /** project rings of [lat, lon] once, so a route check does not reproject the coastline per leg */
+  function ringsXY(rings, proj) { return rings.map(r => r.map(ll => proj.toXY(ll))); }
+  /** Closest approach of leg a->b to a set of projected rings: nm, and where on the ring it is.
+      Zero when the leg touches or enters the area, which is what "distance to land" means here. */
+  function segToRingsXY(ax, bx, rxy) {
+    let best = Infinity, at = null;
+    for (const ring of rxy) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        if (segsCross(ax, bx, ring[j], ring[i])) return { nm: 0, at: ring[i] };
+        const c1 = ptSegSq(ring[i], ax, bx);            // ring vertex to the leg
+        if (c1.d2 < best) { best = c1.d2; at = ring[i]; }
+        const c2 = ptSegSq(ax, ring[j], ring[i]);       // leg ends to the ring edge
+        if (c2.d2 < best) { best = c2.d2; at = c2.at; }
+        const c3 = ptSegSq(bx, ring[j], ring[i]);
+        if (c3.d2 < best) { best = c3.d2; at = c3.at; }
+      }
+    }
+    return { nm: Math.sqrt(best), at };
+  }
+  function inRingXY(p, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if (((yi > p[1]) !== (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+  /** true when leg a->b touches, crosses or lies inside any of the projected rings */
+  function segHitsRingsXY(ax, bx, rxy) {
+    for (const ring of rxy) {
+      if (inRingXY(ax, ring) || inRingXY(bx, ring)) return true;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        if (segsCross(ax, bx, ring[j], ring[i])) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Per-leg verification of a route, the same check the chart builder runs before a passage ships.
+      waypoints: [{id, lat, lon}]; land: rings of [lat, lon]; areas: [{id, rings}] to report crossings of.
+      Returns one row per leg: distance and bearing, closest approach to land and where, and which areas
+      it crosses. `clearNm` (default 0.25) and `harbourIds` decide which rows come back flagged, because a
+      leg into a marina is deliberately close to land. */
+  function checkLegs(waypoints, land, areas, opts) {
+    opts = opts || {};
+    const wps = waypoints || [];
+    if (wps.length < 2) return [];
+    const lat0 = opts.lat0 !== undefined ? opts.lat0 : wps.reduce((s, w) => s + w.lat, 0) / wps.length;
+    const proj = projector(lat0);
+    const landXY = ringsXY(land || [], proj);
+    const areaXY = (areas || []).map(a => ({ id: a.id, name: a.name, rings: ringsXY(a.rings || [], proj) }));
+    const clearNm = opts.clearNm === undefined ? 0.25 : opts.clearNm;
+    const harbour = new Set(opts.harbourIds || []);
+    const out = [];
+    for (let i = 0; i < wps.length - 1; i++) {
+      const a = wps[i], b = wps[i + 1];
+      const ax = proj.toXY([a.lat, a.lon]), bx = proj.toXY([b.lat, b.lon]);
+      const near = segToRingsXY(ax, bx, landXY);
+      const at = near.at ? proj.toLL(near.at) : null;
+      const crosses = areaXY.filter(g => segHitsRingsXY(ax, bx, g.rings)).map(g => g.id);
+      const exempt = harbour.has(a.id) || harbour.has(b.id);
+      out.push({
+        from: a.id, to: b.id,
+        dist: distanceNm(a, b), brg: bearingDeg(a, b),
+        landNm: near.nm,
+        landAt: at ? { lat: at[0], lon: at[1] } : null,
+        crosses,
+        tooClose: near.nm < clearNm && !exempt,
+        exempt,
+      });
+    }
+    return out;
+  }
+
   /** legs for a waypoint list */
   function legs(wps) {
     const out = [];
@@ -215,5 +318,6 @@
 
   return { R, NM, toRad, toDeg, norm360, angleDiff, distanceNm, bearingDeg, destination, crossTrackNm, alongTrackNm,
     pointInRing, pointInRings, legs, routeTotal, solve, ttgSeconds, makeSmoother, deltaSpeedCourse,
+    projector, ringsXY, segToRingsXY, segHitsRingsXY, checkLegs,
     fmtDM, fmtBrg, fmtNm, fmtDur, fmtTime, compass16, sunTimes, windVsCurrent, toGPX, trackGPX, courseAtNm, seaAspect };
 });

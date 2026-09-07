@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.13.0 (2026-09-07)
+Routes can be drawn in the app and are checked there, so making one no longer means running Python.
+- **Route editor** on the chart: tap to add a waypoint, drag to move, insert, delete, rename, undo. Every leg
+  is measured as you draw -- closest approach to the coastline and which traffic-scheme areas it crosses --
+  with legs inside 0.25 nm flagged, and legs into a harbour exempt the way the chart builder exempts them.
+- `NAV.checkLegs` is the browser port of the chart builder's own verification. `tests/nav.test.js` holds it to
+  shapely's answer on all 42 legs of the three bundled routes, against a fixture that
+  `tests/build/test_build_chart.py` regenerates, so the two can never quietly disagree.
+- "Use this route" keeps a drawn route on the device and offers it beside the bundled ones. "Passage JSON"
+  gives the block to paste into a passage file for a pull request.
+- A drawn route whose legs failed the check is marked **not verified**: it says so in the route picker, on the
+  Plan tab, and again before navigation starts.
+- `NAV.projector(lat0)` replaces the fixed projection origin, so distances are measured with the cosine of the
+  latitude they are actually at rather than the Strait of Gibraltar's.
+
+### Fixed
+- The map control container caught pointer events across its whole box. With the ☰ menu open that was a
+  roughly 300 px wide invisible strip over the chart that swallowed taps and drags. Only the buttons take
+  pointers now.
+
 ## 0.12.1 (2026-09-07)
 - AIS: decode the binary frames aisstream actually sends. See **Fixed** below; this is the reason no ship
   ever appeared, and the earlier diagnostics work is what surfaced it as "[object Blob]".

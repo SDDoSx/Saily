@@ -176,6 +176,77 @@ const OUT = path.join(__dirname, 'out');
     await page.evaluate(() => window.AIS.disconnect());
   });
 
+  // 4. Route editor: the leg check has to catch a route drawn over land, or drawing one here is worse
+  //    than useless. Also checks the JSON it exports is the shape a passage file expects.
+  await run('editor', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
+    await page.waitForFunction(() => !!window.SAILY && !!window.CHART, null, { timeout: 15000 });
+    await page.click('#btnPlanOnly').catch(() => {});
+    await page.waitForTimeout(800);
+    await page.click('#btnMore'); await page.waitForTimeout(300);
+    await page.click('#btnEdit'); await page.waitForTimeout(900);
+    if (!(await page.evaluate(() => document.body.classList.contains('editing')))) errors.push('editor did not open');
+    const start = await page.evaluate(() => window.SAILY.S.edit.wps.length);
+    if (start < 2) errors.push('editor did not load the active route');
+
+    // the bundled route is verified: the editor must agree
+    const clean = await page.evaluate(() => document.querySelector('#editPanel .verdictline').className);
+    if (!/\bok\b/.test(clean)) errors.push('editor flags the bundled route, which the chart builder passes');
+
+    // put a waypoint ashore, west of Gibraltar, and the leg must be flagged.
+    // editPush first, exactly as the marker's dragstart handler does, so undo has something to restore.
+    const flagged = await page.evaluate(() => {
+      const S = window.SAILY.S;
+      window.SAILY.editPush();
+      S.edit.wps[3].lat = 36.13; S.edit.wps[3].lon = -5.35;
+      window.SAILY.editRender();
+      const v = document.querySelector('#editPanel .verdictline');
+      return { cls: v.className, text: v.textContent, badRows: document.querySelectorAll('#editPanel tr.bad').length };
+    });
+    console.log('Editor with a waypoint ashore:', JSON.stringify(flagged));
+    if (!/\bbad\b/.test(flagged.cls)) errors.push('editor did not flag a leg drawn over land');
+    if (flagged.badRows < 1) errors.push('editor flagged no legs after a waypoint was moved ashore');
+
+    // undo restores it
+    await page.click('#edUndo'); await page.waitForTimeout(400);
+    const undone = await page.evaluate(() => document.querySelector('#editPanel .verdictline').className);
+    if (!/\bok\b/.test(undone)) errors.push('undo did not restore the route');
+
+    // adding a waypoint by tapping the chart. Dismiss the alert banner first: it covers the top of the map.
+    await page.evaluate(() => { const b = document.getElementById('alertBanner'); if (b) b.classList.add('hidden'); });
+    const before = await page.evaluate(() => window.SAILY.S.edit.wps.length);
+    // Leaflet swallows clicks while a zoom is animating: settle first, then tap.
+    await page.evaluate(() => new Promise(res => {
+      const m = window.SAILY.map;
+      m.once('zoomend', () => setTimeout(res, 150));
+      m.setZoom(9, { animate: false });
+      setTimeout(res, 2000);
+    }));
+    await page.waitForTimeout(300);
+    const box = await page.$eval('#mapWrap', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+    await page.touchscreen.tap(Math.round(box.x + box.w * 0.25), Math.round(box.y + box.h * 0.5));
+    await page.waitForTimeout(800);
+    const after = await page.evaluate(() => window.SAILY.S.edit.wps.length);
+    if (after !== before + 1) errors.push(`tapping the chart added ${after - before} waypoints, expected 1`);
+
+    // the exported JSON is a passage route
+    await page.click('#edJson'); await page.waitForTimeout(500);
+    const json = await page.$eval('#edJsonText', el => el.value);
+    let route = null;
+    try { route = JSON.parse(json); } catch (e) { errors.push('exported route JSON does not parse: ' + e.message); }
+    if (route) {
+      console.log('Exported route:', JSON.stringify({ id: route.id, waypoints: route.waypoints.length, keys: Object.keys(route) }));
+      for (const k of ['id', 'name', 'waypoints']) if (!(k in route)) errors.push('exported route is missing the required field ' + k);
+      if ('legs' in route || 'total' in route) errors.push('exported route contains built fields (legs/total) that the passage schema rejects');
+      const w = route.waypoints[0] || {};
+      for (const k of ['id', 'name', 'lat', 'lon']) if (!(k in w)) errors.push('exported waypoint is missing ' + k);
+      if (typeof w.lat !== 'number' || typeof w.lon !== 'number') errors.push('exported waypoint coordinates are not numbers');
+    }
+    await page.click('#edBack'); await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(OUT, 'editor.png') });
+    await page.click('#edClose'); await page.waitForTimeout(400);
+    if (await page.evaluate(() => document.body.classList.contains('editing'))) errors.push('editor did not close');
+  });
+
   await browser.close(); server.close();
   console.log('\nERRORS (' + errors.length + '):'); errors.forEach(e => console.log(' - ' + e));
   process.exit(errors.length ? 1 : 0);

@@ -32,6 +32,11 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
 - **Readable at any hour**: Automatic, Dark, Daylight (glare) and Night colours; night is red-amber on black so it does
   not spoil your night vision, switches itself at sunset with an undo toast, and dims further on request. Big-numbers
   mode drops the chart for the figures that matter, with a Chart button to bring it back. (Setup, Colours.)
+- **Plan a route on the chart**: draw waypoints by tapping, drag them to move. Every leg is measured against
+  the coastline and the traffic scheme as you go, by the same check the chart builder runs before a passage
+  ships, so a leg that shaves a headland is flagged before you follow it. Export it as passage JSON for a pull
+  request, or keep it on the device. A route that fails the check is marked "not verified" and says so before
+  navigation starts.
 - **Passage as data**: `passages/*.json` holds the route, hazards, places, weather points, thresholds, time zones and
   briefing; the build turns it into a chart under `site/passages/<id>/`, and `site/passages/index.json` lists what is
   bundled. No place name appears anywhere in the app code. Add a directory and a catalogue line and the app offers your

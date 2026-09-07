@@ -379,6 +379,175 @@
     });
   }
   drawRoutes();
+
+  // ---------- route editor: draw a route on the chart and have it checked here, not in Python ----------
+  // The chart builder verifies a route against the coastline and the traffic scheme before a passage ships.
+  // nav.checkLegs is that same check, and tests/nav.test.js pins it to shapely's answer leg by leg, so a
+  // route drawn here is held to the ruler the bundled ones were held to.
+  const editGroup = L.layerGroup();
+  const CLEAR_NM = 0.25;
+  const editAreas = () => {
+    const out = [];
+    for (const g of ['lanes', 'zones', 'precautionary']) for (const e of (C.tss[g] || [])) out.push({ id: e.id, name: e.name, rings: e.rings });
+    return out;
+  };
+  function editCheck() {
+    const E = S.edit; if (!E) return [];
+    return N.checkLegs(E.wps, C.land, editAreas(), { clearNm: CLEAR_NM, harbourIds: [...HARBOUR_WPS], lat0: (C.meta.bbox[0] + C.meta.bbox[2]) / 2 });
+  }
+  function editPush() { const E = S.edit; E.history.push(JSON.stringify(E.wps)); if (E.history.length > 60) E.history.shift(); }
+  function editUndo() {
+    const E = S.edit; if (!E || !E.history.length) { toast('Nothing to undo'); return; }
+    E.wps = JSON.parse(E.history.pop()); E.sel = Math.min(E.sel, E.wps.length - 1); editRender();
+  }
+  function nextWpId() {
+    const used = new Set(S.edit.wps.map(w => w.id));
+    for (let i = 1; i < 500; i++) { const id = 'WP' + i; if (!used.has(id)) return id; }
+    return 'WP' + Date.now();
+  }
+  function startEdit() {
+    if (S.navigating) { toast('Stop navigation before planning a route'); return; }
+    const base = S.route.waypoints.map(w => ({ id: w.id, name: w.name || w.id, lat: w.lat, lon: w.lon, radius: w.radius || 0.1, note: w.note || '' }));
+    S.edit = { wps: base, sel: base.length - 1, history: [], name: S.route.name + ' (edited)', srcId: S.route.id };
+    document.body.classList.add('editing');
+    $('mapControls').classList.remove('open'); $('btnMore').classList.remove('on');  // the menu covers the chart you are drawing on
+    editGroup.addTo(map);
+    $('editPanel').classList.remove('hidden');
+    $('btnEdit').classList.add('on');
+    editRender();
+    toast('Tap the chart to add a waypoint. Drag one to move it.', 4200);
+  }
+  function stopEdit() {
+    S.edit = null;
+    document.body.classList.remove('editing');
+    editGroup.clearLayers(); map.removeLayer(editGroup);
+    $('editPanel').classList.add('hidden'); $('editPanel').innerHTML = '';
+    $('btnEdit').classList.remove('on');
+    drawRoutes();
+    if (S.solution) updateHud(S.solution);
+  }
+  function editRender() {
+    const E = S.edit; if (!E) return;
+    const rows = editCheck();
+    const badBy = {};
+    rows.forEach(r => { if (r.tooClose) { badBy[r.from] = true; badBy[r.to] = true; } });
+    // map: the line and one numbered, draggable marker per waypoint
+    editGroup.clearLayers();
+    if (E.wps.length > 1) editGroup.addLayer(L.polyline(E.wps.map(w => [w.lat, w.lon]), { pane: 'route', color: '#ff2d95', weight: 4, opacity: .9, interactive: false }));
+    E.wps.forEach((w, i) => {
+      const cls = 'wpedit' + (i === E.sel ? ' sel' : '') + (badBy[w.id] ? ' bad' : '');
+      const m = L.marker([w.lat, w.lon], { pane: 'vessel', draggable: true, icon: L.divIcon({ className: '', iconSize: [0, 0], html: `<div class="${cls}" title="${esc(w.id)}">${i + 1}</div>` }) });
+      m.on('dragstart', () => { editPush(); E.sel = i; });
+      m.on('drag', ev => { const ll = ev.target.getLatLng(); E.wps[i].lat = round5(ll.lat); E.wps[i].lon = round5(ll.lng); });
+      m.on('dragend', () => editRender());
+      m.on('click', ev => { L.DomEvent.stop(ev); E.sel = i; editRender(); });
+      editGroup.addLayer(m);
+    });
+    // panel
+    const total = rows.reduce((a, r) => a + r.dist, 0);
+    const sp = S.settings.speed || 20;
+    const bad = rows.filter(r => r.tooClose);
+    const crossing = rows.filter(r => r.crosses.length);
+    const sel = E.wps[E.sel];
+    let h = `<div class="ehead"><b>Planning a route</b><span class="muted small">${E.wps.length} waypoint${E.wps.length === 1 ? '' : 's'}</span></div>`;
+    h += `<div class="hint">Tap the chart to add a waypoint, drag one to move it, tap it to select.</div>`;
+    h += `<div class="etotals"><span><b>${N.fmtNm(total, 1)}</b> nm</span><span><b>${N.fmtDur(total / sp * 3600)}</b> at ${sp} kn</span>${sel ? `<span class="muted">${esc(sel.id)} ${N.fmtDM(sel.lat, sel.lon)}</span>` : ''}</div>`;
+    if (!rows.length) h += `<div class="verdictline none">Add a second waypoint to check the route.</div>`;
+    else if (bad.length) h += `<div class="verdictline bad">${bad.length} leg${bad.length === 1 ? '' : 's'} within ${CLEAR_NM} nm of land</div>`;
+    else h += `<div class="verdictline ok">Every leg clears land by ${CLEAR_NM} nm or more${crossing.length ? `, ${crossing.length === 1 ? 'one crosses' : crossing.length + ' cross'} the scheme` : ''}</div>`;
+    // Actions before detail: at the chart you want the buttons without scrolling past fourteen legs.
+    h += `<div class="ebtns">
+      <button class="btn" id="edUndo">Undo</button>
+      <button class="btn" id="edDel">Delete${sel ? ' ' + esc(sel.id) : ''}</button>
+      <button class="btn" id="edIns">Insert before</button>
+      <button class="btn" id="edName">Rename</button></div>`;
+    h += `<div class="ebtns">
+      <button class="btn primary" id="edSave">Use this route</button>
+      <button class="btn" id="edJson">Passage JSON</button>
+      <button class="btn" id="edClose">Close</button></div>`;
+    if (rows.length) {
+      h += `<div class="legs"><table><tr><th>#</th><th>Leg</th><th>°T</th><th>nm</th><th>To land</th><th>Crosses</th></tr>` +
+        rows.map((r, i) => `<tr class="${r.tooClose ? 'bad' : ''}${i === E.sel - 1 || i === E.sel ? ' sel' : ''}"><td>${i + 1}</td><td>${esc(r.from)}→${esc(r.to)}</td><td>${N.fmtBrg(r.brg)}</td><td>${r.dist.toFixed(2)}</td><td>${r.exempt && r.landNm < CLEAR_NM ? '<span class="muted">harbour</span>' : N.fmtNm(r.landNm, 2)}</td><td>${r.crosses.length ? esc(r.crosses.join(', ')) : '<span class="muted">—</span>'}</td></tr>`).join('') +
+        `</table></div>`;
+    }
+    const el = $('editPanel'); el.innerHTML = h;
+    $('edUndo').addEventListener('click', editUndo);
+    $('edClose').addEventListener('click', stopEdit);
+    $('edDel').addEventListener('click', () => {
+      if (!E.wps.length) return;
+      editPush(); E.wps.splice(E.sel, 1); E.sel = Math.max(0, Math.min(E.sel, E.wps.length - 1)); editRender();
+    });
+    $('edIns').addEventListener('click', () => {
+      if (E.wps.length < 2) { toast('Add a second waypoint first'); return; }
+      const i = Math.max(1, E.sel), a = E.wps[i - 1], b = E.wps[i];
+      editPush();
+      E.wps.splice(i, 0, { id: nextWpId(), name: 'New waypoint', lat: round5((a.lat + b.lat) / 2), lon: round5((a.lon + b.lon) / 2), radius: 0.1, note: '' });
+      E.sel = i; editRender();
+    });
+    $('edName').addEventListener('click', () => {
+      if (!sel) return;
+      const id = prompt('Waypoint name (short, spoken aloud)', sel.id); if (id === null) return;
+      editPush(); sel.id = id.trim().slice(0, 12) || sel.id; sel.name = sel.id; editRender();
+    });
+    $('edSave').addEventListener('click', () => saveEditedRoute(rows));
+    $('edJson').addEventListener('click', () => showEditJson(rows));
+  }
+  const round5 = v => Math.round(v * 1e5) / 1e5;
+  function editedRouteObject() {
+    const E = S.edit;
+    const wps = E.wps.map(w => ({ id: w.id, name: w.name || w.id, lat: round5(w.lat), lon: round5(w.lon), radius: w.radius || 0.1, note: w.note || '' }));
+    const legs = N.legs(wps);
+    return { id: 'planned', short: 'Planned', name: E.name || 'Planned route', recommended: false, summary: 'Drawn on the chart in this app.', waypoints: wps, legs, total: Math.round(N.routeTotal(wps) * 10) / 10 };
+  }
+  function saveEditedRoute(rows) {
+    const E = S.edit;
+    if (E.wps.length < 2) { toast('A route needs at least two waypoints'); return; }
+    const bad = rows.filter(r => r.tooClose);
+    if (bad.length && !confirm(`${bad.length} leg(s) pass within ${CLEAR_NM} nm of land:\n\n${bad.map(r => `${r.from}→${r.to}: ${r.landNm.toFixed(2)} nm`).join('\n')}\n\nUse it anyway? Saily will keep warning you that this route is not verified.`)) return;
+    const route = editedRouteObject();
+    route.unverified = bad.length > 0;
+    saveJson(PLANNED_KEY, route);
+    installPlannedRoute();
+    S.settings.routeId = route.id; S.settings.wp = 1; S.route = P.routes.find(r => r.id === route.id);
+    S.zone = {}; S.approached = {}; saveSettings();
+    stopEdit(); drawRoutes(); renderMore();
+    toast(route.unverified ? 'Saved. This route is not verified: check every leg yourself.' : 'Saved and selected as the active route.', 5000);
+  }
+  function showEditJson(rows) {
+    const route = editedRouteObject();
+    const bad = rows.filter(r => r.tooClose).length;
+    const text = JSON.stringify(route, (k, v) => (k === 'legs' || k === 'total' ? undefined : v), 2);
+    const el = $('editPanel');
+    el.innerHTML = `<div class="ehead"><b>Route as passage JSON</b></div>
+      <div class="hint">Paste this into the <code>routes</code> array of a file in <code>passages/</code>, then run the checks in <code>docs/ADAPTING.md</code>. ${bad ? `<b>${bad} leg(s) are within ${CLEAR_NM} nm of land.</b>` : 'Every leg clears land here.'}</div>
+      <textarea id="edJsonText" readonly spellcheck="false"></textarea>
+      <div class="ebtns"><button class="btn primary" id="edCopy">Copy</button><button class="btn" id="edBack">Back</button></div>`;
+    $('edJsonText').value = text;
+    $('edCopy').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(text); toast('Copied'); }
+      catch (e) { $('edJsonText').select(); toast('Select all and copy'); }
+    });
+    $('edBack').addEventListener('click', editRender);
+  }
+  // A route drawn here is stored on the device and offered alongside the bundled ones.
+  const PLANNED_KEY = 'saily.planned.route' + suffix;
+  function installPlannedRoute() {
+    const saved = loadJson(PLANNED_KEY, null);
+    P.routes = P.routes.filter(r => r.id !== 'planned');
+    if (saved && saved.waypoints && saved.waypoints.length > 1) P.routes.push(saved);
+  }
+  installPlannedRoute();
+  // The saved route joins P.routes after S.route was first resolved, so resolve it again and redraw.
+  S.route = P.routes.find(r => r.id === S.settings.routeId) || S.route;
+  drawRoutes();
+  map.on('click', ev => {
+    const E = S.edit; if (!E) return;
+    editPush();
+    E.wps.push({ id: nextWpId(), name: 'New waypoint', lat: round5(ev.latlng.lat), lon: round5(ev.latlng.lng), radius: 0.1, note: '' });
+    E.sel = E.wps.length - 1;
+    editRender();
+  });
+  $('btnEdit').addEventListener('click', () => { if (S.edit) stopEdit(); else startEdit(); });
   // vessel + track + bearing line
   const vesselIcon = L.divIcon({ className: 'vessel', iconSize: [0, 0], html: `<div id="vesselRot" style="width:44px;height:44px;margin:-22px 0 0 -22px;transform:rotate(0deg)"><svg viewBox="0 0 44 44" width="44" height="44"><path d="M22 3 L32 36 L22 30 L12 36 Z" fill="#43b3ff" stroke="#031" stroke-width="2"/><circle cx="22" cy="22" r="20" fill="none" stroke="#43b3ff" stroke-width="1.5" opacity=".5"/></svg></div>` });
   const vessel = L.marker([36.2869, -5.2701], { icon: vesselIcon, pane: 'vessel', interactive: false });
@@ -981,6 +1150,10 @@
 
   // ---------- start ----------
   function begin(mode) {
+    // A route drawn in the app that failed the land check is not a verified route. Say so, every time,
+    // before it becomes the thing being followed in the dark.
+    if (mode === 'nav' && S.route && S.route.unverified &&
+        !confirm(`"${S.route.name}" was drawn in this app and has legs within ${CLEAR_NM} nm of land.\n\nIt has not been checked against a real chart. Navigate on it anyway?`)) return;
     ensureAudio(); S.started = true; requestWakeLock();
     $('startOverlay').classList.add('hidden');
     S.arrivedFinal = false;
@@ -1144,8 +1317,9 @@
     const el = $('planPage'); const r = S.route; const dep = new Date(S.settings.departure);
     const sp = S.settings.speed;
     let cum = 0;
-    let h = `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${x.id}" ${x.id === r.id ? 'checked' : ''}> ${x.recommended ? 'Recommended' : 'Alternative'}</label>`).join('')}</div>
-      <p><b>${r.name}</b></p><p>${r.summary}</p>
+    let h = `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${esc(x.id)}" ${x.id === r.id ? 'checked' : ''}> ${x.id === 'planned' ? 'Drawn here' : x.recommended ? 'Recommended' : 'Alternative'}</label>`).join('')}</div>
+      <p><b>${esc(r.name)}</b></p><p>${esc(r.summary || '')}</p>
+      ${r.unverified ? `<p class="wxstale"><b>Not verified.</b> This route was drawn in the app and has legs within ${CLEAR_NM} nm of land. Check every one of them against a real chart before you follow it.</p>` : ''}
       <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (P.vessel.burnLph || 75))} L at a planning burn of ${P.vessel.burnLph || 75} L/h (${P.vessel.name || 'planning figure'}; tanks ${P.vessel.fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
     h += `<div class="card"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
     r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
@@ -1186,7 +1360,7 @@
       ${cat.length > 1 ? `<label class="field"><span>Passage</span><select id="setPassage">${cat.map(c => `<option value="${esc(c.id)}" ${c.id === PID ? 'selected' : ''}>${esc(c.title || c.name || c.id)}</option>`).join('')}</select></label>` : ''}
       <label class="field"><span>Planned cruise speed (kn)</span><input type="number" id="setSpeed" min="5" max="40" step="1" value="${s.speed}"></label>
       <label class="field"><span>Planned departure (${TZL_FROM})</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
-      <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${esc(r.id)}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${esc(r.short || r.id)})</option>`).join('')}</select></label>
+      <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${esc(r.id)}" ${r.id === s.routeId ? 'selected' : ''}>${r.id === 'planned' ? 'Drawn here' : r.recommended ? 'Recommended' : 'Alternative'} (${esc(r.short || r.id)})${r.unverified ? ' — not verified' : ''}</option>`).join('')}</select></label>
       <label class="field"><span>${esc(TZL_TO)} clock</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option>${TZ_OFFSETS.map(o => `<option value="${o.minutes}" ${String(s.maOffset) === String(o.minutes) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
       <div class="row" style="margin-top:12px"><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
     h += `<div class="card"><h2>Alerts and sound</h2>
@@ -1443,7 +1617,8 @@
     $('hudRoute').textContent = S.route.short || S.route.id;
     $('hudDtg').innerHTML = S.route.total + '<small> nm</small>';
   }
-  window.SAILY = { S, map, processFix, startSim, stopSim, alert, preload, refreshWeather, onFix, wxVerdictNow, applyTheme, resolveTheme };
+  window.SAILY = { S, map, processFix, startSim, stopSim, alert, preload, refreshWeather, onFix, wxVerdictNow, applyTheme, resolveTheme,
+    startEdit, stopEdit, editRender, editCheck, editPush, saveSettings };
   } catch (err) {
     const o = document.getElementById('startOverlay');
     if (o) o.innerHTML = '<h1>Saily</h1><p><b>The app failed to start.</b></p><p class="muted">' + String(err && err.message || err) + '</p><button class="bigbtn" onclick="location.reload()">Reload</button>';

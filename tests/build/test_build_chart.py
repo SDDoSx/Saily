@@ -251,6 +251,43 @@ def test_js_rendering():
     assert r['js'].isascii(), 'chart-data.js stays ASCII'
 
 
+# --- the JavaScript port of the leg check --------------------------------------------------------
+def test_leg_fixture_matches_shapely():
+    """The fixture tests/nav.test.js checks the JS port against is what shapely actually computes.
+
+    Both sides measure the shipped chart, so a change to build_chart's geometry, to the routes, or to the
+    coastline shows up here before it can silently disagree with the browser."""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    chart_js = os.path.join(ROOT, 'site', 'passages', 'strait-of-gibraltar', 'chart-data.js')
+    passage_json = os.path.join(ROOT, 'passages', 'strait-of-gibraltar.json')
+    fixture = os.path.join(ROOT, 'tests', 'fixtures', 'legs-strait-of-gibraltar.json')
+    if not (os.path.exists(chart_js) and os.path.exists(fixture)):
+        print('SKIP test_leg_fixture_matches_shapely (chart or fixture missing)')
+        return
+    chart = json.loads(open(chart_js, encoding='utf-8').read()[len('window.CHART = '):-2])
+    land_xy = unary_union([Polygon([build_chart.to_xy(c) for c in ring]) for ring in chart['land']])
+    check = []
+    for grp in ('lanes', 'zones', 'precautionary'):
+        for e in chart['tss'].get(grp, []):
+            check.append((e['id'], unary_union([Polygon([build_chart.to_xy(c) for c in r]) for r in e['rings']])))
+    pz = json.load(open(passage_json, encoding='utf-8'))
+    rows = build_chart.check_legs(build_chart.build_routes(pz), land_xy, check)
+    legs = [{'route': r[0], 'from': r[1], 'to': r[2], 'landNm': r[3], 'crosses': sorted(r[4])} for r in rows]
+
+    want = json.load(open(fixture, encoding='utf-8'))
+    if UPDATE:
+        want['legs'] = legs
+        want['lat0'] = build_chart.LAT0
+        open(fixture, 'w', encoding='utf-8').write(json.dumps(want, indent=1) + '\n')
+        print('updated', fixture)
+        return
+    assert want['lat0'] == build_chart.LAT0, f"fixture projection origin {want['lat0']} != build_chart.LAT0 {build_chart.LAT0}"
+    assert want['legs'] == legs, ('leg check drifted from the fixture; re-run with UPDATE_GOLDEN=1 and check the JS port\n'
+                                  + '\n'.join(difflib.unified_diff(pretty(want['legs']).splitlines(True), pretty(legs).splitlines(True),
+                                                                   'fixture', 'shapely', n=2)))
+
+
 if __name__ == '__main__':
     tests = [v for k, v in sorted(globals().items()) if k.startswith('test_') and callable(v)]
     failed = 0

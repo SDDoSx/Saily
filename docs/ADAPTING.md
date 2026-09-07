@@ -1,5 +1,12 @@
 # Adapting Saily to another passage
 
+**Drawing a route needs none of this.** Open the app, map menu (☰), the pencil, and tap the chart. Every leg
+is measured against the coastline and the traffic scheme as you draw, by the same check the chart builder
+runs (`NAV.checkLegs`, pinned to shapely's answer leg by leg in `tests/nav.test.js`). "Use this route" keeps
+it on the device; "Passage JSON" gives you the block to paste into a passage file. What follows is for a
+**new area**, where the coastline itself has to be fetched and built.
+
+
 1. Copy `passages/strait-of-gibraltar.json` to `passages/<your-id>.json` and edit:
    - `bbox`: the chart area (south, west, north, east).
    - `tz`: departure and arrival time zones and labels.
