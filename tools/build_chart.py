@@ -73,8 +73,11 @@ def pick_side(rest, side):
 
 # Land
 def load_land(scratch):
-    """land_osm.json -> (shapely MultiPolygon in lon/lat, union in xy nm)."""
+    """land_osm.json -> (shapely MultiPolygon in lon/lat, union in xy nm).
+    A bbox holding one connected land mass may arrive as a bare Polygon; treat it as a one-part MultiPolygon."""
     land = shape(json.load(open(os.path.join(scratch, 'land_osm.json'))))
+    if land.geom_type == 'Polygon':
+        land = MultiPolygon([land])
     land_xy = unary_union([Polygon([to_xy((c[1], c[0])) for c in poly.exterior.coords]) for poly in land.geoms])
     return land, land_xy
 

@@ -2,13 +2,26 @@ Leaflet 1.9.4
 Licence: BSD-2-Clause, see LICENSE in this directory.
 Upstream: https://github.com/Leaflet/Leaflet/releases/tag/v1.9.4 (npm package leaflet@1.9.4)
 
-Files and their origin:
-  leaflet.min.js  = https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js (byte-identical;
-                    cdnjs's minified build of dist/leaflet.js, with the @preserve header comment removed)
-  leaflet.css     = dist/leaflet.css of leaflet@1.9.4 (byte-identical)
-  images/         = dist/images/ of leaflet@1.9.4 (byte-identical: layers.png, layers-2x.png,
+Every file here was taken from cdnjs's copy of leaflet 1.9.4 and is byte-identical to it:
+
+  leaflet.min.js  = https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js
+                    cdnjs's own minified build of leaflet 1.9.4. It is NOT upstream dist/leaflet.js with
+                    the header removed: the two are different minifier outputs (different identifier
+                    mangling), and dist/leaflet.js is what cdnjs serves as leaflet.js, header and
+                    sourceMappingURL included. Same source release, different minification.
+                    sha256 5c9aecfc30e4564519dbdcddcc53a418227dcc7568e619e9762ddcec7609ed47
+  leaflet.css     = https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css
+                    (also byte-identical to dist/leaflet.css of leaflet@1.9.4)
+                    sha256 a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6
+  images/         = https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/
+                    (also byte-identical to dist/images/ of leaflet@1.9.4: layers.png, layers-2x.png,
                     marker-icon.png, marker-icon-2x.png, marker-shadow.png)
 
-Header stripped from leaflet.min.js by the minifier:
+cdnjs's minifier drops the @preserve copyright header, so leaflet.min.js carries no notice of its own.
+The BSD-2-Clause notice it would have carried is kept in LICENSE in this directory and reads:
+
   Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
   (c) 2010-2023 Vladimir Agafonkin, (c) 2010-2011 CloudMade
+
+Re-verify after any change:
+  curl -sS https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js | shasum -a 256

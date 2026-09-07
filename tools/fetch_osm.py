@@ -21,6 +21,7 @@ The two JSON files from Overpass are stored exactly as received, so tools/build_
 Data: (c) OpenStreetMap contributors, ODbL 1.0 (see NOTICE and docs/LICENSING.md).
 """
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -98,8 +99,9 @@ def overpass_get(mirror, query, timeout):
         raise FetchError(f'{mirror}: HTTP {e.code} {e.reason}' + (' (rate limited, retry later)' if e.code == 429 else ''))
     except urllib.error.URLError as e:
         raise FetchError(f'{mirror}: {e.reason}')
-    except (TimeoutError, OSError) as e:
-        raise FetchError(f'{mirror}: {e}')
+    except (TimeoutError, OSError, http.client.HTTPException) as e:
+        # HTTPException covers IncompleteRead and friends: a mirror that cuts the transfer mid-body.
+        raise FetchError(f'{mirror}: {type(e).__name__}: {e}')
     try:
         data = json.loads(body.decode('utf-8'))
     except ValueError:
@@ -211,8 +213,10 @@ def _round_coords(c):
     return [_round_coords(x) for x in c]
 
 
-def geojson(geom):
-    """GeoJSON dict of a (Multi)Polygon with rounded coordinates; empty -> empty MultiPolygon."""
+def geojson(geom, force_multi=False):
+    """GeoJSON dict of a (Multi)Polygon with rounded coordinates; empty -> empty MultiPolygon.
+    force_multi promotes a single Polygon to a one-part MultiPolygon, so a bbox holding one connected
+    land mass still produces the MultiPolygon that build_chart.load_land expects."""
     if geom.is_empty:
         return {'type': 'MultiPolygon', 'coordinates': []}
     if geom.geom_type == 'GeometryCollection':
@@ -221,7 +225,10 @@ def geojson(geom):
         if geom.is_empty:
             return {'type': 'MultiPolygon', 'coordinates': []}
     m = mapping(geom)
-    return {'type': m['type'], 'coordinates': _round_coords(m['coordinates'])}
+    out = {'type': m['type'], 'coordinates': _round_coords(m['coordinates'])}
+    if force_multi and out['type'] == 'Polygon':
+        out = {'type': 'MultiPolygon', 'coordinates': [out['coordinates']]}
+    return out
 
 
 def write_json(path, obj):
@@ -233,8 +240,8 @@ def write_json(path, obj):
 def polygonise_all(coast, passage, scratch, log=print):
     bbox = passage['bbox']
     land = polygonise_land(coast, bbox, log)
-    land_out = geojson(land.simplify(LAND_SIMPLIFY))
-    n = len(land_out['coordinates']) if land_out['type'] == 'MultiPolygon' else 1
+    land_out = geojson(land.simplify(LAND_SIMPLIFY), force_multi=True)
+    n = len(land_out['coordinates'])
     size = write_json(os.path.join(scratch, 'land_osm.json'), land_out)
     log(f'wrote land_osm.json: {n} polygons, {size} bytes, area {land.area:.4f} sq deg')
     for key, place in passage.get('places', {}).items():

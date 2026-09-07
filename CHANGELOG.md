@@ -1,20 +1,7 @@
 # Changelog
 
-## Unreleased
-- Chart build reproducible from public data: `tools/fetch_osm.py` fetches coastline and seamarks for the passage bbox
-  from Overpass (mirror fallback, retries, `--offline` re-polygonisation) and polygonises land with the OSM left-hand
-  rule; `tools/build_chart.py` split into importable functions with a `main()` guard (outputs unchanged).
-- `tests/build/test_build_chart.py`: golden test of the pipeline on a hand-written island-and-bay fixture.
-- Licensing paperwork: `LICENSE` separates the MIT code from the data terms, `NOTICE` lists every data source
-  (OpenStreetMap ODbL, IMO Circ.66, NGA Pub 131, Open-Meteo, Leaflet, tile providers), `docs/LICENSING.md` explains
-  the obligations, Leaflet's licence and version are vendored.
-- Tests: node:test suites for nav, weather (thresholds, DST-safe hour lookup, departure scan, passage verdict) and AIS
-  (CPA/TCPA, alarm window, pruning); `tools/unit.js` now runs the nav suite. Route replay harness `tools/replay.js` drives
-  every bundled route through the app at 3, 5 and 22 kn and checks the alert sequence against `passages/<id>.expected.json`
-  (`docs/TESTING.md`). ESLint flat config; CI runs lint (non-blocking), node:test, e2e and the replay.
-
-## 0.11.0 (unreleased)
-Safety and trust pass driven by a six-lens critique and adversarial review.
+## 0.11.0 (2026-09-07)
+Safety and trust pass driven by a six-lens critique and adversarial review, plus a reproducible chart build.
 - Guards: land-ahead bounded by the verified route (harbour legs on track excluded), fix-quality gate (jumps rejected,
   poor and stale fixes never drive alerts), zone and hazard transitions debounced, holding-off guard on auto-advance,
   lane side of traffic and crossing heading derived from the flow bearing and the leg course (correct on the return route).
@@ -25,9 +12,33 @@ Safety and trust pass driven by a six-lens critique and adversarial review.
 - Passage lifecycle: resume after iOS kills the tab, passage-complete summary with hand-off to the return route.
 - Helm: hold-to-arm MOB with a separate held cancel, hold-to-skip waypoints, anchor sheet with two-fix alarm, compass
   tape, position sharing, track export, printable pilotage card, Ready-for-sea self-test with one-tap fixes, boot watchdog.
+- Live passage verdict: under way the Weather tab judges the rest of the passage from where you are (Now / Planned
+  toggle) and compares carrying on with turning back; a verdict dot sits on the tab and a change of verdict is spoken.
+- Forecast discipline: one fetch in flight at a time with backoff, quiet while navigating, refreshed on return to the
+  foreground; the header shows fetch age and coverage end, and a stale forecast points at the VHF bulletin instead.
+  Departure snaps to now when navigation starts more than 30 min off the plan.
+- Colours: Automatic / Dark / Daylight / Night (red-amber on black, chart tinted to match), switched automatically at
+  sunset and sunrise with an undo toast; night dimmer; big-numbers mode with a Chart button to bring the map back.
+- Ships: AIS markers fade after two minutes without a report, stale targets leave the lane panel, HUD chip with the
+  ship count and the nearest target.
+- Land-ahead guard waits up to 30 s for the smoothed course to come round after a waypoint turn and needs two
+  consecutive closing fixes: the old leg course at MALABATA, TANG-N and SOTO-OUT runs at the coast, so every turn
+  there raised a false alarm. Found by the replay harness.
 - Updates: atomic service-worker shell written only at install; a new build waits until you apply it; build stamp.
-- Project: return route, node:test suite, route replay harness, reproducible OSM fetch pipeline, passage and TSS JSON
-  schemas with a validator, TSS geometry moved to data, licensing notices.
+- Chart build reproducible from public data: `tools/fetch_osm.py` fetches coastline and seamarks for the passage bbox
+  from Overpass (mirror fallback, retries, `--offline` re-polygonisation) and polygonises land with the OSM left-hand
+  rule; `tools/build_chart.py` split into importable functions with a `main()` guard (outputs unchanged).
+- Passage and TSS moved to validated data: `passages/<id>.tss.json` holds the scheme geometry, `schema/` holds the
+  JSON schemas and `tools/validate_passage.py` runs before every build and in CI.
+- Tests: node:test suites for nav, weather (thresholds, DST-safe hour lookup, departure scan, passage verdict) and AIS
+  (CPA/TCPA, alarm window, pruning); `tools/unit.js` now runs the nav suite. Route replay harness `tools/replay.js` drives
+  every bundled route through the app at 3, 5 and 22 kn and checks the alert sequence against `passages/<id>.expected.json`
+  (`docs/TESTING.md`); `tests/build/` golden-tests the chart pipeline on a hand-written island-and-bay fixture.
+  ESLint flat config; CI runs lint (non-blocking), node:test, e2e, the replay and the build tests.
+- Licensing paperwork: `LICENSE` separates the MIT code from the data terms, `NOTICE` lists every data source
+  (OpenStreetMap ODbL, IMO Circ.66, NGA Pub 131, Open-Meteo, Leaflet, tile providers), `docs/LICENSING.md` explains
+  the obligations, Leaflet's licence and version are vendored.
+- Project: return route.
 
 ## 0.10.0 (2026-09-06)
 - Helm panel: phase-aware status (lane crossing with side of traffic, crossing heading, heading error, distance and

@@ -11,9 +11,9 @@ explanation in docs/LICENSING.md. In short:
   data, (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0.
   Attribution and share-alike apply. It may only be redistributed under ODbL.
 - Traffic separation scheme positions from IMO COLREG.2/Circ.66 (in
-  tools/build_chart.py and site/chart-data.js): reproduced as facts. The
-  circular itself is (c) International Maritime Organization and is not
-  reproduced.
+  passages/strait-of-gibraltar.tss.json and site/chart-data.js): reproduced as
+  facts. The circular itself is (c) International Maritime Organization and is
+  not reproduced.
 - Pilotage notes quoting NGA Pub 131, Sailing Directions (Enroute) Western
   Mediterranean (in passages/*.json and site/passage.js): a work of the
   United States Government, public domain.

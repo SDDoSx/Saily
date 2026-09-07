@@ -101,6 +101,34 @@ def test_land_polygons():
     check_golden('land_osm.json', land)
 
 
+def one_polygon_pipeline():
+    """Polygonise a coast with no offshore island, so the bbox holds one connected land mass.
+    That is the case that used to write land_osm.json as a bare Polygon and crash build_chart.load_land."""
+    if 'one_poly' in _cache:
+        return _cache['one_poly']
+    tmp = tempfile.mkdtemp(prefix='saily-build-test-1poly-')
+    try:
+        coast = json.load(open(os.path.join(FIXTURES, 'coast.json'), encoding='utf-8'))
+        coast['elements'] = [e for e in coast['elements'] if e['id'] not in (1003, 1004)]  # drop both islands
+        passage = json.load(open(os.path.join(FIXTURES, 'passage.json'), encoding='utf-8'))
+        fetch_osm.polygonise_all(coast, passage, tmp, log=lambda *a: None)
+        land_file = json.load(open(os.path.join(tmp, 'land_osm.json'), encoding='utf-8'))
+        land, land_xy = build_chart.load_land(tmp)
+        result = {'file': land_file, 'land': land, 'land_xy': land_xy}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    _cache['one_poly'] = result
+    return result
+
+
+def test_land_single_mass_is_multipolygon():
+    r = one_polygon_pipeline()
+    assert r['file']['type'] == 'MultiPolygon', 'one connected land mass must still be a MultiPolygon'
+    assert len(r['file']['coordinates']) == 1, r['file']['coordinates']
+    assert r['land'].geom_type == 'MultiPolygon' and len(r['land'].geoms) == 1
+    assert not r['land_xy'].is_empty and r['land_xy'].area > 0
+
+
 def test_land_detail():
     r = pipeline()
     assert sorted(k for k in r['land'] if k != 'land_osm.json') == ['land_bay.json']
