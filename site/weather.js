@@ -238,6 +238,10 @@
 
   const KEYNAME = { wind: 'Wind', gust: 'Gusts', wave: 'Waves', current: 'Current', vis: 'Visibility', windcur: 'Wind against current', steep: 'Short steep waves', rain: 'Rain', fog: 'Fog', thunder: 'Thunderstorm', beam: 'Beam sea', head: 'Head sea' };
   const UNIT = { wind: ' kn', gust: ' kn', wave: ' m', current: ' kn', vis: ' m', beam: ' m', head: ' m', rain: ' mm/h', windcur: ' kn', steep: ' s' };
+  // Keys whose "value" is a WMO weather code, not a magnitude: never print it as a measurement.
+  const CODED = ['fog', 'thunder'];
+  // Keys with no caution threshold to quote: the condition itself is the reason.
+  const NO_THRESHOLD = ['windcur', 'steep', 'fog', 'thunder'];
   /** passage verdict: {level ok|caution|nogo|incomplete, governing, groups, missing, reasons} */
   function overall(pass) {
     const missing = [];
@@ -255,13 +259,15 @@
     const fmt = (k, v) => k === 'vis' ? (v / 1000).toFixed(1) + ' km' : (k === 'wave' || k === 'beam' || k === 'head' || k === 'current' ? v.toFixed(1) : Math.round(v)) + (UNIT[k] || '');
     const groups = Object.values(byKey).map(g => {
       const worst = g.points.slice().sort((a, b) => b.level - a.level || b.value - a.value)[0];
-      const range = g.min === g.max ? fmt(g.key, g.max) : fmt(g.key, g.min) + ' to ' + fmt(g.key, g.max);
+      const range = CODED.includes(g.key) ? '' : (g.min === g.max ? fmt(g.key, g.max) : fmt(g.key, g.min) + ' to ' + fmt(g.key, g.max));
       const where = g.points.length === pass.length ? 'at all points' : 'at ' + g.points.map(p => p.name).join(', ');
-      const thr = ['windcur', 'steep', 'fog', 'thunder'].includes(g.key) ? '' : (g.level === 2 ? ' (no-go from ' : ' (caution from ') + fmt(g.key, g.threshold) + ')';
-      return { ...g, worst, margin: g.max - g.threshold, text: `${KEYNAME[g.key] || g.key} ${range} ${where}${thr}` };
+      const thr = NO_THRESHOLD.includes(g.key) ? '' : (g.level === 2 ? ' (no-go from ' : ' (caution from ') + fmt(g.key, g.threshold) + ')';
+      return { ...g, worst, range, where, thr, margin: g.max - g.threshold, text: `${KEYNAME[g.key] || g.key}${range ? ' ' + range : ''} ${where}${thr}` };
     }).sort((a, b) => b.level - a.level || b.margin - a.margin);
     let level = groups.some(g => g.level === 2) ? 'nogo' : missing.length ? 'incomplete' : groups.length ? 'caution' : 'ok';
-    const governing = groups[0] ? { key: groups[0].key, level: groups[0].level, value: groups[0].worst.value, threshold: groups[0].threshold, point: groups[0].worst.name, when: groups[0].worst.when, text: `${KEYNAME[groups[0].key] || groups[0].key} ${fmt(groups[0].key, groups[0].worst.value)} at ${groups[0].worst.name}` + (['windcur', 'steep', 'fog', 'thunder'].includes(groups[0].key) ? '' : `, ${groups[0].level === 2 ? 'no-go' : 'caution'} from ${fmt(groups[0].key, groups[0].threshold)}`) } : null;
+    const g0 = groups[0];
+    const governing = g0 ? { key: g0.key, level: g0.level, value: g0.worst.value, threshold: g0.threshold, point: g0.worst.name, when: g0.worst.when,
+      text: `${KEYNAME[g0.key] || g0.key}${CODED.includes(g0.key) ? '' : ' ' + fmt(g0.key, g0.worst.value)} at ${g0.worst.name}` + (NO_THRESHOLD.includes(g0.key) ? '' : `, ${g0.level === 2 ? 'no-go' : 'caution'} from ${fmt(g0.key, g0.threshold)}`) } : null;
     const reasons = groups.map(g => g.text); if (missing.length) reasons.push('no forecast for ' + missing.map(m => m.point + (m.field === 'all' ? '' : ' (' + m.field + ')')).join(', '));
     return { level, governing, groups, missing, reasons };
   }
@@ -280,5 +286,5 @@
 
   const WMO = { 0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 80: 'Showers', 81: 'Showers', 82: 'Violent showers', 95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Thunderstorm w/ hail' };
 
-  root.WX = { POINTS, DEFAULT_THRESHOLDS, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, remainingPassage, abortCompare, coverageEnd, overall, nearestPoint, madridLocalIso, WMO, TZ };
+  root.WX = { POINTS, DEFAULT_THRESHOLDS, KEYNAME, UNIT, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, remainingPassage, abortCompare, coverageEnd, overall, nearestPoint, madridLocalIso, WMO, TZ };
 })(typeof self !== 'undefined' ? self : this);

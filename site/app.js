@@ -1067,7 +1067,13 @@
       const title = mode === 'now' ? `Rest of the passage: ${N.fmtNm(S.route.total - doneNm, 1)} nm from here at ${useKn} kn` : `Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn`;
       h += `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${title}</h2>${live ? `<span class="seg"><button class="btn ${mode === 'now' ? 'on' : ''}" data-wxmode="now">Now</button><button class="btn ${mode === 'plan' ? 'on' : ''}" data-wxmode="plan">Planned</button></span>` : ''}</div>
         <div class="verdict ${ov.level}"><div class="vlabel">${LEVELNAME[ov.level] || ov.level}</div><div class="vgov">${ov.governing ? ov.governing.text : (ov.level === 'incomplete' ? 'Forecast missing for part of the passage' : 'Nothing over your thresholds at any route point')}</div></div>`;
-      if (ov.groups.length) h += `<ul>${ov.groups.map(g => `<li><span class="tag ${g.level === 2 ? 'nogo' : 'caution'}">${g.level === 2 ? 'NO-GO' : 'CAUTION'}</span> ${g.text}</li>`).join('')}</ul>`;
+      // The verdict above already says CAUTION or NO-GO. Repeating it on every line is noise:
+      // a severity stripe carries it, and the measurement leads so the list can be scanned.
+      if (ov.groups.length) h += `<ul class="reasons">${ov.groups.map(g => {
+        const name = W.KEYNAME[g.key] || g.key;
+        const head = g.range ? `<b>${name} ${g.range}</b>` : `<b>${name}</b>`;
+        return `<li class="${g.level === 2 ? 'nogo' : 'caution'}">${head} <span class="where">${g.where}${g.thr}</span></li>`;
+      }).join('')}</ul>`;
       if (ov.missing.length) h += `<p class="muted">No forecast for ${ov.missing.map(m => m.point + (m.field === 'all' ? '' : ' (' + m.field + ')')).join(', ')}: refresh online or change the departure time.</p>`;
       if (mode === 'now') {
         const ab = W.abortCompare(d, S.route.waypoints, doneNm, S.route.total, new Date(), S.sog, S.settings.speed, S.settings.th);
@@ -1164,42 +1170,51 @@
   // ---------- setup / more ----------
   function renderMore() {
     const el = $('morePage'); const s = S.settings;
-    let h = `<div class="card"><h2>Passage settings</h2>
+    // Ordered by what matters at sea: the passage first, then what you hear, then what you see.
+    let h = `<div class="card"><h2>Passage</h2>
       <label class="field"><span>Planned cruise speed (kn)</span><input type="number" id="setSpeed" min="5" max="40" step="1" value="${s.speed}"></label>
-      <label class="field"><span>Planned departure (Spain time)</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
-      <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${r.id}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${r.short || r.id})</option>`).join('')}</select></label>
-      <label class="field"><span>Auto-zoom the chart to the next waypoint</span><input type="checkbox" id="setAutoZoom" ${s.autoZoom !== false ? 'checked' : ''}></label>
-      <label class="field"><span>Colours</span><select id="setTheme"><option value="auto" ${(s.theme || 'auto') === 'auto' ? 'selected' : ''}>Automatic (night after sunset)</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option><option value="day" ${s.theme === 'day' ? 'selected' : ''}>Daylight (glare)</option><option value="night" ${s.theme === 'night' ? 'selected' : ''}>Night (red)</option></select></label>
-      <label class="field"><span>Night dimmer (${Math.round((s.dim || 0) * 100)}%)</span><input type="range" id="setDim" min="0" max="85" step="5" value="${Math.round((s.dim || 0) * 100)}"></label>
-      <label class="field"><span>Big numbers (hide the chart on the Navigate tab)</span><input type="checkbox" id="setBigHud" ${s.bigHud ? 'checked' : ''}></label>
+      <label class="field"><span>Planned departure (${TZL_FROM})</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
+      <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${esc(r.id)}" ${r.id === s.routeId ? 'selected' : ''}>${r.recommended ? 'Recommended' : 'Alternative'} (${esc(r.short || r.id)})</option>`).join('')}</select></label>
+      <label class="field"><span>${esc(TZL_TO)} clock</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option><option value="60" ${s.maOffset === '60' ? 'selected' : ''}>UTC+1 (until 20 Sep 2026)</option><option value="0" ${s.maOffset === '0' ? 'selected' : ''}>UTC+0 (from 20 Sep 2026)</option></select></label>
+      <div class="row" style="margin-top:12px"><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
+    h += `<div class="card"><h2>Alerts and sound</h2>
       <label class="field"><span>Spoken alerts</span><input type="checkbox" id="setVoice" ${s.voice ? 'checked' : ''}></label>
       <label class="field"><span>Alert beeps</span><input type="checkbox" id="setSound" ${s.sound ? 'checked' : ''}></label>
-      <label class="field"><span>OpenSeaMap buoys/lights overlay</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
-      <label class="field"><span>Morocco clock (MA)</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option><option value="60" ${s.maOffset === '60' ? 'selected' : ''}>UTC+1 (until 20 Sep 2026)</option><option value="0" ${s.maOffset === '0' ? 'selected' : ''}>UTC+0 (from 20 Sep 2026)</option></select></label>
-      <div class="row" style="margin-top:8px"><button class="btn" id="btnTestAlert">Test alert</button><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
-    h += `<div class="card"><h2>Ships (AIS)</h2><p class="muted">Live ship positions need an AIS feed. No public feed covers the Strait of Gibraltar without an account: <b>aisstream.io</b> gives a free key (sign in with GitHub, no payment). Paste it below and the app streams ships in the passage area, draws them with their course, computes closest point of approach (CPA) and time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes.</p>
-      <p class="muted"><b>This needs mobile data and it is not a lookout.</b> Coverage comes from volunteer shore receivers: not every ship, up to a minute late, and nothing at all once you lose signal mid-strait. A real AIS receiver on the boat (or the plotter's own AIS) is the only version of this that works offshore. Treat what you see here as a hint about traffic, never as the traffic.</p>
-      <p class="muted">Nothing showing? The status line below says why. "connected" with no messages for a minute usually means the key was refused; "rejected" prints what the server said. The demo simulation shows three synthetic ships so you can see how it looks, and live AIS pauses while it runs.</p>
+      <div class="row" style="margin-top:12px"><button class="btn" id="btnTestAlert">Test alert</button></div>
+      <details class="help"><summary>How alerts behave</summary><p>Danger alerts never interrupt one another and repeat only when something changes. The banner has a Quiet button that silences a repeating alert without switching sound off. Sound plays through the iPhone silent switch.</p></details></div>`;
+    h += `<div class="card"><h2>Display</h2>
+      <label class="field"><span>Colours</span><select id="setTheme"><option value="auto" ${(s.theme || 'auto') === 'auto' ? 'selected' : ''}>Automatic (night after sunset)</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option><option value="day" ${s.theme === 'day' ? 'selected' : ''}>Daylight (glare)</option><option value="night" ${s.theme === 'night' ? 'selected' : ''}>Night (red)</option></select></label>
+      <label class="field"><span>Night dimmer (${Math.round((s.dim || 0) * 100)}%)</span><input type="range" id="setDim" min="0" max="85" step="5" value="${Math.round((s.dim || 0) * 100)}"></label>
+      <label class="field"><span>Big numbers (hide the chart)</span><input type="checkbox" id="setBigHud" ${s.bigHud ? 'checked' : ''}></label>
+      <label class="field"><span>Auto-zoom the chart to the next waypoint</span><input type="checkbox" id="setAutoZoom" ${s.autoZoom !== false ? 'checked' : ''}></label>
+      <details class="help"><summary>About night colours</summary><p>Night is red-amber on black so it does not spoil your night vision, and the chart is tinted to match. On Automatic it switches itself at sunset and back at sunrise, with an undo toast either way.</p></details></div>`;
+    h += `<div class="card"><h2>Ships (AIS)</h2>
       <label class="field"><span>aisstream.io API key</span><input type="text" id="setAisKey" value="${esc(s.aisKey || '')}" placeholder="paste key here" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
       <label class="field"><span>Show live ships</span><input type="checkbox" id="setAisOn" ${s.aisOn ? 'checked' : ''}></label>
       <label class="field"><span>Show demo ships in the simulation</span><input type="checkbox" id="setAisDemo" ${s.aisDemo !== false ? 'checked' : ''}></label>
-      <div class="row" style="margin-top:8px"><button class="btn" id="btnAisTest">Test the key</button></div>
-      <div class="muted" style="margin-top:8px">Status: <span id="aisStatus">${aisStatusText()}</span></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn" id="btnAisTest">Test the key</button></div>
+      <div class="muted small" style="margin-top:10px">Status: <span id="aisStatus">${aisStatusText()}</span></div>
+      <details class="help"><summary>Getting a key, and what it can and cannot do</summary>
+      <p><b>This needs mobile data and it is not a lookout.</b> Coverage comes from volunteer shore receivers: not every ship, up to a minute late, and nothing at all once you lose signal offshore. A real AIS receiver on the boat, or the plotter's own AIS, is the only version of this that works out there. Treat what you see here as a hint about traffic, never as the traffic.</p>
+      <p>aisstream.io gives a free key: sign in with GitHub, no payment. Paste it above and the app streams ships in the passage area, draws them with their course, works out the closest point of approach (CPA) and the time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes.</p>
+      <p>Nothing showing? The status line says why. "connected" with no messages for a minute usually means the key was refused; "rejected" prints what the server said. Live AIS pauses while the demo simulation runs.</p></details></div>`;
     h += `<div class="card"><h2>Chart layers</h2>
-      <label class="field"><span>Depth shading and contours (EMODnet, online only)</span><input type="checkbox" id="setDepth" ${s.depth ? 'checked' : ''}></label>
-      <p class="muted">EMODnet bathymetry is a gridded model (about 100 m cells), fine for seeing banks and the shelf, not for the last metres in a harbour. Charted rocks, wrecks and obstructions from OpenStreetMap are drawn as red asterisks with a 0.1 nm alarm circle; the app also warns when land or rocks lie on your heading within four minutes at your speed.</p></div>`;
-    h += `<div class="card"><h2>Weather thresholds</h2>
+      <label class="field"><span>OpenSeaMap buoys and lights</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
+      <label class="field"><span>Depth shading (EMODnet, online only)</span><input type="checkbox" id="setDepth" ${s.depth ? 'checked' : ''}></label>
+      <details class="help"><summary>What the depth layer is worth</summary><p>EMODnet bathymetry is a gridded model of about 100 m cells: fine for seeing banks and the shelf, useless for the last metres in a harbour. Charted rocks, wrecks and obstructions from OpenStreetMap are drawn as red asterisks with a 0.1 nm alarm circle, and the app warns when land or rocks lie on your heading within four minutes at your speed.</p></details></div>`;
+    h += `<div class="card"><h2>Weather thresholds</h2><p class="muted small">Caution and no-go limits for this boat. The passage verdict on the Weather tab uses these.</p>
       <label class="field"><span>Wind caution / no-go (kn)</span><span class="row"><input type="number" id="thWindC" value="${s.th.windCaution}" style="width:70px"><input type="number" id="thWindN" value="${s.th.windNoGo}" style="width:70px"></span></label>
       <label class="field"><span>Gust caution / no-go (kn)</span><span class="row"><input type="number" id="thGustC" value="${s.th.gustCaution}" style="width:70px"><input type="number" id="thGustN" value="${s.th.gustNoGo}" style="width:70px"></span></label>
       <label class="field"><span>Wave caution / no-go (m)</span><span class="row"><input type="number" step="0.1" id="thWaveC" value="${s.th.waveCaution}" style="width:70px"><input type="number" step="0.1" id="thWaveN" value="${s.th.waveNoGo}" style="width:70px"></span></label>
       <label class="field"><span>Current caution (kn)</span><input type="number" step="0.1" id="thCur" value="${s.th.currentCaution}" style="width:70px"></label></div>`;
-    h += `<div class="card"><h2>Preload for offline use</h2><p class="muted">Do this on wifi before leaving. Stores the app, the 3-day forecast and map tiles for the whole route (about 15 to 40 MB). The vector chart, route, TSS and hazards are built in and always work offline.</p>
+    h += `<div class="card"><h2>Offline</h2><p class="muted small">Do this on wifi before leaving. Stores the app, the forecast and the map tiles for the whole route, about 15 to 40 MB. The chart, route, traffic scheme and hazards are built in and always work offline.</p>
       <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
-      <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted">${preloadStatusText()}</div><div id="storeText" class="muted"></div></div>`;
+      <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted small">${preloadStatusText()}</div><div id="storeText" class="muted small"></div></div>`;
     h += `<div class="card"><h2>Ready for sea</h2><div id="readyCard" class="muted">checking…</div></div>`;
-    h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Install</div><div>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload THERE: the Home Screen app has its own storage, separate from Safari's.</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div></div>`;
-    h += `<div class="card"><h2>Alert log</h2><div class="log">${S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}${l.n > 1 ? ' (x' + l.n + ')' : ''}`).join('\n') || 'none yet'}</div><div class="row" style="margin-top:8px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
-    h += `<div class="card"><h2>About</h2><p class="muted">Saily is a temporary passage aid built for one crossing. Data: ${C.meta.sources.join('; ')}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, CARTO, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). Not for navigation without official charts, a proper lookout and COLREGs.</p></div>`;
+    h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div>
+      <details class="help"><summary>Installing it properly</summary><p>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload <b>there</b>: the Home Screen app has its own storage, separate from Safari's.</p></details></div>`;
+    h += `<div class="card"><h2>Alert log</h2><div class="log">${esc(S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}${l.n > 1 ? ' (x' + l.n + ')' : ''}`).join('\n') || 'none yet')}</div><div class="row" style="margin-top:12px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
+    h += `<div class="card"><h2>About</h2><p class="muted small">Saily is a passage aid, not a chart plotter. Data: ${esc(C.meta.sources.join('; '))}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, CARTO, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). <b>Not for navigation without official charts, a proper lookout and the COLREGs.</b></p></div>`;
     el.innerHTML = h;
     const num = (id, f) => $(id).addEventListener('change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
     num('setSpeed', v => { s.speed = v; });
@@ -1395,7 +1410,7 @@
   document.title = 'Saily · ' + (P.title || P.name);
   $('tzFrom').textContent = TZL_FROM; $('tzTo').textContent = TZL_TO;
   $('hudEtaLabel').textContent = 'ETA ' + (P.destinationShort || 'destination');
-  $('startTitle').innerHTML = `<b>${P.name}</b><br>${P.description || ''}`;
+  $('startTitle').innerHTML = `<b>${esc(P.name)}</b>${P.description ? `<br><span class="muted small">${esc(P.description)}</span>` : ''}`;
   setNet(); renderWxOverlay(); renderSeaLine(); aisApply(); renderWxDot();
   if (!SINGLE) tryResume();
   renderReady();
