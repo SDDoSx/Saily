@@ -11,10 +11,10 @@ else:
         dirty = subprocess.call(['git', 'diff', '--quiet'], cwd=root) != 0
         bid = sha + ('-dirty' if dirty else '')
     except Exception:
-        bid = datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')
+        bid = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H%M%S')
 p = os.path.join(root, 'site', 'sw.js')
 s = open(p).read()
 s2 = re.sub(r"const VERSION = '[^']*';", "const VERSION = 'saily-%s';" % bid, s, count=1)
 open(p, 'w').write(s2)
-json.dump({'build': bid, 'builtAt': datetime.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'}, open(os.path.join(root, 'site', 'version.json'), 'w'))
+json.dump({'build': bid, 'builtAt': datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + 'Z'}, open(os.path.join(root, 'site', 'version.json'), 'w'))
 print('stamped', bid)
