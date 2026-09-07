@@ -20,6 +20,26 @@
     A.status = status; if (detail !== undefined) A.detail = detail;
     if (A.onStatus) try { A.onStatus(A.status, A.detail); } catch (e) { }
   }
+  function decodeBytes(buf) {
+    if (typeof TextDecoder !== 'undefined') return new TextDecoder('utf-8').decode(buf);
+    let s = ''; const b = new Uint8Array(buf);
+    for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    try { return decodeURIComponent(escape(s)); } catch (e) { return s; }
+  }
+  /** One decoded frame of UTF-8 JSON: an AIS report, or the server telling us why it is about to hang up. */
+  function handleFrame(text) {
+    let msg = null;
+    try { msg = JSON.parse(text); } catch (e) {
+      // Show what actually arrived, never "[object Blob]": the text is the only clue to why it failed.
+      A.lastError = String(text).replace(/\s+/g, ' ').trim().slice(0, 160) || 'empty frame';
+      setStatus('error', 'the server sent something that is not JSON: ' + A.lastError);
+      return;
+    }
+    // aisstream reports a bad key or a malformed subscription as a plain frame, then closes.
+    const err = msg && (msg.error || msg.Error || (!msg.MetaData && typeof msg.message === 'string' && msg.message));
+    if (err) { A.lastError = String(err).slice(0, 200); setStatus('rejected', A.lastError); return; }
+    ingest(msg);
+  }
   /** aisstream closes on a late or malformed subscription and on a bad key: say which, don't fail silently. */
   function closeReason(ev) {
     const code = ev && ev.code, why = (ev && ev.reason || '').trim();
@@ -38,6 +58,10 @@
     try {
       setStatus('connecting', '');
       const ws = new WebSocket(URL_STREAM);
+      // aisstream sends binary frames whose payload is UTF-8 JSON. Left alone, the browser hands them over
+      // as a Blob and JSON.parse chokes on "[object Blob]"; asking for ArrayBuffer keeps decoding synchronous
+      // and in order.
+      ws.binaryType = 'arraybuffer';
       A.ws = ws;
       ws.onopen = () => {
         A.retry = 0; A.openedAt = Date.now();
@@ -57,12 +81,12 @@
       };
       ws.onmessage = ev => {
         A.frames++;
-        let msg = null;
-        try { msg = JSON.parse(ev.data); } catch (e) { A.lastError = String(ev.data).slice(0, 200); setStatus('error', A.lastError); return; }
-        // aisstream reports a bad key or a malformed subscription as a plain frame, then closes.
-        const err = msg && (msg.error || msg.Error || (!msg.MetaData && typeof msg.message === 'string' && msg.message));
-        if (err) { A.lastError = String(err).slice(0, 200); setStatus('rejected', A.lastError); return; }
-        ingest(msg);
+        const d = ev.data;
+        if (typeof d === 'string') return handleFrame(d);
+        if (d instanceof ArrayBuffer) return handleFrame(decodeBytes(d));
+        if (ArrayBuffer.isView && ArrayBuffer.isView(d)) return handleFrame(decodeBytes(d.buffer));
+        if (d && typeof d.text === 'function') { d.text().then(handleFrame, () => setStatus('error', 'could not read the message from the server')); return; }
+        setStatus('error', 'the server sent a frame this browser cannot read');
       };
       ws.onerror = () => { if (A.ws === ws) setStatus('error', 'the connection failed (network, or the browser blocked it)'); };
       ws.onclose = ev => {
@@ -147,5 +171,5 @@
   const TYPES = { 3: 'special', 5: 'special', 6: 'passenger', 7: 'cargo', 8: 'tanker', 9: 'other' };
   function typeName(code) { if (code == null) return ''; if (code === 30) return 'fishing'; if (code === 36 || code === 37) return 'sailing/pleasure'; if (code >= 40 && code < 50) return 'high-speed craft'; if (code >= 60 && code < 70) return 'passenger'; if (code >= 70 && code < 80) return 'cargo'; if (code >= 80 && code < 90) return 'tanker'; return TYPES[Math.floor(code / 10)] || ''; }
   root.AIS = A; A.connect = connect; A.disconnect = disconnect; A.ingest = ingest; A.cpa = cpa; A.ranked = ranked; A.typeName = typeName; A.prune = prune;
-  A.boxOf = boxOf; A.cleanName = cleanName;
+  A.boxOf = boxOf; A.cleanName = cleanName; A.handleFrame = handleFrame; A.decodeBytes = decodeBytes;
 })(typeof self !== 'undefined' ? self : this);

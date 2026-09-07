@@ -11,6 +11,7 @@
   var CATALOGUE = 'passages/index.json';
   var KEY = 'saily.passage.id';
   var CODE = ['nav.js', 'weather.js', 'ais.js', 'app.js'];
+  var FALLBACK_ID = 'strait-of-gibraltar';   // only used when the catalogue cannot be fetched at all
 
   function loadScript(src) {
     return new Promise(function (res, rej) {
@@ -36,6 +37,17 @@
       '</p><button class="bigbtn" onclick="location.reload()">Reload</button>';
   }
 
+  // A page opened straight off the disk cannot fetch its own catalogue (file:// has no origin to fetch
+  // from), but it can still load scripts. Fall back to the first passage directory so the chart opens.
+  function withoutCatalogue(why) {
+    var id = stored() || FALLBACK_ID;
+    window.SAILY_PASSAGES = [];
+    window.SAILY_PASSAGE_ID = id;
+    return loadScript('passages/' + id + '/chart-data.js')
+      .then(function () { return loadScript('passages/' + id + '/passage.js'); })
+      .catch(function () { throw new Error(why); });
+  }
+
   fetch(CATALOGUE, { cache: 'no-cache' })
     .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function (list) {
@@ -44,7 +56,7 @@
       if (!p) throw new Error('the passage catalogue is empty');
       window.SAILY_PASSAGE_ID = p.id;
       return loadScript(p.chart).then(function () { return loadScript(p.passage); });
-    })
+    }, function (e) { return withoutCatalogue(e && e.message ? e.message : String(e)); })
     .then(function () {
       return CODE.reduce(function (chain, f) { return chain.then(function () { return loadScript(f); }); }, Promise.resolve());
     })

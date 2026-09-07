@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1 (2026-09-07)
+- AIS: decode the binary frames aisstream actually sends. See **Fixed** below; this is the reason no ship
+  ever appeared, and the earlier diagnostics work is what surfaced it as "[object Blob]".
+- `boot.js` falls back to loading the default passage directly when the catalogue cannot be fetched, so the
+  app still opens from a `file://` path.
+
 ## 0.12.0 (2026-09-07)
 Interface rebuilt on a design system, and the passage became something you choose rather than something the
 app is compiled around.
@@ -28,6 +34,12 @@ app is compiled around.
   small craft appear with their names. Ship names and feed errors are escaped before they reach the page.
 
 ### Fixed
+- **AIS never showed a ship, and this was why.** aisstream sends binary WebSocket frames whose payload is
+  UTF-8 JSON. In a browser that arrives as a `Blob`, so `JSON.parse(event.data)` threw on every message and
+  an empty `catch` swallowed it: no ships, no error, nothing. The socket asks for `ArrayBuffer` and decodes
+  the bytes now, with a `Blob` path behind it; a frame that is not JSON reports what actually arrived
+  instead of "[object Blob]". e2e drives the whole path over a mocked binary frame, from pasting the key in
+  Setup to a target on the map.
 - Zone alerts were driven by a table in `app.js` keyed by the Strait's own zone ids, and any id it did not
   recognise was skipped: another passage would have got no lane or zone warnings at all. They come from the
   passage data now.

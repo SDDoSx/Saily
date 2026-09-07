@@ -160,3 +160,38 @@ test('ingest reads Class B extended positions and Class B static names', () => {
   assert.strictEqual(t.sog, 6.5);
   assert.strictEqual(AIS.typeName(t.type), 'sailing/pleasure');
 });
+
+test('a binary frame of UTF-8 JSON is decoded, not dropped', () => {
+  // aisstream sends binary frames. In a browser event.data arrives as a Blob or ArrayBuffer, and
+  // JSON.parse(event.data) throws and stringifies to "[object Blob]": every ship silently disappears.
+  resetAis();
+  const json = JSON.stringify({
+    MetaData: { MMSI: 4242, ShipName: 'BINARY BOAT@@', latitude: 36, longitude: -5.5 },
+    Message: { PositionReport: { Latitude: 36, Longitude: -5.5, Cog: 271, Sog: 12.5 } },
+  });
+  const bytes = new TextEncoder().encode(json);
+  assert.strictEqual(AIS.decodeBytes(bytes.buffer), json, 'ArrayBuffer decodes back to the same JSON');
+  AIS.handleFrame(AIS.decodeBytes(bytes.buffer));
+  const t = AIS.targets.get(4242);
+  assert.ok(t, 'the target from a binary frame reaches the map');
+  assert.strictEqual(t.name, 'BINARY BOAT');
+  assert.strictEqual(t.sog, 12.5);
+});
+
+test('a frame that is not JSON reports what arrived, never "[object Blob]"', () => {
+  resetAis();
+  AIS.handleFrame('<html>502 Bad Gateway</html>');
+  assert.strictEqual(AIS.status, 'error');
+  assert.ok(AIS.detail.includes('502 Bad Gateway'), AIS.detail);
+  assert.ok(!AIS.detail.includes('[object'), 'never shows the stringified object: ' + AIS.detail);
+  AIS.handleFrame('');
+  assert.ok(AIS.detail.includes('empty frame'), AIS.detail);
+});
+
+test('the server refusing the key is reported as rejected, with its own words', () => {
+  resetAis();
+  AIS.handleFrame(JSON.stringify({ error: 'Invalid API key' }));
+  assert.strictEqual(AIS.status, 'rejected');
+  assert.strictEqual(AIS.detail, 'Invalid API key');
+  assert.strictEqual(AIS.targets.size, 0);
+});

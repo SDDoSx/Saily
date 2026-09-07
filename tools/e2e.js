@@ -131,6 +131,51 @@ const OUT = path.join(__dirname, 'out');
     await page.click('#tabs button[data-view=plan]'); await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(OUT, 'desktop-plan.png'), fullPage: true });
   });
+  // 3. AIS over a mocked WebSocket. aisstream sends BINARY frames of UTF-8 JSON: read naively, event.data
+  //    arrives as a Blob, JSON.parse throws, and every ship silently disappears. Prove a binary frame lands.
+  await run('ais', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
+    let subscription = null;
+    await page.routeWebSocket(/stream\.aisstream\.io/, ws => {
+      ws.onMessage(m => {
+        subscription = String(m);
+        ws.send(Buffer.from(JSON.stringify({
+          MetaData: { MMSI: 987654321, ShipName: 'E2E CARGO@@@', latitude: 36.0, longitude: -5.5 },
+          Message: { PositionReport: { Latitude: 36.0, Longitude: -5.5, Cog: 268, Sog: 14.2, TrueHeading: 268 } },
+        }), 'utf8'));
+      });
+    });
+    // routeWebSocket only applies to sockets opened after it is installed, and run() has already navigated.
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => !!window.AIS && !!window.SAILY, null, { timeout: 15000 });
+    await page.waitForTimeout(1200);
+    // Drive it the way a user does: paste the key into Setup. That must switch AIS on by itself.
+    await page.click('#tabs button[data-view=more]');
+    await page.waitForTimeout(600);
+    await page.fill('#setAisKey', 'e2e-mock-key');
+    await page.$eval('#setAisKey', el => el.blur());
+    await page.waitForTimeout(2500);
+    const autoOn = await page.$eval('#setAisOn', el => el.checked);
+    if (!autoOn) errors.push('pasting an AIS key did not switch AIS on');
+    const ais = await page.evaluate(() => ({
+      binaryType: window.AIS.ws && window.AIS.ws.binaryType, status: window.AIS.status,
+      frames: window.AIS.frames, targets: window.AIS.targets.size,
+      name: (([...window.AIS.targets.values()][0] || {}).name) || null,
+      sog: (([...window.AIS.targets.values()][0] || {}).sog),
+    }));
+    console.log('AIS over a binary frame:', JSON.stringify(ais));
+    if (ais.binaryType !== 'arraybuffer') errors.push('AIS socket is not reading binary frames as ArrayBuffer');
+    if (ais.targets !== 1) errors.push(`AIS binary frame produced ${ais.targets} targets, expected 1 (frames seen: ${ais.frames})`);
+    if (ais.name !== 'E2E CARGO') errors.push('AIS ship name wrong or @-padding not stripped: ' + ais.name);
+    const sub = subscription ? JSON.parse(subscription) : null;
+    if (!sub) errors.push('AIS never sent a subscription');
+    else {
+      const box = sub.BoundingBoxes && sub.BoundingBoxes[0];
+      if (!box || box[0][0] > box[1][0] || box[0][1] > box[1][1]) errors.push('AIS bounding box is not south-west then north-east: ' + JSON.stringify(box));
+      if (!(sub.FilterMessageTypes || []).includes('StandardClassBPositionReport')) errors.push('AIS does not subscribe to Class B positions');
+    }
+    await page.evaluate(() => window.AIS.disconnect());
+  });
+
   await browser.close(); server.close();
   console.log('\nERRORS (' + errors.length + '):'); errors.forEach(e => console.log(' - ' + e));
   process.exit(errors.length ? 1 : 0);
