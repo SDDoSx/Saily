@@ -1,0 +1,67 @@
+{
+  "version": 0.6,
+  "generator": "hand-written fixture in the shape of Overpass 'out geom'",
+  "osm3s": {
+    "timestamp_osm_base": "2026-01-01T00:00:00Z",
+    "copyright": "Synthetic test data, not from OpenStreetMap."
+  },
+  "elements": [
+
+{
+  "type": "way",
+  "id": 1001,
+  "bounds": {"minlat": 36.012, "minlon": -7.05, "maxlat": 36.03, "maxlon": -6.98},
+  "nodes": [1, 2, 3, 4, 5],
+  "geometry": [
+    {"lat": 36.03, "lon": -6.98},
+    {"lat": 36.03, "lon": -7.02},
+    {"lat": 36.03, "lon": -7.03},
+    {"lat": 36.015, "lon": -7.035},
+    {"lat": 36.012, "lon": -7.05}
+  ],
+  "tags": {"natural": "coastline", "note": "mainland coast, east half: runs east to west so the land (south) is on the left; starts outside the bbox"}
+},
+{
+  "type": "way",
+  "id": 1002,
+  "bounds": {"minlat": 36.012, "minlon": -7.12, "maxlat": 36.03, "maxlon": -7.05},
+  "nodes": [5, 6, 7, 8],
+  "geometry": [
+    {"lat": 36.012, "lon": -7.05},
+    {"lat": 36.015, "lon": -7.065},
+    {"lat": 36.03, "lon": -7.07},
+    {"lat": 36.03, "lon": -7.12}
+  ],
+  "tags": {"natural": "coastline", "note": "mainland coast, west half: shares node 5 with way 1001 (linemerge); ends outside the bbox"}
+},
+{
+  "type": "way",
+  "id": 1003,
+  "bounds": {"minlat": 36.06, "minlon": -7.04, "maxlat": 36.07, "maxlon": -7.03},
+  "nodes": [11, 12, 13, 14, 11],
+  "geometry": [
+    {"lat": 36.06, "lon": -7.04},
+    {"lat": 36.06, "lon": -7.03},
+    {"lat": 36.07, "lon": -7.03},
+    {"lat": 36.07, "lon": -7.04},
+    {"lat": 36.06, "lon": -7.04}
+  ],
+  "tags": {"natural": "coastline", "note": "Square Island: closed ring, counter-clockwise so the land is on the left"}
+},
+{
+  "type": "way",
+  "id": 1004,
+  "bounds": {"minlat": 36.05, "minlon": -6.95, "maxlat": 36.06, "maxlon": -6.94},
+  "nodes": [21, 22, 23, 24, 21],
+  "geometry": [
+    {"lat": 36.05, "lon": -6.95},
+    {"lat": 36.05, "lon": -6.94},
+    {"lat": 36.06, "lon": -6.94},
+    {"lat": 36.06, "lon": -6.95},
+    {"lat": 36.05, "lon": -6.95}
+  ],
+  "tags": {"natural": "coastline", "note": "island entirely outside the bbox: must be dropped"}
+}
+
+  ]
+}

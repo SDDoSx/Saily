@@ -10,8 +10,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node tools/unit.js
-      - run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
-      - run: node tools/e2e.js
+      - name: Lint (non-blocking)
+        run: npm install --no-save eslint@9 && npx eslint .
+        continue-on-error: true
+      - name: Unit tests (nav)
+        run: node tools/unit.js
+      - name: node:test suites (nav, weather, AIS)
+        run: node --test tests/*.test.js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate passage and TSS data (schema/*.json + semantic checks, warnings fail)
+        run: pip install -r tools/requirements.txt && python3 tools/validate_passage.py --strict && python3 tests/build/test_validate_passage.py
+      - name: Chart pipeline golden test (fetch_osm polygonisation + build_chart)
+        run: python3 tests/build/test_build_chart.py
+      - name: Install Playwright
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: End-to-end smoke test
+        run: node tools/e2e.js
         env:
           SAILY_CHROMIUM: default
+      - name: Route replay (every bundled route at 3, 5 and 22 kn against passages/*.expected.json)
+        run: node tools/replay.js
+        env:
+          SAILY_CHROMIUM: default
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: replay-reports
+          path: tools/out/replay-*.json
+          if-no-files-found: ignore

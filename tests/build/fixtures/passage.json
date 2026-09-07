@@ -1,0 +1,38 @@
+{
+ "id": "fixture-bay",
+ "version": 1,
+ "name": "Fixture: Bay Harbour to the open sea",
+ "title": "Bay → Sea",
+ "bbox": [36.0, -7.1, 36.1, -7.0],
+ "tss": "tss.json",
+ "places": {
+  "bay": {"name": "Bay Harbour", "lat": 36.013, "lon": -7.05, "vhf": "9", "phone": "+00 000"}
+ },
+ "harbourWaypoints": ["BAY"],
+ "routes": [
+  {
+   "id": "out",
+   "short": "Out",
+   "name": "Bay Harbour to the north, past Square Island",
+   "recommended": true,
+   "summary": "Leave the bay, pass east of Square Island, continue north.",
+   "waypoints": [
+    {"id": "BAY", "name": "Bay Harbour entrance", "lat": 36.013, "lon": -7.05, "radius": 0.03, "note": "Inside the bay. 3 kn."},
+    {"id": "BAY-OUT", "name": "Bay offing", "lat": 36.025, "lon": -7.05, "radius": 0.1, "note": "Clear of the bay."},
+    {"id": "SEA", "name": "East of Square Island", "lat": 36.05, "lon": -7.02, "radius": 0.2, "note": "Square Island light 1 nm to the NW."},
+    {"id": "NORTH", "name": "North limit", "lat": 36.09, "lon": -7.05, "radius": 0.2}
+   ]
+  }
+ ],
+ "hazards": [
+  {"id": "wreck_w", "lat": 36.05, "lon": -7.05, "radius": 0.1, "level": "danger", "name": "Wreck", "note": "Charted wreck. Keep clear."}
+ ],
+ "labels": [
+  {"lat": 36.065, "lon": -7.035, "name": "Square Island", "kind": "island", "z": 12}
+ ],
+ "weatherPoints": [],
+ "thresholds": {"windCaution": 14, "windNoGo": 20},
+ "checklist": [],
+ "cards": [],
+ "weatherNotes": ""
+}

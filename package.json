@@ -7,12 +7,19 @@
   "repository": { "type": "git", "url": "https://github.com/SDDoSx/Saily" },
   "scripts": {
     "start": "node tools/serve.js",
-    "test": "node tools/unit.js && NODE_PATH=${NODE_PATH:-/opt/node22/lib/node_modules} node tools/e2e.js",
+    "lint": "eslint .",
+    "test": "node tools/unit.js && node --test tests/*.test.js && NODE_PATH=${NODE_PATH:-/opt/node22/lib/node_modules} node tools/e2e.js",
     "test:unit": "node tools/unit.js",
-    "test:e2e": "node tools/e2e.js",
+    "test:node": "node --test tests/*.test.js",
+    "test:e2e": "NODE_PATH=${NODE_PATH:-/opt/node22/lib/node_modules} node tools/e2e.js",
+    "test:replay": "NODE_PATH=${NODE_PATH:-/opt/node22/lib/node_modules} node tools/replay.js",
+    "test:replay:write": "NODE_PATH=${NODE_PATH:-/opt/node22/lib/node_modules} node tools/replay.js --write",
+    "test:build": "python3 tests/build/test_build_chart.py",
+    "validate": "python3 tools/validate_passage.py --strict && python3 tests/build/test_validate_passage.py",
+    "fetch:osm": "python3 tools/fetch_osm.py passages/strait-of-gibraltar.json ${SAILY_SCRATCH:-/tmp/saily-data}",
     "build:chart": "python3 tools/build_chart.py ${SAILY_SCRATCH:-/tmp/saily-data} site/chart-data.js",
     "build:single": "python3 tools/build_single.py dist/saily.html tools/out/wx_snapshot.json"
   },
-  "devDependencies": { "playwright": "^1.56.1" },
+  "devDependencies": { "eslint": "^9.0.0", "playwright": "^1.56.1" },
   "engines": { "node": ">=18" }
 }

@@ -5,9 +5,10 @@ Everything a helmsman needs offline is shipped inside the page.
 
 ```
 passages/<id>.json  ──► tools/build_chart.py ──► site/passage.js   (routes with legs, hazards, places, labels,
-OSM extracts (scratch)        │                                     weather points, thresholds, briefing cards)
-IMO TSS coordinates ──────────┴────────────────► site/chart-data.js (land polygons, harbour detail, breakwaters,
-                                                                    TSS lanes/zones/ITZ, anchorages, lights/buoys)
+OSM extracts (scratch)        │  (validates with                    weather points, thresholds, briefing cards)
+passages/<id>.tss.json ───────┴── validate_passage.py) ► site/chart-data.js (land polygons, harbour detail, breakwaters,
+  (IMO TSS positions, alert texts;                                  TSS lanes/zones/ITZ with alert texts and flowDeg,
+   schema/*.schema.json)                                            anchorages, lights/buoys)
 site/index.html   markup + CSS (instrument-panel layout, phone portrait/landscape, desktop two-column)
 site/nav.js       pure geodesy: distance, bearing, cross-track, along-track, solve(), smoothing, sun, GPX
 site/weather.js   Open-Meteo forecast + marine client, hourly merge, thresholds, passage check, tide extremes

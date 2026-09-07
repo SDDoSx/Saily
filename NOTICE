@@ -1,0 +1,82 @@
+Saily: NOTICE
+
+Third-party material bundled in, or used at run time by, Saily. Keep this file
+with every copy. The software itself is MIT (see LICENSE); the items below keep
+their own terms. Background and obligations for forks: docs/LICENSING.md.
+
+1. OpenStreetMap: Open Database License (ODbL) 1.0
+   Files: site/chart-data.js (land polygons, harbour detail, breakwaters and
+   piers, anchorages, lights, buoys, beacons, wrecks, rocks, obstructions);
+   dist/saily.html and tools/out/saily-standalone.html, which embed it; the
+   Overpass extracts coast.json and harbours.json and the land_*.json files in
+   the scratch directory used by tools/build_chart.py.
+   (c) OpenStreetMap contributors. Data available under the Open Database
+   License: https://www.openstreetmap.org/copyright
+   https://opendatacommons.org/licenses/odbl/1-0/
+   site/chart-data.js is a Derivative Database (ODbL section 1.0): it may be
+   used and redistributed only under ODbL 1.0, with this attribution
+   (section 4.3) and share-alike (section 4.4). It is not MIT. The data date is
+   the osm3s.timestamp_osm_base field of coast.json / harbours.json (the
+   shipped chart: 2026-07-27 coastline, 2026-06-01 seamarks). Reproduce with
+   tools/fetch_osm.py and tools/build_chart.py.
+
+2. IMO COLREG.2/Circ.66, Annex 1, "In the Strait of Gibraltar" (traffic
+   separation scheme adopted 21 November 2014, in force 1 June 2015).
+   Files: passages/strait-of-gibraltar.tss.json (positions, in the app's own
+   words for the notes), site/chart-data.js (tss block),
+   passages/strait-of-gibraltar.json and site/passage.js (briefing text).
+   The geographical positions that define the scheme are reproduced as facts;
+   positions are not copyrightable. The text of the circular is (c)
+   International Maritime Organization and is not reproduced. The scheme in
+   force is the one on the official charts; check before use.
+
+3. NGA Pub 131, Sailing Directions (Enroute) Western Mediterranean, National
+   Geospatial-Intelligence Agency, United States of America.
+   Files: passages/strait-of-gibraltar.json and site/passage.js (hazard notes
+   and pilotage remarks marked "Pub 131").
+   A work of the United States Government: public domain (17 U.S.C. 105).
+
+4. Open-Meteo: Creative Commons Attribution 4.0 International (CC BY 4.0)
+   Files: tools/fixtures/fc.json and tools/fixtures/marine.json (recorded API
+   responses used by the tests); tools/out/wx_snapshot.json and the forecast
+   embedded in dist/saily.html and tools/out/saily-standalone.html; forecasts
+   the app caches on the device at run time.
+   Weather data by Open-Meteo.com, https://open-meteo.com
+   https://creativecommons.org/licenses/by/4.0/
+
+5. Leaflet 1.9.4: BSD-2-Clause
+   Files: site/vendor/leaflet/leaflet.min.js, leaflet.css, images/ (also
+   inlined into dist/saily.html and tools/out/saily-standalone.html).
+   Copyright (c) 2010-2023, Volodymyr Agafonkin. Copyright (c) 2010-2011,
+   CloudMade. All rights reserved. Full text: site/vendor/leaflet/LICENSE.
+   Version: site/vendor/leaflet/VERSION.
+
+6. Map tile and data services used at run time (not bundled; the app caches
+   tiles on the user's device for offline use). Each has its own terms:
+   - CARTO basemaps, Voyager raster tiles (a.basemaps.cartocdn.com):
+     attribution "(c) OpenStreetMap contributors (c) CARTO". CARTO basemap
+     terms: https://carto.com/legal/ and https://carto.com/basemaps/ (free
+     with attribution for non-commercial use; commercial use needs a plan).
+   - OpenStreetMap standard tiles (tile.openstreetmap.org): (c) OpenStreetMap
+     contributors. OSMF tile usage policy:
+     https://operations.osmfoundation.org/policies/tiles/ (attribution
+     required, bulk downloading restricted; Saily preloads only the two
+     harbour boxes at zoom 14-16 from this server).
+   - OpenSeaMap seamark tiles (tiles.openseamap.org): (c) OpenSeaMap
+     contributors, https://www.openseamap.org (tiles CC BY-SA 2.0 as stated by
+     OpenSeaMap; underlying data ODbL).
+   - Esri World Imagery (server.arcgisonline.com): attribution "Esri, Maxar,
+     Earthstar Geographics, and the GIS User Community". Esri terms of use:
+     https://www.esri.com/en-us/legal/terms/full-master-agreement (attribution
+     required; offline caching of basemap tiles is restricted).
+   - EMODnet Bathymetry WMS (ows.emodnet-bathymetry.eu, layers
+     emodnet:mean_atlas_land and emodnet:contours): attribution "EMODnet
+     Bathymetry Consortium", https://emodnet.ec.europa.eu/en/bathymetry
+     (free of charge with attribution; the DTM products are CC BY 4.0).
+   - aisstream.io (optional AIS feed with a user-supplied key):
+     https://aisstream.io terms; nothing from it is stored or redistributed.
+
+7. Port information: the Puerto Sotogrande safety notice of 20 February 2026
+   and the Tanja Marina Bay (TMBI) guide 2026 are quoted as facts in
+   passages/strait-of-gibraltar.json; the documents remain the property of the
+   ports.

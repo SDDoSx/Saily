@@ -1,0 +1,117 @@
+{
+ "id": "fixture-bay",
+ "version": 1,
+ "name": "Fixture: Bay Harbour to the open sea",
+ "title": "Bay → Sea",
+ "bbox": [
+  36.0,
+  -7.1,
+  36.1,
+  -7.0
+ ],
+ "tss": "tss.json",
+ "places": {
+  "bay": {
+   "name": "Bay Harbour",
+   "lat": 36.013,
+   "lon": -7.05,
+   "vhf": "9",
+   "phone": "+00 000"
+  }
+ },
+ "harbourWaypoints": [
+  "BAY"
+ ],
+ "routes": [
+  {
+   "id": "out",
+   "short": "Out",
+   "name": "Bay Harbour to the north, past Square Island",
+   "recommended": true,
+   "summary": "Leave the bay, pass east of Square Island, continue north.",
+   "waypoints": [
+    {
+     "lat": 36.013,
+     "lon": -7.05,
+     "id": "BAY",
+     "name": "Bay Harbour entrance",
+     "note": "Inside the bay. 3 kn.",
+     "radius": 0.03
+    },
+    {
+     "lat": 36.025,
+     "lon": -7.05,
+     "id": "BAY-OUT",
+     "name": "Bay offing",
+     "note": "Clear of the bay.",
+     "radius": 0.1
+    },
+    {
+     "lat": 36.05,
+     "lon": -7.02,
+     "id": "SEA",
+     "name": "East of Square Island",
+     "note": "Square Island light 1 nm to the NW.",
+     "radius": 0.2
+    },
+    {
+     "lat": 36.09,
+     "lon": -7.05,
+     "id": "NORTH",
+     "name": "North limit",
+     "note": "",
+     "radius": 0.2
+    }
+   ],
+   "legs": [
+    {
+     "from": "BAY",
+     "to": "BAY-OUT",
+     "dist": 0.72,
+     "brg": 0
+    },
+    {
+     "from": "BAY-OUT",
+     "to": "SEA",
+     "dist": 2.09,
+     "brg": 44
+    },
+    {
+     "from": "SEA",
+     "to": "NORTH",
+     "dist": 2.81,
+     "brg": 329
+    }
+   ],
+   "total": 5.6
+  }
+ ],
+ "hazards": [
+  {
+   "id": "wreck_w",
+   "lat": 36.05,
+   "lon": -7.05,
+   "radius": 0.1,
+   "level": "danger",
+   "name": "Wreck",
+   "note": "Charted wreck. Keep clear."
+  }
+ ],
+ "labels": [
+  {
+   "lat": 36.065,
+   "lon": -7.035,
+   "name": "Square Island",
+   "kind": "island",
+   "z": 12
+  }
+ ],
+ "weatherPoints": [],
+ "thresholds": {
+  "windCaution": 14,
+  "windNoGo": 20
+ },
+ "checklist": [],
+ "cards": [],
+ "weatherNotes": ""
+}

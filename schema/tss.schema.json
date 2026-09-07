@@ -1,0 +1,171 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/SDDoSx/Saily/schema/tss.schema.json",
+ "title": "Saily traffic separation scheme",
+ "description": "Declarative description of an IMO traffic separation scheme (positions, separation zones, lanes, precautionary areas, inshore traffic zones, free navigation areas, anchorages) plus the alert text the app speaks for each element. Read by tools/build_chart.py, which turns it into the tss block of site/chart-data.js. Format: docs/TSS-DATA.md.",
+ "type": "object",
+ "required": ["id", "name", "source", "sourceDate", "checkedBy", "points"],
+ "additionalProperties": false,
+ "properties": {
+  "$schema": {"type": "string"},
+  "id": {"$ref": "#/$defs/slug", "description": "Scheme identifier, normally the passage id."},
+  "name": {"type": "string", "minLength": 1, "description": "Name of the scheme as in the IMO circular, e.g. \"In the Strait of Gibraltar\"."},
+  "source": {"type": "string", "minLength": 1, "description": "The IMO circular or resolution the positions were transcribed from, with the reference chart and datum."},
+  "sourceDate": {"$ref": "#/$defs/date", "description": "Date of the circular (adoption date)."},
+  "inForce": {"$ref": "#/$defs/date", "description": "Date the scheme came into force."},
+  "datum": {"type": "string", "description": "Horizontal datum of the positions; the app assumes WGS84."},
+  "referenceChart": {"type": "string"},
+  "checkedBy": {"type": "string", "minLength": 1, "description": "Who checked the transcription against the circular and the chart, or an honest statement that nobody has yet."},
+  "checkedOn": {"$ref": "#/$defs/date"},
+  "notes": {"type": "array", "items": {"type": "string"}},
+  "rules": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "crossing": {
+     "type": "object",
+     "required": ["rule"],
+     "additionalProperties": false,
+     "properties": {
+      "rule": {"$ref": "#/$defs/crossingRule"},
+      "colreg": {"type": "string"},
+      "text": {"type": "string"}
+     }
+    }
+   }
+  },
+  "points": {
+   "type": "array",
+   "minItems": 1,
+   "description": "Named positions. IMO points (role imo, the default) use the position numbers of the circular as ids and are written to chart-data.js; construction points (role construction) only serve to close polygons.",
+   "items": {"$ref": "#/$defs/point"}
+  },
+  "separationZones": {"type": "array", "items": {"$ref": "#/$defs/separationZone"}},
+  "lanes": {"type": "array", "items": {"$ref": "#/$defs/lane"}},
+  "precautionary": {"type": "array", "items": {"$ref": "#/$defs/area"}},
+  "inshoreZones": {"type": "array", "items": {"$ref": "#/$defs/clippedArea"}},
+  "freeAreas": {"type": "array", "items": {"$ref": "#/$defs/clippedArea"}},
+  "anchorages": {"type": "array", "items": {"$ref": "#/$defs/anchorage"}}
+ },
+ "$defs": {
+  "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+  "pointId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"},
+  "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+  "level": {"type": "string", "enum": ["danger", "warn", "info"], "description": "Alert level the app uses when the boat enters the element: danger beeps and interrupts speech, warn beeps, info is spoken only."},
+  "crossingRule": {"type": "string", "enum": ["rightAngles"], "description": "rightAngles: cross on flowDeg +/- 90, whichever is closer to the leg course (COLREG rule 10(c))."},
+  "latitude": {
+   "description": "Decimal degrees (north positive) or degrees and decimal minutes with hemisphere as printed in IMO circulars, e.g. \"35 59.01 N\".",
+   "oneOf": [
+    {"type": "number", "minimum": -90, "maximum": 90},
+    {"type": "string", "pattern": "^[0-9]{1,2} [0-9]{1,2}(\\.[0-9]+)? [NS]$"}
+   ]
+  },
+  "longitude": {
+   "description": "Decimal degrees (east positive) or degrees and decimal minutes with hemisphere, e.g. \"5 25.68 W\".",
+   "oneOf": [
+    {"type": "number", "minimum": -180, "maximum": 180},
+    {"type": "string", "pattern": "^[0-9]{1,3} [0-9]{1,2}(\\.[0-9]+)? [EW]$"}
+   ]
+  },
+  "point": {
+   "type": "object",
+   "required": ["id"],
+   "additionalProperties": false,
+   "properties": {
+    "id": {"$ref": "#/$defs/pointId"},
+    "role": {"type": "string", "enum": ["imo", "construction"], "default": "imo"},
+    "lat": {"$ref": "#/$defs/latitude"},
+    "lon": {"$ref": "#/$defs/longitude"},
+    "latOf": {"$ref": "#/$defs/pointId", "description": "Take the latitude of this point (a parallel through it)."},
+    "lonOf": {"$ref": "#/$defs/pointId", "description": "Take the longitude of this point (its meridian)."},
+    "note": {"type": "string"}
+   },
+   "allOf": [
+    {"oneOf": [{"required": ["lat"]}, {"required": ["latOf"]}]},
+    {"oneOf": [{"required": ["lon"]}, {"required": ["lonOf"]}]}
+   ]
+  },
+  "alerted": {
+   "type": "object",
+   "required": ["id", "name", "level", "enter"],
+   "properties": {
+    "id": {"$ref": "#/$defs/slug", "description": "Unique across every list of the file; the app keys its zone state by it."},
+    "name": {"type": "string", "minLength": 1},
+    "paragraph": {"type": "string", "pattern": "^[a-z]$", "description": "Paragraph letter of the circular describing this element; also labels it in the builder's LEG report (zone_a, lane_d, prec_g)."},
+    "level": {"$ref": "#/$defs/level"},
+    "enter": {"type": "string", "minLength": 1, "description": "Spoken when the boat enters the element. Write it as an instruction a helmsman can act on."},
+    "leave": {"type": ["string", "null"], "description": "Spoken when the boat leaves; null for no spoken exit (the transition is still logged)."}
+   }
+  },
+  "region": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/pointId"}, "description": "Polygon vertices as point ids in ring order; do not repeat the first point."},
+  "separationZone": {
+   "allOf": [{"$ref": "#/$defs/alerted"}],
+   "required": ["centreline", "halfWidthNm", "region"],
+   "unevaluatedProperties": false,
+   "properties": {
+    "id": true, "name": true, "paragraph": true, "level": true, "enter": true, "leave": true,
+    "centreline": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/pointId"}, "description": "The zone is centred on the line through these points (circular: \"a separation zone ... is centred upon the following positions\")."},
+    "halfWidthNm": {"type": "number", "exclusiveMinimum": 0, "description": "Half the zone width in nautical miles (0.25 for \"half a mile wide\")."},
+    "region": {"$ref": "#/$defs/region", "description": "Outer limit of the whole scheme part the zone sits in (both lane outer lines joined); the zone strip is clipped to it."}
+   }
+  },
+  "lane": {
+   "allOf": [{"$ref": "#/$defs/alerted"}],
+   "required": ["flowDeg", "region"],
+   "unevaluatedProperties": false,
+   "dependentRequired": {"separationZone": ["side"], "side": ["separationZone"]},
+   "properties": {
+    "id": true, "name": true, "paragraph": true, "level": true, "enter": true, "leave": true,
+    "flowDeg": {"type": "number", "minimum": 0, "maximum": 360, "description": "General direction of traffic flow, degrees true. The app derives the side ships come from and the crossing heading from it."},
+    "trueAxisDeg": {"type": "number", "minimum": 0, "maximum": 360, "description": "Informational: the bearing of the lane axis when flowDeg is a rounded cardinal value."},
+    "region": {"$ref": "#/$defs/region", "description": "Polygon the lane is cut from: with separationZone and side, the region minus the zone strip on that side; without them, the lane polygon itself."},
+    "separationZone": {"$ref": "#/$defs/slug", "description": "Id of the separation zone the lane lies against."},
+    "side": {"type": "string", "enum": ["north", "south", "east", "west"], "description": "Which part of region minus the separation-zone strip is this lane."},
+    "crossing": {"$ref": "#/$defs/crossingRule"},
+    "arrows": {
+     "type": "object",
+     "required": ["along"],
+     "additionalProperties": false,
+     "description": "Flow arrows drawn on the chart: along the line through these points, in the order of the flow, offset north by offsetNorthNm, perSegment arrows per segment, clipped to the lane polygon.",
+     "properties": {
+      "along": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/pointId"}},
+      "offsetNorthNm": {"type": "number", "default": 0},
+      "perSegment": {"type": "integer", "minimum": 1, "default": 3}
+     }
+    }
+   }
+  },
+  "area": {
+   "allOf": [{"$ref": "#/$defs/alerted"}],
+   "required": ["region"],
+   "unevaluatedProperties": false,
+   "properties": {
+    "id": true, "name": true, "paragraph": true, "level": true, "enter": true, "leave": true,
+    "region": {"$ref": "#/$defs/region"}
+   }
+  },
+  "clippedArea": {
+   "allOf": [{"$ref": "#/$defs/alerted"}],
+   "required": ["region"],
+   "unevaluatedProperties": false,
+   "properties": {
+    "id": true, "name": true, "paragraph": true, "level": true, "enter": true, "leave": true,
+    "region": {"$ref": "#/$defs/region", "description": "May run over the land via construction points; set clipToLand to cut it at the coastline."},
+    "clipToLand": {"type": "boolean", "default": false, "description": "Subtract the OpenStreetMap land polygons from the region (inshore zones bounded by the coast)."}
+   }
+  },
+  "anchorage": {
+   "type": "object",
+   "required": ["id", "name", "lat", "lon", "radiusNm"],
+   "additionalProperties": false,
+   "properties": {
+    "id": {"$ref": "#/$defs/slug"},
+    "name": {"type": "string", "minLength": 1},
+    "lat": {"$ref": "#/$defs/latitude"},
+    "lon": {"$ref": "#/$defs/longitude"},
+    "radiusNm": {"type": "number", "exclusiveMinimum": 0},
+    "note": {"type": "string"}
+   }
+  }
+ }
+}

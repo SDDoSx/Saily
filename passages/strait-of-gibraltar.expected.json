@@ -1,0 +1,1019 @@
+{
+ "passage": "strait-of-gibraltar",
+ "generatedBy": "tools/replay.js --write",
+ "routes": {
+  "tarifa": {
+   "3": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO>SOTO-HEAD"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "SOTO-HEAD>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "SOTO-OUT>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "GIB-E>EUROPA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_n",
+      "leg": "EUROPA>CARNERO"
+     },
+     {
+      "ev": "wp",
+      "id": "CARNERO",
+      "leg": "EUROPA>CARNERO"
+     },
+     {
+      "ev": "wp",
+      "id": "TARIFA",
+      "leg": "CARNERO>TARIFA"
+     },
+     {
+      "ev": "wp",
+      "id": "X-NORTH",
+      "leg": "TARIFA>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_n",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_wb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "zone_b",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_wb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_eb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_eb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-SOUTH",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "X-SOUTH>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "X-SOUTH>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "MALABATA>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-N>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "TANG-E>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANG-F>MAR-APP"
+     }
+    ]
+   },
+   "5": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO>SOTO-HEAD"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "SOTO-HEAD>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "SOTO-OUT>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "GIB-E>EUROPA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_n",
+      "leg": "EUROPA>CARNERO"
+     },
+     {
+      "ev": "wp",
+      "id": "CARNERO",
+      "leg": "EUROPA>CARNERO"
+     },
+     {
+      "ev": "wp",
+      "id": "TARIFA",
+      "leg": "CARNERO>TARIFA"
+     },
+     {
+      "ev": "wp",
+      "id": "X-NORTH",
+      "leg": "TARIFA>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_n",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_wb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "zone_b",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_wb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_eb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_eb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-SOUTH",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "X-SOUTH>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "X-SOUTH>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "MALABATA>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-N>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "TANG-E>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANG-F>MAR-APP"
+     }
+    ]
+   },
+   "22": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO>SOTO-HEAD"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "SOTO-HEAD>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "SOTO-OUT>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "GIB-E>EUROPA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_n",
+      "leg": "EUROPA>CARNERO"
+     },
+     {
+      "ev": "wp",
+      "id": "CARNERO",
+      "leg": "EUROPA>CARNERO"
+     },
+     {
+      "ev": "wp",
+      "id": "TARIFA",
+      "leg": "CARNERO>TARIFA"
+     },
+     {
+      "ev": "wp",
+      "id": "X-NORTH",
+      "leg": "TARIFA>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_n",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_wb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "zone_b",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_wb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_eb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_eb",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-SOUTH",
+      "leg": "X-NORTH>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "X-SOUTH>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "X-SOUTH>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "MALABATA>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-N>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "TANG-E>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANG-F>MAR-APP"
+     }
+    ]
+   }
+  },
+  "east": {
+   "3": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO>SOTO-HEAD"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "SOTO-HEAD>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "SOTO-OUT>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "GIB-E>EUROPA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "prec_east",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "prec_east",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "G-SOUTH",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_se",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "wp",
+      "id": "CIRES",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "zone-in",
+      "id": "free_tm",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "wp",
+      "id": "TMED-OFF",
+      "leg": "CIRES>TMED-OFF"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "zone-out",
+      "id": "free_tm",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "wp",
+      "id": "KSAR",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "KSAR>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "KSAR>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "MALABATA>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-N>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "TANG-E>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANG-F>MAR-APP"
+     }
+    ]
+   },
+   "5": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO>SOTO-HEAD"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "SOTO-HEAD>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "SOTO-OUT>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "GIB-E>EUROPA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "prec_east",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "prec_east",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "G-SOUTH",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_se",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "wp",
+      "id": "CIRES",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "zone-in",
+      "id": "free_tm",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "wp",
+      "id": "TMED-OFF",
+      "leg": "CIRES>TMED-OFF"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "zone-out",
+      "id": "free_tm",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "wp",
+      "id": "KSAR",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "KSAR>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "KSAR>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "MALABATA>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-N>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "TANG-E>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANG-F>MAR-APP"
+     }
+    ]
+   },
+   "22": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO>SOTO-HEAD"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "SOTO-HEAD>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "SOTO-OUT>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "GIB-E>EUROPA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "prec_east",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "prec_east",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "G-SOUTH",
+      "leg": "EUROPA>G-SOUTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_se",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "wp",
+      "id": "CIRES",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "zone-in",
+      "id": "free_tm",
+      "leg": "G-SOUTH>CIRES"
+     },
+     {
+      "ev": "wp",
+      "id": "TMED-OFF",
+      "leg": "CIRES>TMED-OFF"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "zone-out",
+      "id": "free_tm",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "wp",
+      "id": "KSAR",
+      "leg": "TMED-OFF>KSAR"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "KSAR>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "KSAR>MALABATA"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "MALABATA>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-N>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "TANG-E>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANG-F>MAR-APP"
+     }
+    ]
+   }
+  },
+  "return": {
+   "3": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANJA>MAR-APP"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "MAR-APP>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-F>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "TANG-E>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "TANG-N>MALABATA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "MALABATA>X-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-SOUTH",
+      "leg": "MALABATA>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_eb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "zone_b",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_eb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_wb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_n",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_wb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-NORTH",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "wp",
+      "id": "TARIFA",
+      "leg": "X-NORTH>TARIFA"
+     },
+     {
+      "ev": "wp",
+      "id": "CARNERO",
+      "leg": "TARIFA>CARNERO"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_n",
+      "leg": "CARNERO>EUROPA"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "CARNERO>EUROPA"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "EUROPA>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "GIB-E>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO-OUT>SOTO-HEAD"
+     }
+    ]
+   },
+   "5": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANJA>MAR-APP"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "MAR-APP>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-F>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "TANG-E>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "TANG-N>MALABATA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "MALABATA>X-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-SOUTH",
+      "leg": "MALABATA>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_eb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "zone_b",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_eb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_wb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_n",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_wb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-NORTH",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "wp",
+      "id": "TARIFA",
+      "leg": "X-NORTH>TARIFA"
+     },
+     {
+      "ev": "wp",
+      "id": "CARNERO",
+      "leg": "TARIFA>CARNERO"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_n",
+      "leg": "CARNERO>EUROPA"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "CARNERO>EUROPA"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "EUROPA>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "GIB-E>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO-OUT>SOTO-HEAD"
+     }
+    ]
+   },
+   "22": {
+    "hazards": [],
+    "sequence": [
+     {
+      "ev": "wp",
+      "id": "MAR-APP",
+      "leg": "TANJA>MAR-APP"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-F",
+      "leg": "MAR-APP>TANG-F"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-E",
+      "leg": "TANG-F>TANG-E"
+     },
+     {
+      "ev": "wp",
+      "id": "TANG-N",
+      "leg": "TANG-E>TANG-N"
+     },
+     {
+      "ev": "wp",
+      "id": "MALABATA",
+      "leg": "TANG-N>MALABATA"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_sw",
+      "leg": "MALABATA>X-SOUTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-SOUTH",
+      "leg": "MALABATA>X-SOUTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_sw",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_eb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "zone_b",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_eb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "west_wb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-in",
+      "id": "itz_n",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "zone-out",
+      "id": "west_wb",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "wp",
+      "id": "X-NORTH",
+      "leg": "X-SOUTH>X-NORTH"
+     },
+     {
+      "ev": "wp",
+      "id": "TARIFA",
+      "leg": "X-NORTH>TARIFA"
+     },
+     {
+      "ev": "wp",
+      "id": "CARNERO",
+      "leg": "TARIFA>CARNERO"
+     },
+     {
+      "ev": "zone-out",
+      "id": "itz_n",
+      "leg": "CARNERO>EUROPA"
+     },
+     {
+      "ev": "wp",
+      "id": "EUROPA",
+      "leg": "CARNERO>EUROPA"
+     },
+     {
+      "ev": "wp",
+      "id": "GIB-E",
+      "leg": "EUROPA>GIB-E"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-OUT",
+      "leg": "GIB-E>SOTO-OUT"
+     },
+     {
+      "ev": "wp",
+      "id": "SOTO-HEAD",
+      "leg": "SOTO-OUT>SOTO-HEAD"
+     }
+    ]
+   }
+  }
+ },
+ "updatedAt": "2026-09-06T20:38:59.103Z",
+ "stepSeconds": 3
+}

@@ -19,7 +19,13 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
 - **Weather that decides**: Open-Meteo wind, gusts, waves, swell, surface current and tide at five route points, sampled
   at the time you reach each point; go / caution / no-go with reasons; wind-against-current flag; live wind and current
   arrows on the chart; tide state and daylight left on the panel.
+- **Alerts you can trust**: every guard is bounded by the verified route, poor GPS fixes never trigger anything, zone
+  transitions are debounced, repeats are change-based with a Quiet button, and danger speech never cuts danger speech.
+  A route replay harness walks every bundled route through the real guards in CI.
+- **Ready for sea**: a self-test on the start screen and in Setup (offline cache, tiles, forecast age, location
+  permission, wake lock, sound) with one-tap fixes; resume after the phone kills the tab; printable pilotage card.
 - **Works offline**: app shell, forecast and tiles are cached; the chart, route, TSS and hazards never need a network.
+  New builds wait until you choose to apply them, never mid-passage.
 - **Phone first**: portrait and landscape layouts, day (glare) and night themes, auto-zoom with look-ahead, wake lock,
   sound through the silent switch, one-hand map controls.
 - **Passage as data**: `passages/*.json` holds the route, hazards, places, weather points, thresholds and briefing; the
@@ -50,7 +56,11 @@ Any static host works too: `site/` is plain files, and `tools/out/saily-standalo
 ## Development
 - `python3 tools/build_chart.py <scratch-dir> site/chart-data.js` regenerates the chart (needs the OSM extracts in the scratch dir).
 - `NODE_PATH=/opt/node22/lib/node_modules node tools/e2e.js` runs the Playwright smoke test (mobile + desktop, offline reload).
+- `node --test tests/*.test.js` runs the node:test suites (geodesy, weather thresholds and time handling, AIS CPA/TCPA).
+- `NODE_PATH=/opt/node22/lib/node_modules node tools/replay.js` replays every bundled route through the app at 3, 5 and 22 kn
+  and checks the alert sequence against `passages/*.expected.json`. See `docs/TESTING.md`.
 - `node -e "require('./site/nav.js')"` for the pure geodesy functions.
 
 Data: OpenStreetMap contributors (ODbL), IMO COLREG.2/Circ.66, NGA Pub 131, Puerto Sotogrande notices, Tanja Marina Bay guide 2026,
 Open-Meteo (CC BY 4.0), CARTO / Esri / OpenSeaMap tiles.
+Licences: code MIT, chart data ODbL (share-alike), forecasts CC BY 4.0, tiles under provider terms: see [docs/LICENSING.md](docs/LICENSING.md).

@@ -1,55 +1,31 @@
 #!/usr/bin/env python3
-"""Build site/chart-data.js: offline vector chart for the Sotogrande -> Tangier crossing.
+"""Build site/chart-data.js and site/passage.js: offline vector chart and passage definition for one passage.
+
+Usage: build_chart.py [<scratch_dir>] [<out.js>] [<passage.json>]
+       (defaults: . site/chart-data.js passages/strait-of-gibraltar.json; passage.js is written next to <out.js>)
+
+The scratch directory holds the OpenStreetMap inputs written by tools/fetch_osm.py:
+coast.json, harbours.json, land_osm.json and land_<place>.json.
+The passage JSON (schema/passage.schema.json, docs/PASSAGE-FORMAT.md) may name a traffic separation scheme file
+with "tss": "<file>.tss.json" (schema/tss.schema.json, docs/TSS-DATA.md); both are validated with
+tools/validate_passage.py before anything is built.
 
 Sources
 - Land: OpenStreetMap coastline (ODbL), fetched via Overpass, polygonised with the OSM left-hand rule.
-- TSS: IMO COLREG.2/Circ.66 (adopted 21 Nov 2014, in force 1 June 2015), Annex 1,
-  "In the Strait of Gibraltar", reference chart IHM 445, WGS84. Coordinates copied verbatim.
+- TSS: the IMO circular named in the tss.json "source" field. For the bundled passage: COLREG.2/Circ.66
+  (adopted 21 Nov 2014, in force 1 June 2015), Annex 1, "In the Strait of Gibraltar", reference chart IHM 445,
+  WGS84, positions copied verbatim into passages/strait-of-gibraltar.tss.json.
 - Aids to navigation: OpenStreetMap seamark tags (ODbL).
 - Sotogrande shoal: Puerto Sotogrande safety notice, 20 Feb 2026.
 """
 import json, math, sys, os
 from shapely.geometry import shape, Polygon, MultiPolygon, LineString, Point, mapping, box
-from shapely.ops import unary_union
+from shapely.ops import unary_union, nearest_points
 
-SCRATCH = sys.argv[1] if len(sys.argv) > 1 else '.'
-OUT = sys.argv[2] if len(sys.argv) > 2 else 'site/chart-data.js'
-PASSAGE_FILE = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(__file__), '..', 'passages', 'strait-of-gibraltar.json')
-PASSAGE_OUT = os.path.join(os.path.dirname(OUT), 'passage.js')
-PZ = json.load(open(PASSAGE_FILE, encoding='utf-8'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import validate_passage  # noqa: E402  (tools/validate_passage.py)
 
-def dm(d, m):
-    return d + m / 60.0
-
-# --- IMO COLREG.2/Circ.66 Annex 1 points (lat, lon), west longitude negative
-P = {
-    1: (dm(35, 59.01), -dm(5, 25.68)),
-    2: (dm(35, 58.36), -dm(5, 28.19)),
-    3: (dm(35, 56.70), -dm(5, 34.71)),
-    4: (dm(35, 56.21), -dm(5, 36.48)),
-    5: (dm(35, 56.21), -dm(5, 44.98)),
-    6: (dm(36, 2.80), -dm(5, 19.68)),
-    7: (dm(36, 1.21), -dm(5, 25.68)),
-    8: (dm(36, 0.35), -dm(5, 28.98)),
-    9: (dm(35, 58.68), -dm(5, 35.44)),
-    10: (dm(35, 58.41), -dm(5, 36.48)),
-    11: (dm(35, 58.41), -dm(5, 44.98)),
-    12: (dm(35, 52.51), -dm(5, 44.98)),
-    13: (dm(35, 53.81), -dm(5, 36.48)),
-    14: (dm(35, 54.55), -dm(5, 33.90)),
-    15: (dm(35, 56.35), -dm(5, 27.40)),
-    16: (dm(35, 56.84), -dm(5, 25.68)),
-    17: (dm(35, 58.78), -dm(5, 18.55)),
-    18: (dm(35, 54.45), -dm(5, 25.68)),
-    19: (dm(35, 54.88), -dm(5, 27.40)),
-    20: (dm(35, 52.87), -dm(5, 36.70)),
-    21: (dm(35, 52.06), -dm(5, 36.30)),
-    22: (dm(35, 51.10), -dm(5, 36.20)),
-    23: (dm(35, 52.18), -dm(5, 34.00)),
-    24: (dm(35, 51.20), -dm(5, 32.40)),
-    25: (dm(35, 49.09), -dm(5, 44.98)),
-}
-ANCH_ALPHA = (dm(35, 51.05), -dm(5, 40.34), 0.4)  # lat, lon, radius nm
+DEFAULT_PASSAGE = os.path.join(os.path.dirname(__file__), '..', 'passages', 'strait-of-gibraltar.json')
 
 LAT0 = 35.95
 KX = math.cos(math.radians(LAT0)) * 60.0  # nm per degree lon
@@ -77,11 +53,9 @@ def geom_to_latlon(g):
         return out
     raise ValueError(g.geom_type)
 
-# Regions holding the lanes and zones
-region_east = poly_xy([P[7], P[8], P[15], P[16]])
-region_west = poly_xy([P[9], P[10], P[11], P[12], P[13], P[14]])
-
 def extend_xy(pts, d=3.0):
+    """Centreline points (lat, lon) -> xy polyline extended by d nm at both ends, so that the buffered strip
+    covers the whole region it is clipped to."""
     xy = [to_xy(p) for p in pts]
     def ext(a, b):
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -89,32 +63,20 @@ def extend_xy(pts, d=3.0):
         return (b[0] + dx / n * d, b[1] + dy / n * d)
     return [ext(xy[1], xy[0])] + xy + [ext(xy[-2], xy[-1])]
 
-strip_a = LineString(extend_xy([P[1], P[2]])).buffer(0.25, cap_style=2)
-strip_b = LineString(extend_xy([P[3], P[4], P[5]])).buffer(0.25, cap_style=2, join_style=2)
-zone_a = strip_a.intersection(region_east)
-zone_b = strip_b.intersection(region_west)
-
-def split_lanes(region, strip):
-    rest = region.difference(strip)
+def pick_side(rest, side):
+    """region minus separation-zone strip -> the part on the given side (north/south/east/west by centroid)."""
     parts = list(rest.geoms) if rest.geom_type == 'MultiPolygon' else [rest]
-    parts = sorted(parts, key=lambda p: p.centroid.y, reverse=True)
-    assert len(parts) == 2, len(parts)
-    return parts[0], parts[1]  # north (westbound), south (eastbound)
-
-lane_c, lane_f = split_lanes(region_east, strip_a)
-lane_d, lane_e = split_lanes(region_west, strip_b)
-
-prec_g = poly_xy([P[6], P[7], P[16], P[17]])
-prec_h = poly_xy([P[8], P[9], P[14], P[15]])
+    assert len(parts) == 2, f'separation zone must split the lane region in exactly 2 parts, got {len(parts)}'
+    key = (lambda p: p.centroid.y) if side in ('north', 'south') else (lambda p: p.centroid.x)
+    parts = sorted(parts, key=key, reverse=side in ('north', 'east'))
+    return parts[0]
 
 # Land
-land = shape(json.load(open(os.path.join(SCRATCH, 'land_osm.json'))))
-land_xy = unary_union([Polygon([to_xy((c[1], c[0])) for c in poly.exterior.coords]) for poly in land.geoms])
-
-itz_north = poly_xy([P[7], P[8], P[9], P[10], P[11], (36.12, P[11][1]), (36.12, P[7][1])]).difference(land_xy)
-itz_se = poly_xy([P[16], P[15], P[19], P[18]])
-itz_sw = poly_xy([P[12], P[13], P[14], P[20], P[21], P[22], P[23], P[24], (35.78, P[24][1]), (35.78, P[12][1]), P[25]]).difference(land_xy)
-free_tm = poly_xy([P[15], P[14], P[20], P[21], P[22], P[23], P[24], (35.78, P[24][1]), (35.78, P[19][1]), P[19]]).difference(land_xy)
+def load_land(scratch):
+    """land_osm.json -> (shapely MultiPolygon in lon/lat, union in xy nm)."""
+    land = shape(json.load(open(os.path.join(scratch, 'land_osm.json'))))
+    land_xy = unary_union([Polygon([to_xy((c[1], c[0])) for c in poly.exterior.coords]) for poly in land.geoms])
+    return land, land_xy
 
 def bearing(a, b):
     lat1, lon1, lat2, lon2 = map(math.radians, (a[0], a[1], b[0], b[1]))
@@ -155,30 +117,87 @@ def shift(points, dy):
 def clip_arrows(arr, poly):
     return [a for a in arr if poly.contains(Point(to_xy((a[0], a[1]))))]
 
-lanes = [
-    {'id': 'west_wb', 'name': 'Westbound lane (west)', 'flow': 'W', 'rings': geom_to_latlon(lane_d),
-     'arrows': clip_arrows(arrows(shift([P[3], P[4], P[5]], 1.2), 'fwd', 4), lane_d)},
-    {'id': 'west_eb', 'name': 'Eastbound lane (west)', 'flow': 'E', 'rings': geom_to_latlon(lane_e),
-     'arrows': clip_arrows(arrows(shift([P[5], P[4], P[3]], -1.3), 'fwd', 4), lane_e)},
-    {'id': 'east_wb', 'name': 'Westbound lane (east)', 'flow': 'W', 'rings': geom_to_latlon(lane_c),
-     'arrows': clip_arrows(arrows(shift([P[1], P[2]], 1.1), 'fwd', 4), lane_c)},
-    {'id': 'east_eb', 'name': 'Eastbound lane (east)', 'flow': 'E', 'rings': geom_to_latlon(lane_f),
-     'arrows': clip_arrows(arrows(shift([P[2], P[1]], -1.0), 'fwd', 4), lane_f)},
-]
-zones = [
-    {'id': 'zone_b', 'name': 'Separation zone (west)', 'rings': geom_to_latlon(zone_b)},
-    {'id': 'zone_a', 'name': 'Separation zone (east)', 'rings': geom_to_latlon(zone_a)},
-]
-precautionary = [
-    {'id': 'prec_east', 'name': 'Precautionary area (east, Gibraltar-Ceuta)', 'rings': geom_to_latlon(prec_g)},
-    {'id': 'prec_tm', 'name': 'Precautionary area Tanger-Med', 'rings': geom_to_latlon(prec_h)},
-]
-itz = [
-    {'id': 'itz_n', 'name': 'Northern inshore traffic zone (Spain)', 'rings': geom_to_latlon(itz_north)},
-    {'id': 'itz_se', 'name': 'South-eastern inshore traffic zone', 'rings': geom_to_latlon(itz_se)},
-    {'id': 'itz_sw', 'name': 'South-western inshore traffic zone (Morocco)', 'rings': geom_to_latlon(itz_sw)},
-]
-free_area = [{'id': 'free_tm', 'name': 'Free navigation area off Tanger-Med (port approaches, ferries)', 'rings': geom_to_latlon(free_tm)}]
+# --- Traffic separation scheme from the passage's tss.json ------------------------------------
+EMPTY_TSS = {'lanes': [], 'zones': [], 'precautionary': [], 'itz': [], 'free': [], 'points': {}, 'anchorages': []}
+
+def load_tss(passage_file, PZ):
+    """The tss.json named by the passage ("tss": relative to the passage file), or None when there is none."""
+    path = validate_passage.tss_path_for(passage_file, PZ)
+    if path is None:
+        return None
+    return json.load(open(path, encoding='utf-8'))
+
+def parse_coord(v):
+    """Decimal degrees or 'DD MM.MM H' as printed in IMO circulars -> float degrees (S and W negative)."""
+    val = validate_passage.parse_coord(v)
+    if val is None:
+        raise ValueError(f'bad coordinate {v!r}')
+    return val
+
+def resolve_points(tss):
+    """tss['points'] -> {id: (lat, lon)}; latOf/lonOf take the parallel/meridian of another point."""
+    raw = {p['id']: p for p in tss['points']}
+    def coord(p, key):
+        ref = p.get(key + 'Of')
+        return coord(raw[ref], key) if ref is not None else parse_coord(p[key])
+    return {p['id']: (coord(p, 'lat'), coord(p, 'lon')) for p in tss['points']}
+
+def flow_letter(deg):
+    """Nearest cardinal of a flow bearing: the app's l.flow ('W' westbound, else eastbound)."""
+    return 'NESW'[int(((deg % 360) + 45) // 90) % 4]
+
+def alert_fields(el):
+    return {'level': el['level'], 'enter': el['enter'], 'leave': el.get('leave')}
+
+def report_label(kind, el):
+    """Name of a polygon in the LEG report: <kind>_<paragraph letter of the circular>, else the id
+    (docs/TESTING.md lists the mapping: lane_d = west_wb, ...)."""
+    return f"{kind}_{el['paragraph']}" if el.get('paragraph') else el['id']
+
+def build_tss(tss, land_xy):
+    """TSS block of the chart (lanes, zones, precautionary areas, inshore zones, free areas, IMO points, anchorages)
+    and the raw xy polygons used by the leg check, from the declarative tss.json (docs/TSS-DATA.md)."""
+    if not tss:
+        return json.loads(json.dumps(EMPTY_TSS)), []
+    P = resolve_points(tss)
+    region = lambda ids: poly_xy([P[i] for i in ids])
+
+    strips, zones_xy = {}, {}
+    for z in tss.get('separationZones', []):
+        strip = LineString(extend_xy([P[i] for i in z['centreline']])).buffer(z['halfWidthNm'], cap_style=2, join_style=2)
+        strips[z['id']] = strip
+        zones_xy[z['id']] = strip.intersection(region(z['region']))
+
+    lanes, lanes_xy = [], {}
+    for l in tss.get('lanes', []):
+        g = region(l['region'])
+        if l.get('separationZone'):
+            g = pick_side(g.difference(strips[l['separationZone']]), l['side'])
+        lanes_xy[l['id']] = g
+        arr = l.get('arrows')
+        arrow_list = clip_arrows(arrows(shift([P[i] for i in arr['along']], arr.get('offsetNorthNm', 0)), 'fwd', arr.get('perSegment', 3)), g) if arr else []
+        lanes.append(dict({'id': l['id'], 'name': l['name'], 'flow': flow_letter(l['flowDeg']), 'rings': geom_to_latlon(g), 'arrows': arrow_list,
+                           'flowDeg': l['flowDeg'], 'crossing': l.get('crossing', 'rightAngles')}, **alert_fields(l)))
+
+    zones = [dict({'id': z['id'], 'name': z['name'], 'rings': geom_to_latlon(zones_xy[z['id']])}, **alert_fields(z)) for z in tss.get('separationZones', [])]
+    prec_xy = {p['id']: region(p['region']) for p in tss.get('precautionary', [])}
+    precautionary = [dict({'id': p['id'], 'name': p['name'], 'rings': geom_to_latlon(prec_xy[p['id']])}, **alert_fields(p)) for p in tss.get('precautionary', [])]
+
+    def clipped(el):
+        g = region(el['region'])
+        return g.difference(land_xy) if el.get('clipToLand') else g
+    itz = [dict({'id': z['id'], 'name': z['name'], 'rings': geom_to_latlon(clipped(z))}, **alert_fields(z)) for z in tss.get('inshoreZones', [])]
+    free_area = [dict({'id': z['id'], 'name': z['name'], 'rings': geom_to_latlon(clipped(z))}, **alert_fields(z)) for z in tss.get('freeAreas', [])]
+    anchorages = [{'id': a['id'], 'name': a['name'], 'lat': round(parse_coord(a['lat']), 5), 'lon': round(parse_coord(a['lon']), 5), 'radiusNm': a['radiusNm']}
+                  for a in tss.get('anchorages', [])]
+    points = {p['id']: [round(P[p['id']][0], 5), round(P[p['id']][1], 5)] for p in tss['points'] if p.get('role', 'imo') == 'imo'}
+
+    out = {'lanes': lanes, 'zones': zones, 'precautionary': precautionary, 'itz': itz, 'free': free_area, 'points': points, 'anchorages': anchorages}
+    by_label = lambda pairs: sorted(pairs, key=lambda t: t[0])  # zone_a, zone_b, lane_c ... as the LEG report always listed them
+    check_polys = (by_label((report_label('zone', z), zones_xy[z['id']]) for z in tss.get('separationZones', []))
+                   + by_label((report_label('lane', l), lanes_xy[l['id']]) for l in tss.get('lanes', []))
+                   + by_label((report_label('prec', p), prec_xy[p['id']]) for p in tss.get('precautionary', [])))
+    return out, check_polys
 
 # --- Routes come from the passage JSON -------------------------------------------
 def route_obj(rid, name, wps, recommended, summary, short=None):
@@ -192,62 +211,70 @@ def route_obj(rid, name, wps, recommended, summary, short=None):
         legs.append({'from': wps[i][2], 'to': wps[i + 1][2], 'dist': round(d, 2), 'brg': round(bearing(a, b))})
     return {'id': rid, 'short': short or rid, 'name': name, 'recommended': recommended, 'summary': summary, 'waypoints': w, 'legs': legs, 'total': round(total, 1)}
 
-routes = [route_obj(r['id'], r['name'], [(w['lat'], w['lon'], w['id'], w['name'], w.get('note', ''), w.get('radius', 0.1)) for w in r['waypoints']], r.get('recommended', False), r.get('summary', ''), r.get('short')) for r in PZ['routes']]
+def build_routes(PZ):
+    return [route_obj(r['id'], r['name'], [(w['lat'], w['lon'], w['id'], w['name'], w.get('note', ''), w.get('radius', 0.1)) for w in r['waypoints']], r.get('recommended', False), r.get('summary', ''), r.get('short')) for r in PZ['routes']]
 
 # --- Verification: legs vs land and TSS polygons --------------------------------
-report = []
-for r in routes:
-    wps = r['waypoints']
-    for i in range(len(wps) - 1):
-        a, b = wps[i], wps[i + 1]
-        seg = LineString([to_xy((a['lat'], a['lon'])), to_xy((b['lat'], b['lon']))])
-        d_land = seg.distance(land_xy)
-        from shapely.ops import nearest_points
-        np_ = nearest_points(seg, land_xy)[1]
-        near_ll = to_ll((np_.x, np_.y))
-        crosses = []
-        for nm, g in [('zone_a', zone_a), ('zone_b', zone_b), ('lane_c', lane_c), ('lane_d', lane_d), ('lane_e', lane_e), ('lane_f', lane_f), ('prec_g', prec_g), ('prec_h', prec_h)]:
-            if seg.intersects(g):
-                crosses.append(nm)
-        report.append((r['id'], a['id'], b['id'], round(d_land, 2), crosses, (round(near_ll[0],4), round(near_ll[1],4))))
-for row in report:
-    print('LEG', row)
-# hazard crossings per leg (info)
+def check_legs(routes, land_xy, check_polys):
+    """Per leg: (route, from, to, distance to land nm, TSS polygons crossed, nearest land point)."""
+    report = []
+    for r in routes:
+        wps = r['waypoints']
+        for i in range(len(wps) - 1):
+            a, b = wps[i], wps[i + 1]
+            seg = LineString([to_xy((a['lat'], a['lon'])), to_xy((b['lat'], b['lon']))])
+            d_land = seg.distance(land_xy)
+            np_ = nearest_points(seg, land_xy)[1]
+            near_ll = to_ll((np_.x, np_.y))
+            crosses = []
+            for nm, g in check_polys:
+                if seg.intersects(g):
+                    crosses.append(nm)
+            report.append((r['id'], a['id'], b['id'], round(d_land, 2), crosses, (round(near_ll[0],4), round(near_ll[1],4))))
+    return report
 
-harbour_ids = set(PZ.get('harbourWaypoints', ['SOTO', 'SOTO-HEAD', 'MAR-APP', 'TANJA', 'TANG-F', 'TANG-E']))
-bad = [row for row in report if row[3] < 0.25 and not (row[1] in harbour_ids or row[2] in harbour_ids)]
-if bad:
-    print('WARNING: legs closer than 0.25 nm to land:', bad)
+def bad_legs(report, harbour_ids):
+    return [row for row in report if row[3] < 0.25 and not (row[1] in harbour_ids or row[2] in harbour_ids)]
 
 # --- Aids to navigation from OSM ---------------------------------------------------
-H = json.load(open(os.path.join(SCRATCH, 'harbours.json')))
-aids = []
-for e in H['elements']:
-    t = e.get('tags', {})
-    st = t.get('seamark:type')
-    if e['type'] != 'node' or not st:
-        continue
-    if st not in ('light_major', 'light_minor', 'beacon_lateral', 'buoy_lateral', 'buoy_cardinal', 'beacon_cardinal', 'buoy_special_purpose', 'beacon_special_purpose', 'buoy_safe_water', 'wreck', 'obstruction', 'rock', 'harbour'):
-        continue
-    ch = t.get('seamark:light:character') or t.get('seamark:light:1:character')
-    col = t.get('seamark:light:colour') or t.get('seamark:light:1:colour')
-    per = t.get('seamark:light:period') or t.get('seamark:light:1:period')
-    rng = t.get('seamark:light:range') or t.get('seamark:light:1:range')
-    cat = t.get('seamark:buoy_cardinal:category') or t.get('seamark:beacon_cardinal:category') or t.get('seamark:buoy_lateral:category') or t.get('seamark:beacon_lateral:category')
-    light = ''
-    if ch:
-        light = ch + (' ' + {'white': 'W', 'red': 'R', 'green': 'G', 'yellow': 'Y'}.get(col, col or '') if col else '') + (' ' + per + 's' if per else '') + (' ' + rng + 'M' if rng else '')
-    aids.append({'lat': round(e['lat'], 5), 'lon': round(e['lon'], 5), 'type': st, 'name': t.get('seamark:name') or t.get('name') or '', 'light': light.strip(), 'cat': cat or ''})
+AID_TYPES = ('light_major', 'light_minor', 'beacon_lateral', 'buoy_lateral', 'buoy_cardinal', 'beacon_cardinal', 'buoy_special_purpose', 'beacon_special_purpose', 'buoy_safe_water', 'wreck', 'obstruction', 'rock', 'harbour')
 
-anchorages = []
-for e in H['elements']:
-    t = e.get('tags', {})
-    if e['type'] == 'way' and t.get('seamark:type') == 'anchorage' and e.get('geometry') and len(e['geometry']) > 3:
-        anchorages.append({'name': t.get('seamark:name') or t.get('name') or 'Anchorage', 'ring': [[round(p['lat'], 5), round(p['lon'], 5)] for p in e['geometry']]})
+def build_aids(H):
+    aids = []
+    for e in H['elements']:
+        t = e.get('tags', {})
+        st = t.get('seamark:type')
+        if e['type'] != 'node' or not st:
+            continue
+        if st not in AID_TYPES:
+            continue
+        ch = t.get('seamark:light:character') or t.get('seamark:light:1:character')
+        col = t.get('seamark:light:colour') or t.get('seamark:light:1:colour')
+        per = t.get('seamark:light:period') or t.get('seamark:light:1:period')
+        rng = t.get('seamark:light:range') or t.get('seamark:light:1:range')
+        cat = t.get('seamark:buoy_cardinal:category') or t.get('seamark:beacon_cardinal:category') or t.get('seamark:buoy_lateral:category') or t.get('seamark:beacon_lateral:category')
+        light = ''
+        if ch:
+            light = ch + (' ' + {'white': 'W', 'red': 'R', 'green': 'G', 'yellow': 'Y'}.get(col, col or '') if col else '') + (' ' + per + 's' if per else '') + (' ' + rng + 'M' if rng else '')
+        aids.append({'lat': round(e['lat'], 5), 'lon': round(e['lon'], 5), 'type': st, 'name': t.get('seamark:name') or t.get('name') or '', 'light': light.strip(), 'cat': cat or ''})
+    return aids
 
-hazards = PZ['hazards']
+def build_anchorages(H):
+    anchorages = []
+    for e in H['elements']:
+        t = e.get('tags', {})
+        if e['type'] == 'way' and t.get('seamark:type') == 'anchorage' and e.get('geometry') and len(e['geometry']) > 3:
+            anchorages.append({'name': t.get('seamark:name') or t.get('name') or 'Anchorage', 'ring': [[round(p['lat'], 5), round(p['lon'], 5)] for p in e['geometry']]})
+    return anchorages
 
-places = PZ['places']
+# Breakwaters / piers as lines (for harbour detail)
+def build_structures(H):
+    structures = []
+    for e in H['elements']:
+        t = e.get('tags', {})
+        if e['type'] == 'way' and (t.get('seamark:type') == 'breakwater' or t.get('man_made') in ('breakwater', 'pier')) and e.get('geometry'):
+            structures.append([[round(p['lat'], 5), round(p['lon'], 5)] for p in e['geometry']])
+    return structures
 
 def rings_from_mp(mp):
     out = []
@@ -255,49 +282,96 @@ def rings_from_mp(mp):
         out.append([[round(c[1], 5), round(c[0], 5)] for c in poly.exterior.coords])
     return out
 
-land_rings = rings_from_mp(land)
-detail = {}
-for key in ('soto', 'tang'):
-    g = shape(json.load(open(os.path.join(SCRATCH, f'land_{key}.json'))))
-    if g.geom_type == 'Polygon':
-        g = MultiPolygon([g])
-    detail[key] = rings_from_mp(g)
+LEGACY_DETAIL_KEYS = ('soto', 'tang')
 
-# Breakwaters / piers as lines (for harbour detail)
-structures = []
-for e in H['elements']:
-    t = e.get('tags', {})
-    if e['type'] == 'way' and (t.get('seamark:type') == 'breakwater' or t.get('man_made') in ('breakwater', 'pier')) and e.get('geometry'):
-        structures.append([[round(p['lat'], 5), round(p['lon'], 5)] for p in e['geometry']])
+def load_detail(scratch, PZ):
+    """Harbour detail land: land_<key>.json for each passage place (written by fetch_osm.py);
+    falls back to the legacy land_soto.json / land_tang.json names when no per-place file exists."""
+    keys = [k for k in PZ.get('places', {}) if os.path.exists(os.path.join(scratch, f'land_{k}.json'))]
+    if not keys:
+        keys = list(LEGACY_DETAIL_KEYS)
+    detail = {}
+    for key in keys:
+        g = shape(json.load(open(os.path.join(scratch, f'land_{key}.json'))))
+        if g.geom_type == 'Polygon':
+            g = MultiPolygon([g])
+        detail[key] = rings_from_mp(g)
+    return detail
 
-labels = PZ.get('labels', [])
+def build(scratch, PZ, tss=None):
+    """Build the chart and passage objects from the passage dict and the (already loaded) tss dict, or None.
+    Returns (chart, passage_out, report)."""
+    land, land_xy = load_land(scratch)
+    tss, check_polys = build_tss(tss, land_xy)
+    routes = build_routes(PZ)
+    report = check_legs(routes, land_xy, check_polys)
+    H = json.load(open(os.path.join(scratch, 'harbours.json')))
+    chart = {
+        'meta': {
+            'built': 'chart built by tools/build_chart.py',
+            'sources': ['OpenStreetMap contributors (ODbL) - coastline, breakwaters, seamarks',
+                        'IMO COLREG.2/Circ.66 Annex 1 (2014) - TSS In the Strait of Gibraltar, in force 1 June 2015',
+                        'Puerto Sotogrande safety notice 20 Feb 2026 - Guadiaro shoal'],
+            'bbox': PZ.get('bbox', [35.65, -6.2, 36.45, -5.05]),
+            'passage': PZ['id'],
+        },
+        'land': rings_from_mp(land),
+        'landDetail': load_detail(scratch, PZ),
+        'structures': build_structures(H),
+        'tss': tss,
+        'anchorages': build_anchorages(H),
+        'aids': build_aids(H),
+    }
+    passage_out = dict(PZ)
+    passage_out['routes'] = routes
+    passage_out['labels'] = PZ.get('labels', [])
+    return chart, passage_out, report
 
-chart = {
-    'meta': {
-        'built': 'chart built by tools/build_chart.py',
-        'sources': ['OpenStreetMap contributors (ODbL) - coastline, breakwaters, seamarks',
-                    'IMO COLREG.2/Circ.66 Annex 1 (2014) - TSS In the Strait of Gibraltar, in force 1 June 2015',
-                    'Puerto Sotogrande safety notice 20 Feb 2026 - Guadiaro shoal'],
-        'bbox': PZ.get('bbox', [35.65, -6.2, 36.45, -5.05]),
-        'passage': PZ['id'],
-    },
-    'land': land_rings,
-    'landDetail': detail,
-    'structures': structures,
-    'tss': {'lanes': lanes, 'zones': zones, 'precautionary': precautionary, 'itz': itz, 'free': free_area,
-            'points': {str(k): [round(v[0], 5), round(v[1], 5)] for k, v in P.items()}},
-    'anchorages': anchorages,
-    'aids': aids,
-}
-passage_out = dict(PZ)
-passage_out['routes'] = routes
-passage_out['labels'] = labels
-js = 'window.CHART = ' + json.dumps(chart, separators=(',', ':')) + ';\n'
-os.makedirs(os.path.dirname(OUT), exist_ok=True)
-open(OUT, 'w').write(js)
-pjs = 'window.PASSAGE = ' + json.dumps(passage_out, separators=(',', ':'), ensure_ascii=False) + ';\n'
-open(PASSAGE_OUT, 'w', encoding='utf-8').write(pjs)
-print('wrote', OUT, len(js), 'bytes;', 'aids', len(aids), 'anchorages', len(anchorages), 'structures', len(structures))
-print('wrote', PASSAGE_OUT, len(pjs.encode()), 'bytes; routes', [r['id'] for r in routes], 'hazards', len(hazards), 'cards', len(PZ.get('cards', [])))
-for r in routes:
-    print(r['id'], 'total nm', r['total'], [(l['from'], l['to'], l['dist'], l['brg']) for l in r['legs']])
+def render_chart_js(chart):
+    return 'window.CHART = ' + json.dumps(chart, separators=(',', ':')) + ';\n'
+
+def render_passage_js(passage_out):
+    return 'window.PASSAGE = ' + json.dumps(passage_out, separators=(',', ':'), ensure_ascii=False) + ';\n'
+
+def write_outputs(chart, passage_out, out, passage_out_path):
+    js = render_chart_js(chart)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    open(out, 'w').write(js)
+    pjs = render_passage_js(passage_out)
+    open(passage_out_path, 'w', encoding='utf-8').write(pjs)
+    return js, pjs
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    scratch = argv[0] if len(argv) > 0 else '.'
+    out = argv[1] if len(argv) > 1 else 'site/chart-data.js'
+    passage_file = argv[2] if len(argv) > 2 else DEFAULT_PASSAGE
+    passage_out_path = os.path.join(os.path.dirname(out), 'passage.js')
+    reports = validate_passage.validate_files(passage_file)
+    for rep in reports:
+        for line in rep.lines():
+            print(line)
+    if any(rep.errors for rep in reports):
+        print('build_chart: passage data invalid, nothing built (see tools/validate_passage.py)', file=sys.stderr)
+        return 1
+    PZ = json.load(open(passage_file, encoding='utf-8'))
+    tss = load_tss(passage_file, PZ)
+
+    chart, passage_out, report = build(scratch, PZ, tss)
+    for row in report:
+        print('LEG', row)
+    harbour_ids = set(PZ.get('harbourWaypoints', ['SOTO', 'SOTO-HEAD', 'MAR-APP', 'TANJA', 'TANG-F', 'TANG-E']))
+    bad = bad_legs(report, harbour_ids)
+    if bad:
+        print('WARNING: legs closer than 0.25 nm to land:', bad)
+
+    js, pjs = write_outputs(chart, passage_out, out, passage_out_path)
+    routes = passage_out['routes']
+    print('wrote', out, len(js), 'bytes;', 'aids', len(chart['aids']), 'anchorages', len(chart['anchorages']), 'structures', len(chart['structures']))
+    print('wrote', passage_out_path, len(pjs.encode()), 'bytes; routes', [r['id'] for r in routes], 'hazards', len(PZ['hazards']), 'cards', len(PZ.get('cards', [])))
+    for r in routes:
+        print(r['id'], 'total nm', r['total'], [(l['from'], l['to'], l['dist'], l['brg']) for l in r['legs']])
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())

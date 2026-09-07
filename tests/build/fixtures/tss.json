@@ -1,0 +1,51 @@
+{
+ "$schema": "../../../schema/tss.schema.json",
+ "id": "fixture-bay",
+ "name": "Fixture scheme north of Square Island",
+ "source": "Hand-written test fixture, not an IMO scheme. East-west lanes across the top of the fixture bbox with a separation zone 0.2 nm wide, a precautionary area at the east end, an inshore zone down to the mainland coast west of Square Island and a free area east of it.",
+ "sourceDate": "2026-09-06",
+ "checkedBy": "tests/build/test_build_chart.py",
+ "points": [
+  {"id": "1", "lat": 36.08, "lon": -7.095, "note": "separation zone centreline, west end"},
+  {"id": "2", "lat": "36 04.80 N", "lon": "7 00.30 W", "note": "centreline east end, written as degrees and minutes"},
+  {"id": "3", "lat": 36.09, "lon": -7.095},
+  {"id": "4", "lat": 36.09, "lon": -7.005},
+  {"id": "5", "lat": 36.072, "lon": -7.005},
+  {"id": "6", "lat": 36.072, "lon": -7.095},
+  {"id": "7", "lat": 36.09, "lon": -7.0},
+  {"id": "8", "lat": 36.072, "lon": -7.0},
+  {"id": "9", "lat": 36.072, "lon": -7.045},
+  {"id": "10", "lat": 36.072, "lon": -7.025},
+  {"id": "c_6", "role": "construction", "lat": 36.0, "lonOf": "6"},
+  {"id": "c_9", "role": "construction", "lat": 36.0, "lonOf": "9"},
+  {"id": "c_10", "role": "construction", "lat": 36.0, "lonOf": "10"},
+  {"id": "c_5", "role": "construction", "lat": 36.0, "lonOf": "5"}
+ ],
+ "separationZones": [
+  {"id": "sep", "name": "Separation zone", "paragraph": "a", "centreline": ["1", "2"], "halfWidthNm": 0.1, "region": ["3", "4", "5", "6"],
+   "level": "warn", "enter": "In the separation zone. Keep crossing.", "leave": null}
+ ],
+ "lanes": [
+  {"id": "north_wb", "name": "Westbound lane", "paragraph": "b", "flowDeg": 270, "region": ["3", "4", "5", "6"], "separationZone": "sep", "side": "north",
+   "crossing": "rightAngles", "arrows": {"along": ["2", "1"], "offsetNorthNm": 0.3, "perSegment": 3},
+   "level": "danger", "enter": "Entering the WESTBOUND lane.", "leave": "Clear of the westbound lane."},
+  {"id": "south_eb", "name": "Eastbound lane", "paragraph": "c", "flowDeg": 90, "region": ["3", "4", "5", "6"], "separationZone": "sep", "side": "south",
+   "arrows": {"along": ["1", "2"], "offsetNorthNm": -0.2, "perSegment": 3},
+   "level": "danger", "enter": "Entering the EASTBOUND lane.", "leave": "Clear of the eastbound lane."}
+ ],
+ "precautionary": [
+  {"id": "prec_e", "name": "Precautionary area (east)", "paragraph": "d", "region": ["4", "7", "8", "5"],
+   "level": "warn", "enter": "Entering the precautionary area.", "leave": "Leaving the precautionary area."}
+ ],
+ "inshoreZones": [
+  {"id": "itz_w", "name": "Inshore zone (west of Square Island)", "region": ["6", "9", "c_9", "c_6"], "clipToLand": true,
+   "level": "info", "enter": "In the inshore zone.", "leave": "Leaving the inshore zone."}
+ ],
+ "freeAreas": [
+  {"id": "free_e", "name": "Free area (east of Square Island)", "region": ["10", "5", "c_5", "c_10"], "clipToLand": true,
+   "level": "warn", "enter": "In the free area.", "leave": null}
+ ],
+ "anchorages": [
+  {"id": "anch_bay", "name": "Bay anchorage", "lat": "36 02.40 N", "lon": -7.06, "radiusNm": 0.2}
+ ]
+}

@@ -1,0 +1,121 @@
+{
+  "version": 0.6,
+  "generator": "hand-written fixture in the shape of Overpass 'out geom'",
+  "osm3s": {
+    "timestamp_osm_base": "2026-01-01T00:00:00Z",
+    "copyright": "Synthetic test data, not from OpenStreetMap."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 2001,
+  "lat": 36.0125,
+  "lon": -7.035,
+  "tags": {"seamark:type": "light_minor", "seamark:name": "Bay head light", "seamark:light:character": "Fl", "seamark:light:colour": "green", "seamark:light:period": "4", "seamark:light:range": "6"}
+},
+{
+  "type": "node",
+  "id": 2002,
+  "lat": 36.02,
+  "lon": -7.04,
+  "tags": {"seamark:type": "buoy_lateral", "seamark:buoy_lateral:category": "port", "seamark:buoy_lateral:colour": "red", "seamark:name": "Bay No 2"}
+},
+{
+  "type": "node",
+  "id": 2003,
+  "lat": 36.05,
+  "lon": -7.05,
+  "tags": {"seamark:type": "wreck", "seamark:wreck:category": "dangerous", "name": "Old wreck"}
+},
+{
+  "type": "node",
+  "id": 2004,
+  "lat": 36.065,
+  "lon": -7.035,
+  "tags": {"seamark:type": "light_major", "man_made": "lighthouse", "name": "Square Island lighthouse", "seamark:light:1:character": "Fl(2)", "seamark:light:1:colour": "white", "seamark:light:1:period": "10", "seamark:light:1:range": "20"}
+},
+{
+  "type": "node",
+  "id": 2005,
+  "lat": 36.015,
+  "lon": -7.045,
+  "tags": {"seamark:type": "mooring", "seamark:mooring:category": "buoy", "note": "not an aid type: must be dropped"}
+},
+{
+  "type": "node",
+  "id": 2006,
+  "lat": 36.013,
+  "lon": -7.05,
+  "tags": {"seamark:type": "harbour", "seamark:harbour:category": "marina", "name": "Bay Harbour"}
+},
+{
+  "type": "node",
+  "id": 2007,
+  "lat": 36.04,
+  "lon": -7.03,
+  "tags": {"seamark:type": "buoy_cardinal", "seamark:buoy_cardinal:category": "north", "seamark:light:character": "Q", "seamark:light:colour": "white"}
+},
+{
+  "type": "way",
+  "id": 3001,
+  "bounds": {"minlat": 36.015, "minlon": -7.032, "maxlat": 36.022, "maxlon": -7.03},
+  "nodes": [31, 32, 33],
+  "geometry": [
+    {"lat": 36.015, "lon": -7.03},
+    {"lat": 36.02, "lon": -7.03},
+    {"lat": 36.022, "lon": -7.032}
+  ],
+  "tags": {"man_made": "breakwater", "name": "East breakwater"}
+},
+{
+  "type": "way",
+  "id": 3002,
+  "bounds": {"minlat": 36.013, "minlon": -7.06, "maxlat": 36.016, "maxlon": -7.06},
+  "nodes": [34, 35],
+  "geometry": [
+    {"lat": 36.013, "lon": -7.06},
+    {"lat": 36.016, "lon": -7.06}
+  ],
+  "tags": {"man_made": "pier"}
+},
+{
+  "type": "way",
+  "id": 3003,
+  "bounds": {"minlat": 36.04, "minlon": -7.06, "maxlat": 36.045, "maxlon": -7.05},
+  "nodes": [41, 42, 43, 44, 41],
+  "geometry": [
+    {"lat": 36.04, "lon": -7.06},
+    {"lat": 36.04, "lon": -7.05},
+    {"lat": 36.045, "lon": -7.05},
+    {"lat": 36.045, "lon": -7.06},
+    {"lat": 36.04, "lon": -7.06}
+  ],
+  "tags": {"seamark:type": "anchorage", "seamark:name": "Anchorage Bravo"}
+},
+{
+  "type": "way",
+  "id": 3004,
+  "bounds": {"minlat": 36.08, "minlon": -7.09, "maxlat": 36.085, "maxlon": -7.08},
+  "nodes": [51, 52, 53],
+  "geometry": [
+    {"lat": 36.08, "lon": -7.09},
+    {"lat": 36.08, "lon": -7.08},
+    {"lat": 36.085, "lon": -7.085}
+  ],
+  "tags": {"seamark:type": "anchorage", "note": "only three points: must be dropped"}
+},
+{
+  "type": "way",
+  "id": 3005,
+  "bounds": {"minlat": 36.02, "minlon": -7.07, "maxlat": 36.025, "maxlon": -7.07},
+  "nodes": [61, 62],
+  "geometry": [
+    {"lat": 36.02, "lon": -7.07},
+    {"lat": 36.025, "lon": -7.07}
+  ],
+  "tags": {"man_made": "groyne", "note": "groyne: fetched but not drawn as a structure"}
+}
+
+  ]
+}
