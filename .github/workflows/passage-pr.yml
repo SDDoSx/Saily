@@ -1,0 +1,72 @@
+name: Check a passage
+
+# Somebody proposing a passage should find out here, not at sea. Every pull request that touches passages/
+# gets its data validated, its chart built for real from OpenStreetMap, and every leg of every route measured
+# against that chart. Nothing is committed: this only says yes or no, with the reason.
+
+on:
+  pull_request:
+    paths:
+      - 'passages/**'
+      - 'site/passages/index.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - run: pip install -r tools/requirements.txt
+
+      - name: Which passages does this change touch?
+        id: changed
+        run: |
+          base='${{ github.event.pull_request.base.sha }}'
+          if [ -z "$base" ]; then base=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD); fi
+          files=$(git diff --name-only "$base" HEAD -- 'passages/*.json' | grep -v '\.tss\.json$' | grep -v '\.expected\.json$' || true)
+          if [ -z "$files" ]; then files=$(ls passages/*.json | grep -v '\.tss\.json$' | grep -v '\.expected\.json$'); echo "no passage changed; checking them all"; fi
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$files" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$files"
+
+      - name: Validate the data
+        run: python3 tools/validate_passage.py --strict
+
+      - name: The catalogue points at files that exist
+        run: python3 tools/catalogue.py check
+
+      - name: Build each changed passage and measure its routes
+        run: |
+          set -e
+          echo "## Passage check" >> $GITHUB_STEP_SUMMARY
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            id=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$f")
+            echo "::group::$id"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### \`$id\`" >> $GITHUB_STEP_SUMMARY
+            python3 tools/build_area.py "$f" "/tmp/built/$id" --timeout 180
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            node tools/check_route.js "$f" "/tmp/built/$id/chart-data.js" | tee -a $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "::endgroup::"
+          done <<< "${{ steps.changed.outputs.files }}"
+
+      - name: Remind about the licence
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "A chart built from OpenStreetMap is ODbL 1.0: attribution and share-alike apply, and it may only be redistributed under the ODbL. See \`docs/LICENSING.md\`." >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,42 @@
+# Fly.io. From the repository root:
+#   fly launch --config server/fly.toml --dockerfile server/Dockerfile --no-deploy
+#   fly volumes create saily_jobs --size 1
+#   fly deploy --config server/fly.toml --dockerfile server/Dockerfile
+app = "saily-chart-service"
+primary_region = "mad"          # near the Overpass mirrors this fetches from; change to yours
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  SAILY_JOBS_DIR = "/jobs"
+  SAILY_MAX_BBOX_DEG2 = "4.0"
+  SAILY_MAX_RUNNING = "1"
+  # once you know the app's origin, name it instead of "*"
+  SAILY_ALLOW_ORIGIN = "*"
+
+[[mounts]]
+  source = "saily_jobs"
+  destination = "/jobs"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "suspend"      # a build service is idle almost always
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.http_options.response]
+    pristine = true
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"                    # polygonisation holds the coastline in memory; raise for a big bbox

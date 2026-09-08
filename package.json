@@ -1,6 +1,6 @@
 {
   "name": "saily",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Offline-capable GPS passage app for small craft: route guidance, traffic-separation-scheme and hazard alerts, marine weather go/no-go. Bundled passage: Sotogrande to Tangier across the Strait of Gibraltar.",
   "license": "MIT",
   "private": true,
@@ -9,6 +9,7 @@
     "url": "https://github.com/SDDoSx/Saily"
   },
   "scripts": {
+    "dev": "node tools/dev.js",
     "start": "node tools/serve.js",
     "lint": "eslint .",
     "test": "node tools/unit.js && node --test tests/*.test.js && NODE_PATH=${NODE_PATH:-/opt/node22/lib/node_modules} node tools/e2e.js",
@@ -19,6 +20,8 @@
     "test:replay:write": "NODE_PATH=${NODE_PATH:-/opt/node22/lib/node_modules} node tools/replay.js --write",
     "test:build": "python3 tests/build/test_build_chart.py",
     "test:server": "python3 tests/server/test_service.py",
+    "test:catalogue": "python3 tools/catalogue.py check",
+    "check:route": "node tools/check_route.js",
     "validate": "python3 tools/validate_passage.py --strict && python3 tests/build/test_validate_passage.py",
     "fetch:osm": "python3 tools/fetch_osm.py passages/strait-of-gibraltar.json ${SAILY_SCRATCH:-/tmp/saily-data}",
     "build:chart": "python3 tools/build_chart.py ${SAILY_SCRATCH:-/tmp/saily-data}",

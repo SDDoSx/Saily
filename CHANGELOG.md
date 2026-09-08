@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.15.0 (2026-09-08)
+The loop closes: draw a route anywhere, have its chart built, and navigate on it, without a terminal.
+- **The route editor can build the chart for its own area.** Draw a route where Saily has no chart, press
+  Passage JSON, then "Build a chart for this area". The app derives a bounding box around the route, asks the
+  chart service to build it, and installs the result as a passage on the device, in the picker with the rest.
+  Charts are parsed, never executed, whoever is hosting the service.
+- **A chart service URL in Setup**, with a Test button that reports what the service says. Leave it empty and
+  none of this is offered; the app has no idea a backend exists.
+- **GitHub Actions is a chart service too.** "Build a passage chart" takes the same JSON, builds it, checks
+  every leg against the chart it just built, commits it and updates the catalogue. Nothing to host.
+  "Check a passage" does the same for a pull request without committing.
+- `npm run dev` runs the app and the chart service together.
+- `tools/catalogue.py` maintains `site/passages/index.json`; `tools/check_route.js` measures every leg of a
+  passage against a chart and refuses a route that runs into land. Both run in CI.
+- `server/fly.toml` and `server/render.yaml` for deploying the service.
+
+### Fixed
+- `build_chart.load_land` rebuilt land from exterior rings only and unioned them without checking validity.
+  On a real coastline that raises `TopologyException: side location conflict` and the build dies -- found by
+  building the Bay of Cadiz. Rings are repaired now, and holes are kept, so a lagoon is water rather than land.
+- `tz`, `sun` and `vessel` are optional in the passage schema, and the app dereferenced all three directly:
+  a passage without them crashed on boot. They fall back to the device zone, the route's destination, and
+  empty.
+- `harbourWaypoints` was a list of this passage's own waypoint ids defaulted inside the builder, which every
+  other passage silently inherited. It is in the passage data now.
+
 ## 0.14.0 (2026-09-08)
 - **Chart service** (`server/`): the one job a browser cannot do. POST a passage, it fetches the coastline from
   Overpass and builds `chart-data.js` and `passage.js`, as a job you poll. A plain WSGI application with no

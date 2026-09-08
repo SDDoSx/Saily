@@ -26,6 +26,16 @@ jobs:
         run: python3 tests/build/test_build_chart.py
       - name: Chart service (request limits, WSGI routing, job state machine; no network)
         run: python3 tests/server/test_service.py
+      - name: Passage catalogue (what the app offers, and that its files exist)
+        run: python3 tests/build/test_catalogue.py && python3 tools/catalogue.py check
+      - name: Every bundled route still clears land on its own chart
+        run: |
+          for f in passages/*.json; do
+            case "$f" in *.tss.json|*.expected.json) continue;; esac
+            id=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$f")
+            [ -f "site/passages/$id/chart-data.js" ] || continue
+            node tools/check_route.js "$f" "site/passages/$id/chart-data.js"
+          done
       - name: Install Playwright
         run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
       - name: End-to-end smoke test

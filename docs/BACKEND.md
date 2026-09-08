@@ -8,7 +8,30 @@ server at all.
 You only need this if you are adding a passage somewhere Saily has no chart for yet. If you are editing a
 route inside an area that already has one, close this page.
 
-## Run it
+## Everything at once, locally
+
+```
+npm run dev
+```
+
+The app on `:8080`, the chart service on `:8787`, one ctrl-c stops both. The service is skipped with a note
+if Python does not have shapely, because the app does not need it to run.
+
+Then in the app: Setup → **Charts for new areas** → `http://localhost:8787` → **Test the service**. Draw a
+route (map menu, the pencil), then **Passage JSON** → **Build a chart for this area**. The passage appears in
+the picker when it is done.
+
+## Everything in the cloud, without hosting anything
+
+If you would rather not run a service at all, GitHub Actions already is one. Actions tab →
+**Build a passage chart** → Run workflow → paste the JSON from the editor. It fetches the coastline, builds
+the chart, checks every leg against it, commits the result and updates the catalogue; GitHub Pages redeploys
+and the passage is in the app a couple of minutes later. Nothing to deploy, nothing to pay for.
+
+A pull request that touches `passages/` gets the same treatment without committing: **Check a passage**
+validates the data, builds the chart for real, and prints every leg's distance to land in the run summary.
+
+## Run it yourself
 
 ```
 pip install -r server/requirements.txt      # shapely, jsonschema, gunicorn
@@ -38,7 +61,20 @@ docker run --rm -p 8787:8787 -v saily-jobs:/jobs saily-chart-service
 docker compose -f server/compose.yaml up --build
 ```
 
-That image runs as-is on Fly.io, Render, Railway, Cloud Run, Scaleway, a Raspberry Pi or a VPS. It listens on
+That image runs as-is on Fly.io, Render, Railway, Cloud Run, Scaleway, a Raspberry Pi or a VPS. Two of them
+have a config in this repository already:
+
+```
+fly launch --config server/fly.toml --dockerfile server/Dockerfile --no-deploy
+fly volumes create saily_jobs --size 1
+fly deploy --config server/fly.toml --dockerfile server/Dockerfile
+```
+
+For Render, point a new Blueprint at the repository: it reads `server/render.yaml`. Both are configured to
+scale to zero, because a build service is idle almost all the time; the first request after a sleep just
+takes longer.
+
+Whichever you pick, put the resulting URL into the app: Setup → Charts for new areas. It listens on
 `$PORT` (default 8787), which is what every one of those platforms sets. Give it a writable volume at `/jobs`
 if you want builds to survive a restart; without one they are simply lost, which costs a rebuild and nothing
 else.

@@ -72,13 +72,36 @@ def pick_side(rest, side):
     return parts[0]
 
 # Land
+def valid(geom):
+    """A polygon that is not valid makes unary_union raise a side location conflict. Real coastlines
+    produce them: a simplified ring can touch itself at a spit or a river mouth. Repair rather than crash."""
+    if geom.is_valid:
+        return geom
+    try:
+        from shapely import make_valid          # shapely >= 2.0
+        fixed = make_valid(geom)
+    except ImportError:                          # pragma: no cover - shapely 1.x
+        fixed = geom.buffer(0)
+    if fixed.geom_type == 'GeometryCollection':
+        parts = [g for g in fixed.geoms if g.geom_type in ('Polygon', 'MultiPolygon')]
+        fixed = unary_union(parts) if parts else Polygon()
+    return fixed
+
 def load_land(scratch):
     """land_osm.json -> (shapely MultiPolygon in lon/lat, union in xy nm).
     A bbox holding one connected land mass may arrive as a bare Polygon; treat it as a one-part MultiPolygon."""
     land = shape(json.load(open(os.path.join(scratch, 'land_osm.json'))))
     if land.geom_type == 'Polygon':
         land = MultiPolygon([land])
-    land_xy = unary_union([Polygon([to_xy((c[1], c[0])) for c in poly.exterior.coords]) for poly in land.geoms])
+    xy = lambda ring: [to_xy((c[1], c[0])) for c in ring.coords]
+    polys = []
+    for poly in land.geoms:
+        # keep the holes: an interior ring is water inside land, and treating it as land would put a
+        # lagoon or a harbour basin on the wrong side of the leg check
+        p = valid(Polygon(xy(poly.exterior), [xy(r) for r in poly.interiors]))
+        if not p.is_empty:
+            polys.append(p)
+    land_xy = unary_union(polys) if polys else MultiPolygon([])
     return land, land_xy
 
 def bearing(a, b):

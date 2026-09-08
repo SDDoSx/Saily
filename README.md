@@ -43,16 +43,19 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
   passage, with its own settings, track and offline cache. See `docs/ADAPTING.md`.
 
 ## Building a chart for a new area
-Everything above works with no server. The one exception is a **new area**, where a coastline has to be fetched
-from OpenStreetMap and polygonised. Either run it yourself:
+Everything above works with no server. The one exception is a **new area**, where a coastline has to be
+fetched from OpenStreetMap and polygonised. Three ways, pick one:
 
-```
-python3 tools/build_area.py passages/my-passage.json site/passages/my-passage
-```
+- **In the cloud, hosting nothing.** Actions tab → **Build a passage chart** → paste the JSON the route editor
+  gives you. It builds the chart, checks every leg against it, commits it and updates the catalogue; Pages
+  redeploys and the passage is in the app. Nothing to deploy.
+- **Locally, one command.** `npm run dev` runs the app on `:8080` and the chart service on `:8787`. Point the
+  app at it in Setup → Charts for new areas, then **Build a chart for this area** in the route editor.
+- **On your own host.** `docker build -f server/Dockerfile -t saily-chart-service .` — one container, no
+  database. `server/fly.toml` and `server/render.yaml` are ready to go.
 
-or run the small chart service and let the build happen there: `pip install -r server/requirements.txt` then
-`python3 -m server`, or `docker build -f server/Dockerfile -t saily-chart-service .`. It is one container with
-no database, deployable to any host that runs one. See [docs/BACKEND.md](docs/BACKEND.md).
+Or skip the service entirely: `python3 tools/build_area.py passages/my-passage.json site/passages/my-passage`
+does the same build. See [docs/BACKEND.md](docs/BACKEND.md).
 
 ## Deploy (GitHub Pages)
 The workflow `.github/workflows/pages.yml` publishes `site/` on every push to `main` or this branch.

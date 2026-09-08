@@ -1,0 +1,122 @@
+name: Build a passage chart
+
+# The chart for a new area is the one thing that needs a machine with shapely and a route to Overpass.
+# This is that machine, and it costs nothing to keep: draw a route in the app, press "Passage JSON", paste
+# it here, and the built chart is committed and live on the site a couple of minutes later.
+#
+# Actions tab -> "Build a passage chart" -> Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      passage_json:
+        description: 'Passage JSON, pasted (leave blank to build a file already in passages/)'
+        required: false
+        type: string
+      tss_json:
+        description: 'Traffic scheme JSON, if the passage names one'
+        required: false
+        type: string
+      passage_file:
+        description: 'Or a file already in the repository, e.g. passages/strait-of-gibraltar.json'
+        required: false
+        type: string
+      make_default:
+        description: 'Open this passage by default in the app'
+        required: false
+        default: false
+        type: boolean
+      commit:
+        description: 'Commit the built chart (off = build and check only, download the result)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-passage
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the build dependencies
+        run: pip install -r tools/requirements.txt
+
+      - name: Work out what to build
+        id: pick
+        env:
+          PASSAGE_JSON: ${{ inputs.passage_json }}
+          TSS_JSON: ${{ inputs.tss_json }}
+          PASSAGE_FILE: ${{ inputs.passage_file }}
+        run: python3 tools/ci_passage_input.py
+
+      - name: Validate before spending an Overpass query on it
+        run: python3 tools/validate_passage.py --strict "${{ steps.pick.outputs.passage }}"
+
+      - name: Fetch the coastline and build the chart
+        run: |
+          python3 tools/build_area.py "${{ steps.pick.outputs.passage }}" \
+            "site/passages/${{ steps.pick.outputs.id }}" --timeout 180 | tee build.log
+
+      - name: Add it to the catalogue
+        run: |
+          python3 tools/catalogue.py add "${{ steps.pick.outputs.passage }}" \
+            ${{ inputs.make_default && '--default' || '' }}
+          python3 tools/catalogue.py check
+          python3 tools/catalogue.py list
+
+      - name: Check the route against the chart that was just built
+        run: node tools/check_route.js "${{ steps.pick.outputs.passage }}" "site/passages/${{ steps.pick.outputs.id }}/chart-data.js"
+
+      - name: Keep the service worker's precache list in step
+        run: python3 tools/stamp_build.py "${GITHUB_SHA::8}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart-${{ steps.pick.outputs.id }}
+          path: |
+            site/passages/${{ steps.pick.outputs.id }}/
+            build.log
+          if-no-files-found: error
+
+      - name: Commit it
+        if: ${{ inputs.commit }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/passages site/sw.js site/version.json "${{ steps.pick.outputs.passage }}"
+          if git diff --cached --quiet; then
+            echo "nothing changed"
+          else
+            git commit -m "Build the chart for ${{ steps.pick.outputs.id }}
+
+          Fetched from OpenStreetMap via Overpass and built by tools/build_area.py in
+          .github/workflows/build-passage.yml. Chart data (c) OpenStreetMap contributors, ODbL 1.0."
+            git push
+          fi
+
+      - name: Where it went
+        run: |
+          echo "### Built \`${{ steps.pick.outputs.id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -20 build.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.commit }}" = "true" ]; then
+            echo "Committed. GitHub Pages redeploys in a minute or two, then the passage picker in Setup offers it." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Not committed. The chart is attached to this run as an artifact." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Chart data (c) OpenStreetMap contributors, ODbL 1.0: attribution and share-alike apply (docs/LICENSING.md)." >> $GITHUB_STEP_SUMMARY

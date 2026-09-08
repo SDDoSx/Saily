@@ -1,0 +1,24 @@
+# Render. Point a new Blueprint at this repository and it reads this file.
+# The free tier sleeps when idle, which for a build service you use occasionally is fine: the first
+# request after a sleep just takes longer.
+services:
+  - type: web
+    name: saily-chart-service
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: SAILY_JOBS_DIR
+        value: /jobs
+      - key: SAILY_MAX_BBOX_DEG2
+        value: "4.0"
+      - key: SAILY_MAX_RUNNING
+        value: "1"
+      - key: SAILY_ALLOW_ORIGIN
+        value: "*"          # replace with your app's origin
+    disk:
+      name: saily-jobs
+      mountPath: /jobs
+      sizeGB: 1

@@ -767,6 +767,14 @@
     "visCaution": 5000
   },
   "harbourSpeedKn": 4,
+  "harbourWaypoints": [
+    "SOTO",
+    "SOTO-HEAD",
+    "MAR-APP",
+    "TANJA",
+    "TANG-F",
+    "TANG-E"
+  ],
   "checklist": [
     "Weather checked in the app for the whole passage window (wind, gusts, waves, wind vs current), and Spanish forecast (AEMET Estrecho) or Windy cross-checked.",
     "Preload done in Setup while on wifi: app shell, forecast, map tiles. Airplane-mode test: app opens and shows the chart.",

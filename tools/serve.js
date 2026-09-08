@@ -1,6 +1,6 @@
 // Minimal static server for local use: node tools/serve.js [port]
 const http = require('http'), fs = require('fs'), path = require('path');
-const ROOT = path.join(__dirname, '..', 'site'); const PORT = +(process.argv[2] || 8080);
+const ROOT = path.join(__dirname, '..', 'site'); const PORT = +(process.argv[2] || process.env.PORT || 8080);
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.svg': 'image/svg+xml' };
 http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';

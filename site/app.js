@@ -5,6 +5,23 @@
   try {
   const C = window.CHART, N = window.NAV, W = window.WX, P = window.PASSAGE;
   const SINGLE = !!window.SAILY_SINGLE; // single-file build (hosted artifact): no service worker, no raster tiles, embedded forecast
+  // tz, sun and vessel are optional in the schema. Fill them in rather than crash on a passage that
+  // leaves them out: the app has to run on whatever the picker offers it.
+  const centreOf = () => {
+    const b = (P.bbox || (C.meta && C.meta.bbox) || [0, 0, 0, 0]);
+    return { lat: (b[0] + b[2]) / 2, lon: (b[1] + b[3]) / 2 };
+  };
+  const lastWaypoint = () => {
+    const r = (P.routes || []).find(x => x.recommended) || (P.routes || [])[0];
+    const w = r && r.waypoints && r.waypoints[r.waypoints.length - 1];
+    return w ? { lat: w.lat, lon: w.lon } : null;
+  };
+  const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } };
+  P.tz = P.tz || {};
+  P.tz.from = P.tz.from || { label: 'LOC', zone: deviceZone() };
+  P.tz.to = P.tz.to || P.tz.from;
+  P.sun = P.sun || lastWaypoint() || centreOf();
+  P.vessel = P.vessel || {};
   const TZ_ES = P.tz.from.zone, TZ_MA = P.tz.to.zone, TZL_FROM = P.tz.from.label, TZL_TO = P.tz.to.label;
   // Settings, track and alert log are per passage: a route id or a waypoint index from another crossing
   // is meaningless here, and a track from the Strait does not belong on a Solent chart.
@@ -52,7 +69,7 @@
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------- state ----------
-  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, theme: 'auto', dim: 0, bigHud: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false };
+  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, theme: 'auto', dim: 0, bigHud: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false, chartService: '' };
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
@@ -493,6 +510,106 @@
     $('edJson').addEventListener('click', () => showEditJson(rows));
   }
   const round5 = v => Math.round(v * 1e5) / 1e5;
+
+  // ---------- build a chart for an area that has none ----------
+  // A browser cannot fetch and polygonise a coastline, so the optional chart service does it
+  // (docs/BACKEND.md). Configured in Setup; with no URL this is simply not offered.
+  const DEV_INDEX = 'saily.device.passages', DEV_PREFIX = 'saily.device.passage.';
+  const serviceUrl = () => (S.settings.chartService || '').trim().replace(/\/+$/, '');
+  function deviceList() { return loadJson(DEV_INDEX, []) || []; }
+  function forgetDevicePassage(id) {
+    saveJson(DEV_INDEX, deviceList().filter(e => e.id !== id));
+    try { localStorage.removeItem(DEV_PREFIX + id); } catch (e) { }
+  }
+  /** a bbox that holds the drawn route with a margin, rounded out to a tidy edge */
+  function bboxFor(wps, marginNm) {
+    const lats = wps.map(w => w.lat), lons = wps.map(w => w.lon);
+    const mlat = (marginNm || 3) / 60;
+    const mlon = mlat / Math.max(0.2, Math.cos(N.toRad((Math.min(...lats) + Math.max(...lats)) / 2)));
+    const r = (v, dir) => Math.round((v + dir * 0.005) * 100) / 100;
+    return [r(Math.min(...lats) - mlat, -1), r(Math.min(...lons) - mlon, -1),
+            r(Math.max(...lats) + mlat, 1), r(Math.max(...lons) + mlon, 1)];
+  }
+  function passageForBuild(id, title, wps) {
+    const bbox = bboxFor(wps, 3);
+    return {
+      id, name: title, title, description: 'Drawn in Saily on ' + new Date().toISOString().slice(0, 10) + '.',
+      destinationShort: wps[wps.length - 1].id, bbox,
+      tz: { from: { label: 'LOC', zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' },
+            to: { label: 'LOC', zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } },
+      vessel: { name: P.vessel && P.vessel.name || 'this boat', cruiseKn: S.settings.speed,
+                burnLph: (P.vessel && P.vessel.burnLph) || 20, fuelL: (P.vessel && P.vessel.fuelL) || 200,
+                draftM: (P.vessel && P.vessel.draftM) || 1.2 },
+      // The schema wants at least one place, and fetch_osm builds a finer land extract around each one.
+      // The route's own ends are the two that matter: that is where the detail is worth having.
+      sun: { lat: round5(wps[wps.length - 1].lat), lon: round5(wps[wps.length - 1].lon) },
+      places: {
+        start: { name: (wps[0].name || wps[0].id) + ' (start)', lat: round5(wps[0].lat), lon: round5(wps[0].lon) },
+        finish: { name: (wps[wps.length - 1].name || wps[wps.length - 1].id) + ' (finish)', lat: round5(wps[wps.length - 1].lat), lon: round5(wps[wps.length - 1].lon) },
+      },
+      hazards: [],
+      thresholds: Object.assign({}, S.settings.th),
+      routes: [{ id: 'drawn', short: 'Drawn here', name: title, recommended: true,
+                 summary: 'Drawn on the chart in Saily.',
+                 waypoints: wps.map(w => ({ id: w.id, name: w.name || w.id, lat: round5(w.lat), lon: round5(w.lon), radius: w.radius || 0.1, note: w.note || '' })) }],
+      harbourWaypoints: [wps[0].id, wps[wps.length - 1].id],
+    };
+  }
+  async function buildChartForArea() {
+    const base = serviceUrl();
+    const E = S.edit;
+    if (!base) { toast('Set a chart service in Setup first'); return; }
+    if (!E || E.wps.length < 2) { toast('Draw a route first'); return; }
+    const title = prompt('Name this passage', E.name || 'New passage');
+    if (title === null) return;
+    const id = (title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'passage').slice(0, 40);
+    const pz = passageForBuild(id, title.trim() || id, E.wps);
+    const el = $('editPanel');
+    const say = (state, detail) => {
+      el.innerHTML = `<div class="ehead"><b>Building the chart</b><span class="muted small">${esc(id)}</span></div>
+        <div class="hint">${esc(state)}</div><div class="verdictline none">${esc(detail || '')}</div>
+        <div class="ebtns"><button class="btn" id="edBack">Back to the route</button></div>`;
+      const b = $('edBack'); if (b) b.addEventListener('click', editRender);
+    };
+    say('Sending the area to the chart service…', `${pz.bbox.join(', ')}`);
+    try {
+      const res = await fetch(base + '/v1/builds', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passage: pz }),
+      });
+      const started = await res.json();
+      if (!res.ok) throw new Error(started.error || ('the service answered ' + res.status));
+      for (let i = 0; i < 240; i++) {
+        await new Promise(r => setTimeout(r, 2500));
+        const st = await (await fetch(`${base}/v1/builds/${started.id}`, { cache: 'no-store' })).json();
+        say(st.state === 'queued' ? 'Waiting for a build slot…' : 'Fetching the coastline and building…',
+            `${Math.round((Date.now() / 1000) - (st.createdAt || 0))} s so far`);
+        if (st.state === 'done') {
+          const bundle = await (await fetch(`${base}/v1/builds/${started.id}/bundle.json`)).json();
+          saveJson(DEV_INDEX, deviceList().filter(e => e.id !== id).concat([{
+            id, title: pz.title, name: pz.name, description: pz.description, device: true, savedAt: Date.now(),
+          }]));
+          saveJson(DEV_PREFIX + id, { chart: bundle.chart, passage: bundle.passage, attribution: bundle.attribution });
+          try { localStorage.setItem('saily.passage.id', id); } catch (e) { }
+          say('Built.', 'Opening it now…');
+          setTimeout(() => location.reload(), 900);
+          return;
+        }
+        if (st.state === 'failed') {
+          const log = await (await fetch(`${base}/v1/builds/${started.id}/log`)).text();
+          throw new Error((st.error || 'the build failed') + '\n\n' + log.split('\n').slice(-8).join('\n'));
+        }
+      }
+      throw new Error('the build did not finish in time');
+    } catch (e) {
+      const msg = String(e && e.message || e);
+      el.innerHTML = `<div class="ehead"><b>The chart was not built</b></div>
+        <div class="hint">${esc(msg)}</div>
+        <div class="hint">Check the service URL in Setup and that it is reachable from this device. Storage may also be full.</div>
+        <div class="ebtns"><button class="btn" id="edBack">Back to the route</button></div>`;
+      $('edBack').addEventListener('click', editRender);
+    }
+  }
+
   function editedRouteObject() {
     const E = S.edit;
     const wps = E.wps.map(w => ({ id: w.id, name: w.name || w.id, lat: round5(w.lat), lon: round5(w.lon), radius: w.radius || 0.1, note: w.note || '' }));
@@ -521,13 +638,15 @@
     el.innerHTML = `<div class="ehead"><b>Route as passage JSON</b></div>
       <div class="hint">Paste this into the <code>routes</code> array of a file in <code>passages/</code>, then run the checks in <code>docs/ADAPTING.md</code>. ${bad ? `<b>${bad} leg(s) are within ${CLEAR_NM} nm of land.</b>` : 'Every leg clears land here.'}</div>
       <textarea id="edJsonText" readonly spellcheck="false"></textarea>
-      <div class="ebtns"><button class="btn primary" id="edCopy">Copy</button><button class="btn" id="edBack">Back</button></div>`;
+      <div class="ebtns"><button class="btn primary" id="edCopy">Copy</button>${serviceUrl() ? '<button class="btn" id="edBuild">Build a chart for this area</button>' : ''}<button class="btn" id="edBack">Back</button></div>
+      ${serviceUrl() ? '' : '<div class="hint">To navigate this route outside the bundled chart area, set a chart service in Setup and Saily can build the chart for it.</div>'}`;
     $('edJsonText').value = text;
     $('edCopy').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(text); toast('Copied'); }
       catch (e) { $('edJsonText').select(); toast('Select all and copy'); }
     });
     $('edBack').addEventListener('click', editRender);
+    const bb = $('edBuild'); if (bb) bb.addEventListener('click', buildChartForArea);
   }
   // A route drawn here is stored on the device and offered alongside the bundled ones.
   const PLANNED_KEY = 'saily.planned.route' + suffix;
@@ -1384,6 +1503,16 @@
       <p><b>This needs mobile data and it is not a lookout.</b> Coverage comes from volunteer shore receivers: not every ship, up to a minute late, and nothing at all once you lose signal offshore. A real AIS receiver on the boat, or the plotter's own AIS, is the only version of this that works out there. Treat what you see here as a hint about traffic, never as the traffic.</p>
       <p>aisstream.io gives a free key: sign in with GitHub, no payment. Paste it above and the app streams ships in the passage area, draws them with their course, works out the closest point of approach (CPA) and the time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes.</p>
       <p>Nothing showing? The status line says why. "connected" with no messages for a minute usually means the key was refused; "rejected" prints what the server said. Live AIS pauses while the demo simulation runs.</p></details></div>`;
+    const devs = deviceList();
+    h += `<div class="card"><h2>Charts for new areas</h2>
+      <p class="muted small">The app draws and checks routes on its own. Building a chart for an area it has none for means fetching a coastline from OpenStreetMap, which a browser cannot do; a small service does it. Leave this empty and the feature is simply not offered.</p>
+      <label class="field"><span>Chart service URL</span><input type="text" id="setChartService" value="${esc(s.chartService || '')}" placeholder="https://… or http://localhost:8787" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <div class="row" style="margin-top:12px"><button class="btn" id="btnChartSvcTest">Test the service</button></div>
+      <div class="muted small" style="margin-top:10px" id="chartSvcStatus">${s.chartService ? 'not checked yet' : 'no service set'}</div>
+      ${devs.length ? `<h3>Built on this device</h3>${devs.map(d => `<label class="field"><span>${esc(d.title || d.id)}<br><span class="muted small">${esc(d.id)} · ${new Date(d.savedAt || 0).toLocaleDateString()}</span></span><button class="btn danger" data-forget="${esc(d.id)}" style="flex:none">Delete</button></label>`).join('')}` : ''}
+      <details class="help"><summary>How to build one</summary>
+      <p>Draw the route first: map menu, the pencil, tap the chart. Then <b>Passage JSON</b> → <b>Build a chart for this area</b>. Saily sends the area around your route to the service, which fetches the coastline and builds the chart, and the passage then appears in the picker above like any other.</p>
+      <p>Run the service on your own machine with <code>npm run dev</code>, or deploy the container in <code>server/</code>. A chart built this way comes from OpenStreetMap and is ODbL: attribution and share-alike apply.</p></details></div>`;
     h += `<div class="card"><h2>Chart layers</h2>
       <label class="field"><span>OpenSeaMap buoys and lights</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
       <label class="field"><span>Depth shading (EMODnet, online only)</span><input type="checkbox" id="setDepth" ${s.depth ? 'checked' : ''}></label>
@@ -1440,6 +1569,30 @@
     });
     $('setAisDemo').addEventListener('change', () => { s.aisDemo = $('setAisDemo').checked; saveSettings(); });
     $('setDepth').addEventListener('change', () => { s.depth = $('setDepth').checked; saveSettings(); applyBase(); });
+    const svc = $('setChartService');
+    if (svc) svc.addEventListener('change', () => { s.chartService = svc.value.trim(); saveSettings(); $('chartSvcStatus').textContent = s.chartService ? 'not checked yet' : 'no service set'; });
+    const svcTest = $('btnChartSvcTest');
+    if (svcTest) svcTest.addEventListener('click', async () => {
+      const base = (svc.value || '').trim().replace(/\/+$/, '');
+      const out = $('chartSvcStatus');
+      if (!base) { out.textContent = 'no service set'; return; }
+      s.chartService = base; saveSettings();
+      out.textContent = 'checking…';
+      try {
+        const r = await fetch(base + '/health', { cache: 'no-store' });
+        const h2 = await r.json();
+        out.textContent = h2.ok
+          ? `reachable · ${h2.running} building, ${h2.queued} queued · areas up to ${h2.limits.maxBboxDeg2} square degrees`
+          : 'answered, but not ready';
+      } catch (e) { out.textContent = 'not reachable: ' + String(e && e.message || e); }
+    });
+    el.querySelectorAll('[data-forget]').forEach(b => b.addEventListener('click', () => {
+      const id = b.getAttribute('data-forget');
+      if (!confirm(`Delete the chart for "${id}" from this device?`)) return;
+      forgetDevicePassage(id);
+      if (PID === id) { try { localStorage.removeItem('saily.passage.id'); } catch (e) { } location.reload(); return; }
+      renderMore();
+    }));
     if (!S.aisStatusTimer) S.aisStatusTimer = setInterval(() => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); }, 5000);
     $('setSound').addEventListener('change', () => { s.sound = $('setSound').checked; saveSettings(); });
     $('setSeamark').addEventListener('change', () => { s.seamark = $('setSeamark').checked; saveSettings(); applyBase(); });

@@ -24,6 +24,28 @@
   }
   function stored() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
 
+  // --- passages this device built for itself -----------------------------------------------------
+  // The chart service returns "window.CHART = {...};". Parse that rather than run it: the data is a
+  // chart, and a chart should never be able to execute anything, whoever is hosting the service.
+  var DEV_INDEX = 'saily.device.passages';
+  var DEV_PREFIX = 'saily.device.passage.';
+  function deviceIndex() {
+    try { return JSON.parse(localStorage.getItem(DEV_INDEX) || '[]') || []; } catch (e) { return []; }
+  }
+  function parseAssign(text, name) {
+    var src = String(text || '');
+    var at = src.indexOf('=');
+    if (at < 0 || src.slice(0, at).replace(/\s/g, '') !== 'window.' + name) throw new Error('not a ' + name + ' file');
+    return JSON.parse(src.slice(at + 1).trim().replace(/;\s*$/, ''));
+  }
+  function loadDevice(id) {
+    var raw = localStorage.getItem(DEV_PREFIX + id);
+    if (!raw) throw new Error('this device has no passage ' + id);
+    var saved = JSON.parse(raw);
+    window.CHART = parseAssign(saved.chart, 'CHART');
+    window.PASSAGE = parseAssign(saved.passage, 'PASSAGE');
+  }
+
   function pick(list) {
     var want = stored();
     for (var i = 0; i < list.length; i++) if (list[i].id === want) return list[i];
@@ -50,13 +72,16 @@
 
   fetch(CATALOGUE, { cache: 'no-cache' })
     .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .catch(function () { return []; })              // offline before the first install, or opened off the disk
     .then(function (list) {
-      window.SAILY_PASSAGES = list;
-      var p = pick(list);
-      if (!p) throw new Error('the passage catalogue is empty');
+      var device = deviceIndex();
+      window.SAILY_PASSAGES = list.concat(device);
+      var p = pick(window.SAILY_PASSAGES);
+      if (!p) return withoutCatalogue('the passage catalogue is empty');
       window.SAILY_PASSAGE_ID = p.id;
+      if (p.device) { loadDevice(p.id); return null; }
       return loadScript(p.chart).then(function () { return loadScript(p.passage); });
-    }, function (e) { return withoutCatalogue(e && e.message ? e.message : String(e)); })
+    })
     .then(function () {
       return CODE.reduce(function (chain, f) { return chain.then(function () { return loadScript(f); }); }, Promise.resolve());
     })
