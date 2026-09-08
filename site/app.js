@@ -69,7 +69,7 @@
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------- state ----------
-  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'carto', seamark: true, chartOnly: false, theme: 'auto', dim: 0, bigHud: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false, chartService: '' };
+  const DEFAULTS = { speed: (P.vessel && P.vessel.cruiseKn) || 22, routeId: (P.routes.find(r => r.recommended) || P.routes[0]).id, departure: defaultDeparture(), voice: true, sound: true, th: Object.assign({}, W.DEFAULT_THRESHOLDS), base: 'osm', seamark: true, chartOnly: false, theme: 'auto', dim: 0, bigHud: false, wp: 1, checklist: {}, maOffset: 'auto', autoZoom: true, aisOn: false, aisKey: '', aisDemo: true, depth: false, chartService: '' };
   const S = {
     settings: loadSettings(), pos: null, lastFixAt: 0, fixes: [], track: [], smoother: N.makeSmoother(0.35), sog: null, cog: null, acc: null,
     started: false, navigating: false, sim: null, watchId: null, wakeLock: null, audio: null, muted: false,
@@ -299,9 +299,11 @@
   map.createPane('route').style.zIndex = 420;
   map.createPane('aids').style.zIndex = 430;
   map.createPane('vessel').style.zIndex = 650;
+  // CARTO's keyless basemaps now return tiles stamped "API KEY REQUIRED" across the whole image, so they
+  // are gone. OpenStreetMap's own tiles are the default; the built-in vector chart is what actually has to
+  // work, and it needs no tiles at all (the ⛵ Chart only option).
   const BASES = {
     osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }),
-    carto: L.tileLayer('https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap © CARTO' }), // single host: preload cache keys must match
     sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Imagery © Esri' }),
   };
   const SEAMARK = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenSeaMap' });
@@ -312,7 +314,7 @@
     if (map.hasLayer(SEAMARK)) map.removeLayer(SEAMARK);
     if (map.hasLayer(DEPTH)) map.removeLayer(DEPTH); if (map.hasLayer(CONTOURS)) map.removeLayer(CONTOURS);
     if (!S.settings.chartOnly && !SINGLE) {
-      (BASES[S.settings.base] || BASES.carto).addTo(map);
+      (BASES[S.settings.base] || BASES.osm).addTo(map);
       if (S.settings.depth) { DEPTH.addTo(map); CONTOURS.addTo(map); }
       if (S.settings.seamark) SEAMARK.addTo(map);
     }
@@ -689,7 +691,7 @@
   $('btnZoomOut').addEventListener('click', () => { S.userZoomAt = Date.now(); map.zoomOut(); });
   $('btnFollow').addEventListener('click', () => { S.follow = !S.follow; $('btnFollow').classList.toggle('on', S.follow); if (S.follow && S.pos) map.panTo([S.pos.lat, S.pos.lon]); });
   $('btnRoute').addEventListener('click', () => { S.follow = false; $('btnFollow').classList.remove('on'); S.userZoomAt = Date.now(); map.fitBounds(S.route.waypoints.map(w => [w.lat, w.lon]), { padding: [30, 30] }); });
-  $('btnLayers').addEventListener('click', () => { const order = ['carto', 'osm', 'sat']; S.settings.base = order[(order.indexOf(S.settings.base) + 1) % order.length]; S.settings.chartOnly = false; saveSettings(); applyBase(); toast('Base map: ' + { osm: 'OpenStreetMap', carto: 'CARTO light', sat: 'Satellite' }[S.settings.base]); });
+  $('btnLayers').addEventListener('click', () => { const order = ['osm', 'sat']; S.settings.base = order[(order.indexOf(S.settings.base) + 1) % order.length]; S.settings.chartOnly = false; saveSettings(); applyBase(); toast('Base map: ' + { osm: 'OpenStreetMap', sat: 'Satellite' }[S.settings.base]); });
   $('btnChartOnly').addEventListener('click', () => { S.settings.chartOnly = !S.settings.chartOnly; saveSettings(); applyBase(); toast(S.settings.chartOnly ? 'Vector chart only (works fully offline)' : 'Tiles on'); });
   $('btnNight').addEventListener('click', () => { S.settings.theme = S.settings.theme === 'night' ? 'auto' : 'night'; saveSettings(); applyTheme(); toast(S.settings.theme === 'night' ? 'Night colours on' : 'Colours: automatic (night after sunset)'); });
   $('btnDay').addEventListener('click', () => { S.settings.theme = S.settings.theme === 'day' ? 'auto' : 'day'; saveSettings(); applyTheme(); toast(S.settings.theme === 'day' ? 'Daylight colours on' : 'Colours: automatic (night after sunset)'); });
@@ -1540,7 +1542,7 @@
     h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div>
       <details class="help"><summary>Installing it properly</summary><p>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload <b>there</b>: the Home Screen app has its own storage, separate from Safari's.</p></details></div>`;
     h += `<div class="card"><h2>Alert log</h2><div class="log">${esc(S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}${l.n > 1 ? ' (x' + l.n + ')' : ''}`).join('\n') || 'none yet')}</div><div class="row" style="margin-top:12px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
-    h += `<div class="card"><h2>About</h2><p class="muted small">Saily is a passage aid, not a chart plotter. Data: ${esc(C.meta.sources.join('; '))}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, CARTO, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). <b>Not for navigation without official charts, a proper lookout and the COLREGs.</b></p></div>`;
+    h += `<div class="card"><h2>About</h2><p class="muted small">Saily is a passage aid, not a chart plotter. Data: ${esc(C.meta.sources.join('; '))}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). <b>Not for navigation without official charts, a proper lookout and the COLREGs.</b></p></div>`;
     el.innerHTML = h;
     const num = (id, f) => $(id).addEventListener('change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
     num('setSpeed', v => { s.speed = v; });
@@ -1636,17 +1638,30 @@
     const y1 = lat2y(bbox[2]), y2 = lat2y(bbox[0]);
     const out = []; for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) out.push({ z, x, y }); return out;
   }
+  const TILE_BUDGET = 1800;   // OpenStreetMap's tile policy calls bulk prefetching abuse; stay well under it
   function tileUrls() {
-    const corridor = [35.72, -5.95, 36.34, -5.20];
-    const harb = [[36.27, -5.30, 36.31, -5.24], [35.77, -5.83, 35.81, -5.76]];
+    // the corridor is the active route, not a pair of coordinates in the Strait
+    const wps = WPS();
+    const pad = 0.06;
+    const corridor = wps.length
+      ? [Math.min(...wps.map(w => w.lat)) - pad, Math.min(...wps.map(w => w.lon)) - pad,
+         Math.max(...wps.map(w => w.lat)) + pad, Math.max(...wps.map(w => w.lon)) + pad]
+      : C.meta.bbox;
+    const harb = Object.values(P.places || {}).map(pl => [pl.lat - 0.02, pl.lon - 0.03, pl.lat + 0.02, pl.lon + 0.03]);
     const osm = t => `https://tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`;
     const sea = t => `https://tiles.openseamap.org/seamark/${t.z}/${t.x}/${t.y}.png`;
     const sat = t => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${t.z}/${t.y}/${t.x}`;
-    const carto = t => `https://a.basemaps.cartocdn.com/rastertiles/voyager/${t.z}/${t.x}/${t.y}.png`;
     const urls = [];
-    // corridor: CARTO base (light, permissive terms) + OpenSeaMap seamarks; OSM standard only for the two harbours (small, within OSM policy)
-    for (let z = 8; z <= 13; z++) tileRange(corridor, z).forEach(t => { urls.push(carto(t)); if (z >= 10) urls.push(sea(t)); });
-    for (const b of harb) for (let z = 14; z <= 16; z++) tileRange(b, z).forEach(t => { urls.push(carto(t)); urls.push(osm(t)); urls.push(sea(t)); urls.push(sat(t)); });
+    // The built-in vector chart is what works offline. Tiles are a nicety, so take few: the passage
+    // overview at low zoom, seamarks where they are legible, and detail only around the harbours.
+    for (let z = 8; z <= 12; z++) tileRange(corridor, z).forEach(t => { urls.push(osm(t)); if (z >= 10) urls.push(sea(t)); });
+    for (const b of harb) for (let z = 14; z <= 16; z++) tileRange(b, z).forEach(t => { urls.push(osm(t)); urls.push(sea(t)); urls.push(sat(t)); });
+    if (urls.length > TILE_BUDGET) {                 // a big passage must not turn preload into a scrape
+      const step = urls.length / TILE_BUDGET;
+      const thinned = [];
+      for (let i = 0; i < urls.length; i += step) thinned.push(urls[Math.floor(i)]);
+      return thinned;
+    }
     return urls;
   }
   async function preload(wx, tiles) {
@@ -1743,7 +1758,7 @@
     rows.push({ name: 'App offline', ...shell });
     // 2 tiles
     try {
-      if (!SINGLE && 'caches' in window) { const c = await caches.open('tiles-v1'); const urls = tileUrls().filter(u => u.includes('cartocdn') || u.includes('openseamap')); let have = 0; const sample = urls.filter((u, i) => i % 7 === 0); for (const u of sample) if (await c.match(u)) have++; const pct = sample.length ? Math.round(have / sample.length * 100) : 0; rows.push({ name: 'Map tiles', ok: pct >= 95, warn: pct >= 50, text: pct + '% of corridor tiles cached (vector chart always works)', fix: pct < 95 ? 'preload' : null }); }
+      if (!SINGLE && 'caches' in window) { const c = await caches.open('tiles-v1'); const urls = tileUrls().filter(u => u.includes('tile.openstreetmap.org') || u.includes('openseamap')); let have = 0; const sample = urls.filter((u, i) => i % 7 === 0); for (const u of sample) if (await c.match(u)) have++; const pct = sample.length ? Math.round(have / sample.length * 100) : 0; rows.push({ name: 'Map tiles', ok: pct >= 95, warn: pct >= 50, text: pct + '% of corridor tiles cached (vector chart always works)', fix: pct < 95 ? 'preload' : null }); }
       else rows.push({ name: 'Map tiles', ok: true, text: 'vector chart built in' });
     } catch (e) { rows.push({ name: 'Map tiles', ok: false, warn: true, text: 'cache not available (needs https)' }); }
     // 3 forecast

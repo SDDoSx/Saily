@@ -13,7 +13,7 @@ const SHELL_FILES = [
   './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './version.json',
 ];
-const TILE_HOSTS = ['tile.openstreetmap.org', 'tiles.openseamap.org', 't1.openseamap.org', 'basemaps.cartocdn.com', 'server.arcgisonline.com'];
+const TILE_HOSTS = ['tile.openstreetmap.org', 'tiles.openseamap.org', 't1.openseamap.org', 'server.arcgisonline.com'];
 const DATA_HOSTS = ['api.open-meteo.com', 'marine-api.open-meteo.com'];
 const BLANK_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 

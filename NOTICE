@@ -53,10 +53,8 @@ their own terms. Background and obligations for forks: docs/LICENSING.md.
 
 6. Map tile and data services used at run time (not bundled; the app caches
    tiles on the user's device for offline use). Each has its own terms:
-   - CARTO basemaps, Voyager raster tiles (a.basemaps.cartocdn.com):
-     attribution "(c) OpenStreetMap contributors (c) CARTO". CARTO basemap
-     terms: https://carto.com/legal/ and https://carto.com/basemaps/ (free
-     with attribution for non-commercial use; commercial use needs a plan).
+   - CARTO basemaps were the default until 0.15.2 and are no longer used:
+     keyless requests now return tiles stamped "API KEY REQUIRED".
    - OpenStreetMap standard tiles (tile.openstreetmap.org): (c) OpenStreetMap
      contributors. OSMF tile usage policy:
      https://operations.osmfoundation.org/policies/tiles/ (attribution

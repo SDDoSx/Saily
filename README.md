@@ -6,7 +6,7 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
 ## What it does
 - **Vector chart built in**: coastline from OpenStreetMap, the IMO traffic separation scheme (COLREG.2/Circ.66) with lanes,
   separation zones, precautionary areas and inshore zones, lights, buoys, charted wrecks and rocks, and place labels.
-  Raster tiles (CARTO, OpenStreetMap, satellite, OpenSeaMap seamarks, EMODnet depth) are an optional layer on top.
+  Raster tiles (OpenStreetMap, satellite, OpenSeaMap seamarks, EMODnet depth) are an optional layer on top.
 - **Route guidance**: verified waypoints with pilotage notes read aloud, bearing and distance to the next waypoint,
   cross-track error with an XTE highway bar, steering cue, next-turn countdown, ETA in both time zones, passage progress strip,
   automatic waypoint advance with undo, MOB, mark position, repeat last instruction, big position display for a MAYDAY.
@@ -95,5 +95,5 @@ global Playwright; a local `node_modules` takes precedence.
 - `npm start` serves `site/` locally.
 
 Data: OpenStreetMap contributors (ODbL), IMO COLREG.2/Circ.66, NGA Pub 131, Puerto Sotogrande notices, Tanja Marina Bay guide 2026,
-Open-Meteo (CC BY 4.0), CARTO / Esri / OpenSeaMap tiles.
+Open-Meteo (CC BY 4.0), OpenStreetMap / Esri / OpenSeaMap tiles.
 Licences: code MIT, chart data ODbL (share-alike), forecasts CC BY 4.0, tiles under provider terms: see [docs/LICENSING.md](docs/LICENSING.md).

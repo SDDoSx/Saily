@@ -15,7 +15,7 @@ fork must do, and where each notice lives. The binding texts are [`LICENSE`](../
 | Pilotage notes | `passages/strait-of-gibraltar.json` | NGA Pub 131, public domain | keep the "Pub 131" citation |
 | Forecast fixtures and snapshots | `tools/fixtures/fc.json`, `tools/fixtures/marine.json`, `tools/out/wx_snapshot.json`, the forecast inside `dist/saily.html` | Open-Meteo, CC BY 4.0 | keep "Weather data by Open-Meteo.com" |
 | Map library | `site/vendor/leaflet/` | Leaflet 1.9.4, BSD-2-Clause | keep `site/vendor/leaflet/LICENSE` |
-| Tiles, depth, AIS at run time | CARTO, OpenStreetMap, OpenSeaMap, Esri, EMODnet, aisstream.io | each provider's terms | keep the attribution control; respect the preload limits |
+| Tiles, depth, AIS at run time | OpenStreetMap, OpenSeaMap, Esri, EMODnet, aisstream.io | each provider's terms | keep the attribution control; respect the preload limits |
 
 ## Code: MIT
 
@@ -97,7 +97,7 @@ levels in `app.js` (`tileUrls()`), re-read the terms first.
 
 | Provider | Used for | Attribution shown | Terms | Preload |
 |---|---|---|---|---|
-| CARTO Voyager (`a.basemaps.cartocdn.com`) | default base map | © OpenStreetMap © CARTO | [CARTO basemaps](https://carto.com/basemaps/), [legal](https://carto.com/legal/): free with attribution for non-commercial use; commercial use needs a CARTO plan | route corridor zoom 8-13, harbours zoom 14-16 |
+| ~~CARTO Voyager~~ | **removed in 0.15.2** | — | CARTO now returns keyless tiles stamped "API KEY REQUIRED" across the image. If you want it back, get a key and add it to `BASES` yourself | — |
 | OpenStreetMap standard (`tile.openstreetmap.org`) | alternative base map | © OpenStreetMap contributors | [OSMF tile usage policy](https://operations.osmfoundation.org/policies/tiles/): attribution, no bulk download, valid User-Agent/Referer | two harbour boxes only, zoom 14-16 |
 | OpenSeaMap (`tiles.openseamap.org`) | seamark overlay | © OpenSeaMap | [openseamap.org](https://www.openseamap.org): tiles CC BY-SA 2.0, data ODbL | corridor zoom 10-13, harbours zoom 14-16 |
 | Esri World Imagery (`server.arcgisonline.com`) | satellite base map | Imagery © Esri (full credit line: "Esri, Maxar, Earthstar Geographics, and the GIS User Community") | [Esri terms of use](https://www.esri.com/en-us/legal/terms/full-master-agreement): attribution required; offline caching of basemap tiles is restricted, keep the preload small | harbours only, zoom 14-16 |
