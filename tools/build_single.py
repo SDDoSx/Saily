@@ -18,8 +18,20 @@ style = html.split('<style>', 1)[1].split('</style>', 1)[0]
 leaflet_css = rd('vendor/leaflet/leaflet.css')
 leaflet_css = re.sub(r'url\(images/[^)]+\)', 'none', leaflet_css)
 leaflet_js = rd('vendor/leaflet/leaflet.min.js')
+
+# The single-file build has no directory to fetch fonts from, so they ride along as data URIs.
+import base64
+def font_uri(name):
+    with open(os.path.join(ROOT, 'vendor', 'fonts', name), 'rb') as f:
+        return 'data:font/woff2;base64,' + base64.b64encode(f.read()).decode()
+FONT_CSS = (
+    "@font-face{font-family:'Plex';src:url(%s) format('woff2-variations');font-weight:400 700;font-style:normal;font-display:swap}"
+    "@font-face{font-family:'Plex Cond';src:url(%s) format('woff2');font-weight:600;font-style:normal;font-display:swap}"
+    "@font-face{font-family:'Plex Cond';src:url(%s) format('woff2');font-weight:700;font-style:normal;font-display:swap}"
+) % (font_uri('plex-sans-var-latin.woff2'), font_uri('plex-cond-600-latin.woff2'), font_uri('plex-cond-700-latin.woff2'))
 parts = ['<title>Saily</title>',
-         '<style>\n' + leaflet_css + '\n' + style + '\n#app{font-size:15px}\n</style>',
+         '<style>\n' + leaflet_css + '\n' + FONT_CSS + '\n'
+             + re.sub(r"@font-face\{[^}]*vendor/fonts[^}]*\}", '', style) + '\n#app{font-size:15px}\n</style>',
          body,
          '<script>\n' + leaflet_js + '\n</script>',
          # Data before code: weather.js reads PASSAGE at load time (sample points, thresholds, time zone).

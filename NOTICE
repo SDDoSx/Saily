@@ -51,7 +51,16 @@ their own terms. Background and obligations for forks: docs/LICENSING.md.
    CloudMade. All rights reserved. Full text: site/vendor/leaflet/LICENSE.
    Version: site/vendor/leaflet/VERSION.
 
-6. Map tile and data services used at run time (not bundled; the app caches
+6. IBM Plex Sans and IBM Plex Sans Condensed: SIL Open Font License 1.1
+   Files: site/vendor/fonts/*.woff2 (also inlined into dist/saily.html and
+   tools/out/saily-standalone.html).
+   Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex".
+   Full text: site/vendor/fonts/LICENSE. Versions and the exact upstream
+   files: site/vendor/fonts/VERSION.
+   Self-hosted rather than fetched from a font CDN so the app renders the
+   same offshore as alongside.
+
+7. Map tile and data services used at run time (not bundled; the app caches
    tiles on the user's device for offline use). Each has its own terms:
    - CARTO basemaps were the default until 0.15.2 and are no longer used:
      keyless requests now return tiles stamped "API KEY REQUIRED".

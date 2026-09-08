@@ -1521,7 +1521,7 @@
       const pass = mode === 'now' ? W.remainingPassage(d, S.route.waypoints, doneNm, new Date(), S.sog, S.settings.speed, S.settings.th) : W.passage(d, dep, S.settings.speed, S.settings.th, S.route.waypoints);
       const ov = W.overall(pass);
       const title = mode === 'now' ? `Rest of the passage: ${N.fmtNm(S.route.total - doneNm, 1)} nm from here at ${useKn} kn` : `Passage check: depart ${bothTimes(dep)} at ${S.settings.speed} kn`;
-      h += `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${title}</h2>${live ? `<span class="seg"><button class="btn ${mode === 'now' ? 'on' : ''}" data-wxmode="now">Now</button><button class="btn ${mode === 'plan' ? 'on' : ''}" data-wxmode="plan">Planned</button></span>` : ''}</div>
+      h += `<div class="card wide"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${title}</h2>${live ? `<span class="seg"><button class="btn ${mode === 'now' ? 'on' : ''}" data-wxmode="now">Now</button><button class="btn ${mode === 'plan' ? 'on' : ''}" data-wxmode="plan">Planned</button></span>` : ''}</div>
         <div class="verdict ${ov.level}"><div class="vlabel">${LEVELNAME[ov.level] || ov.level}</div><div class="vgov">${ov.governing ? ov.governing.text : (ov.level === 'incomplete' ? 'Forecast missing for part of the passage' : 'Nothing over your thresholds at any route point')}</div></div>`;
       // The verdict above already says CAUTION or NO-GO. Repeating it on every line is noise:
       // a severity stripe carries it, and the measurement leads so the list can be scanned.
@@ -1546,16 +1546,16 @@
       if (mode === 'plan') {
       const scan = W.departureScan(d, new Date(Math.max(Date.now(), new Date(S.settings.departure).getTime() - 12 * 3600000)), 36, S.settings.speed, S.settings.th, S.route.waypoints);
       const okOnes = scan.filter(s => s.overall.level === 'ok');
-      h += `<div class="card"><h2>Departure windows (next 36 h)</h2><p class="muted">Same passage check run for every hour of departure. Green rows are windows with nothing over your thresholds. Tap "Use" to plan on that hour.</p><div class="tbl"><table><tr><th>Depart (ES)</th><th>Verdict</th><th>Max wind</th><th>Max gust</th><th>Max wave</th><th></th></tr>`;
+      h += `<div class="card wide"><h2>Departure windows (next 36 h)</h2><p class="muted">Same passage check run for every hour of departure. Green rows are windows with nothing over your thresholds. Tap "Use" to plan on that hour.</p><div class="tbl"><table><tr><th>Depart (ES)</th><th>Verdict</th><th>Max wind</th><th>Max gust</th><th>Max wave</th><th></th></tr>`;
       for (const s of scan) h += `<tr class="${s.overall.level === 'ok' ? 'best' : s.overall.level}"><td>${s.dep.toDateString().slice(0, 3)} ${N.fmtTime(s.dep, TZ_ES)}</td><td>${tagFor(s.overall)}</td><td>${s.maxWind != null && s.maxWind >= 0 ? Math.round(s.maxWind) + ' kn' : '--'}</td><td>${s.maxGust != null && s.maxGust >= 0 ? Math.round(s.maxGust) : '--'}</td><td>${s.maxWave != null && s.maxWave >= 0 ? s.maxWave.toFixed(1) + ' m' : '--'}</td><td><button class="btn" data-dep="${s.dep.toISOString()}" style="padding:4px 8px">Use</button></td></tr>`;
       h += `</table></div>${okOnes.length ? '' : '<p><b>No clean window in the next 36 hours</b> at these thresholds.</p>'}</div>`;
       }
       // hourly table for a selected point
       const sel = S.wxSel || 'tarifa'; const pt = d.points[sel];
-      h += `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Hourly</h2><select id="wxSel">${W.POINTS.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${p.name}</option>`).join('')}</select></div>`;
+      h += `<div class="card wide"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Hourly</h2><select id="wxSel">${W.POINTS.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${p.name}</option>`).join('')}</select></div>`;
       if (pt) {
         const startIdx = Math.max(0, pt.rows.findIndex(r => r.time >= W.madridLocalIso(new Date(Date.now() - 2 * 3600000))));
-        h += `<div class="tbl"><table><tr><th>ES time</th><th>Wind</th><th>Gust</th><th>Waves</th><th>Swell</th><th>Current</th><th>Tide</th><th>Sky</th><th></th></tr>`;
+        h += `<div class="tbl scrolly"><table><tr><th>ES time</th><th>Wind</th><th>Gust</th><th>Waves</th><th>Swell</th><th>Current</th><th>Tide</th><th>Sky</th><th></th></tr>`;
         for (const r of pt.rows.slice(startIdx, startIdx + 30)) {
           const v = W.classify(r, S.settings.th);
           h += `<tr class="${v.level}"><td>${r.time.slice(5, 10).replace('-', '/')} ${r.time.slice(11)}</td><td>${Math.round(r.wind)} ${N.compass16(r.windDir)} ${arrow(r.windDir)}</td><td>${Math.round(r.gust)}</td><td>${r.wave != null ? r.wave.toFixed(1) + ' m ' + Math.round(r.wavePeriod) + 's' : '--'}</td><td>${r.swell != null ? r.swell.toFixed(1) + ' m' : '--'}</td><td>${r.current != null ? r.current.toFixed(1) + ' ' + arrowTo(r.currentDir) : '--'}</td><td>${r.seaLevel != null ? (r.seaLevel >= 0 ? '+' : '') + r.seaLevel.toFixed(2) + ' m' : '--'}</td><td>${W.WMO[r.code] || ''}</td><td>${v.level !== 'ok' ? v.reasons.join(', ') : ''}</td></tr>`;
@@ -1597,10 +1597,10 @@
       <p><b>${esc(r.name)}</b></p><p>${esc(r.summary || '')}</p>
       ${r.unverified ? `<p class="wxstale"><b>Not verified.</b> This route was drawn in the app and has legs within ${CLEAR_NM} nm of land. Check every one of them against a real chart before you follow it.</p>` : ''}
       <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (vesselOf().burnLph || 75))} L at a planning burn of ${vesselOf().burnLph || 75} L/h (${esc(vesselOf().name || vesselOf().label || 'planning figure')}; tanks ${vesselOf().fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
-    h += `<div class="card"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
+    h += `<div class="card wide"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
     r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
     h += `</table></div><p class="muted">Courses are true. Apply your compass variation (about 1° W here) and deviation if steering by compass.</p></div>`;
-    h += `<div class="card"><h2>Waypoints</h2><div class="tbl"><table><tr><th>ID</th><th>Position</th><th>Note</th></tr>${r.waypoints.map(w => `<tr><td><b>${w.id}</b><br><span class="muted">${w.name}</span></td><td>${N.fmtDM(w.lat, w.lon)}<br><span class="muted">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</span></td><td style="white-space:normal;min-width:220px">${w.note}</td></tr>`).join('')}</table></div>
+    h += `<div class="card wide"><h2>Waypoints</h2><div class="tbl"><table><tr><th>ID</th><th>Position</th><th>Note</th></tr>${r.waypoints.map(w => `<tr><td><b>${w.id}</b><br><span class="muted">${w.name}</span></td><td>${N.fmtDM(w.lat, w.lon)}<br><span class="muted">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</span></td><td style="white-space:normal;min-width:220px">${w.note}</td></tr>`).join('')}</table></div>
       <div class="row" style="margin-top:8px">${SINGLE ? '' : `<a class="btn" id="gpxLink" download="saily-${r.id}.gpx">Download GPX for the plotter</a>`}<button class="btn" id="btnCopyWp">Copy waypoints (ID, lat/lon)</button></div></div>`;
     for (const c of (P.cards || [])) h += c.html;
     h += `<div class="card"><h2>Departure checklist</h2><div class="check">${CHECKLIST.map((c, i) => `<label><input type="checkbox" data-ck="${i}" ${S.settings.checklist[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>`;

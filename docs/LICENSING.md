@@ -10,6 +10,7 @@ fork must do, and where each notice lives. The binding texts are [`LICENSE`](../
 |---|---|---|---|
 | Code | `site/*.js` except the two generated files, `site/index.html`, `site/sw.js`, `tools/`, `tests/` | MIT | keep the copyright and permission notice |
 | Passage definition | `passages/*.json`, `site/passages/<id>/passage.js` | MIT text written for this project; quotes facts from IMO, NGA Pub 131 and port notices | keep the source citations inside the notes |
+| Typeface | `site/vendor/fonts/*.woff2`; inlined in `dist/saily.html` | **SIL OFL 1.1** (IBM Plex) | keep `site/vendor/fonts/LICENSE` with every copy; do not sell the font itself |
 | Vector chart | `site/passages/<id>/chart-data.js`; embedded in `dist/saily.html` and `tools/out/saily-standalone.html` | **ODbL 1.0** (OpenStreetMap derivative database) | show "© OpenStreetMap contributors", share-alike, keep `NOTICE` |
 | TSS geometry | `passages/strait-of-gibraltar.tss.json` (positions), `chart-data.js` `tss` block | IMO COLREG.2/Circ.66 positions cited as facts | not copy the circular's text; verify against the scheme in force |
 | Pilotage notes | `passages/strait-of-gibraltar.json` | NGA Pub 131, public domain | keep the "Pub 131" citation |

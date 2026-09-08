@@ -1,5 +1,5 @@
 /* Saily service worker: offline app shell, tile cache, weather cache. */
-const VERSION = 'saily-146af62b';
+const VERSION = 'saily-fc15248a-dirty';
 const SHELL = 'shell-' + VERSION;
 const TILES = 'tiles-v1';
 const DATA = 'data-v1';
@@ -9,6 +9,7 @@ const PASSAGE_FILES = ['./passages/index.json', './passages/strait-of-gibraltar/
 const SHELL_FILES = [
   './', './index.html', './boot.js', './app.js', './nav.js', './weather.js', './ais.js', './boats.json', ...PASSAGE_FILES, './manifest.webmanifest',
   './vendor/leaflet/leaflet.css', './vendor/leaflet/leaflet.min.js',
+  './vendor/fonts/plex-sans-var-latin.woff2', './vendor/fonts/plex-cond-600-latin.woff2', './vendor/fonts/plex-cond-700-latin.woff2',
   './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png',
   './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './version.json',

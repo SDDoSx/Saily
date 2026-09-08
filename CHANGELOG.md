@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.18.0 (2026-09-08)
+A proper pass over the interface, rather than another round of patches.
+- **Type.** IBM Plex, self-hosted: the condensed cut carries labels and headings where width is scarce, the
+  variable face carries everything else, and every figure is tabular so columns of numbers line up instead
+  of dancing. 67 KB for three faces, in the service worker's precache and inlined in the single-file build,
+  because a font fetched from a CDN is a font that is not there offshore.
+- **Desktop is a desktop layout.** A 1440 px screen was showing one 900 px column: a phone app stretched.
+  The tabs become a rail down the side with a wordmark, and pages flow into two columns (three past
+  1500 px), with the cards that carry wide tables spanning the full width.
+- **Landscape keeps MOB reachable.** The instrument column scrolls, and the helm row is pinned to the
+  bottom of it rather than falling off the end.
+- The passage verdict was a slab with the word CAUTION shouting over the reason it gave, which is the
+  useful half. It is a proportioned banner now, and it stacks on narrow phones.
+- Long tables scroll inside their own card with a sticky header, so a five-day hourly forecast is no longer
+  the tallest thing on the page. Number fields stop expanding to a third of a wide screen.
+- Zebra striping by pairs, real focus and active states, and transitions on the controls.
+
 ## 0.17.0 (2026-09-08)
 Give it two ends and the boat, and it works out the course, when to leave, and where to stop.
 - **Plan with weather.** Fetches a forecast grid over the whole passage area (Open-Meteo takes many

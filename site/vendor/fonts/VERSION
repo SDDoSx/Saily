@@ -1,0 +1,18 @@
+IBM Plex Sans and IBM Plex Sans Condensed
+Licence: SIL Open Font License 1.1, see LICENSE in this directory.
+Upstream: https://github.com/IBM/plex  (also served by Google Fonts)
+
+Files, taken from Google Fonts' latin subsets and byte-identical to them:
+
+  plex-sans-var-latin.woff2   IBM Plex Sans, variable weight 400-700, latin subset
+                              https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSB4Zh.woff2
+  plex-cond-600-latin.woff2   IBM Plex Sans Condensed 600, latin subset
+                              https://fonts.gstatic.com/s/ibmplexsanscondensed/v15/Gg8gN4UfRSqiPg7Jn2ZI12V4DCEwkj1E4LVeHY527LvspYYnFBq4.woff2
+  plex-cond-700-latin.woff2   IBM Plex Sans Condensed 700, latin subset
+                              https://fonts.gstatic.com/s/ibmplexsanscondensed/v15/Gg8gN4UfRSqiPg7Jn2ZI12V4DCEwkj1E4LVeHY4S7bvspYYnFBq4.woff2
+
+Self-hosted on purpose: a font fetched from a CDN is a font that is not there when the boat is offshore,
+and this app has to render the same tied up as it does ten miles out. They are in the service worker's
+precache list and inlined as data URIs in the single-file build.
+
+Latin only. If you adapt Saily to a passage whose names need more, take the fuller subsets from upstream.

@@ -22,6 +22,8 @@ explanation in docs/LICENSING.md. In short:
   Open-Meteo.com, Creative Commons Attribution 4.0 International (CC BY 4.0).
 - site/vendor/leaflet/: Leaflet 1.9.4, BSD-2-Clause, see
   site/vendor/leaflet/LICENSE.
+- site/vendor/fonts/: IBM Plex Sans and IBM Plex Sans Condensed, SIL Open Font
+  License 1.1, see site/vendor/fonts/LICENSE.
 - Map tiles and depth data from OpenStreetMap, OpenSeaMap, Esri and
   EMODnet are fetched at run time under the providers' own terms and are not
   part of this repository.
