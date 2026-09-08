@@ -180,9 +180,28 @@ const OUT = path.join(__dirname, 'out');
   //    than useless. Also checks the JSON it exports is the shape a passage file expects.
   await run('editor', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
     await page.waitForFunction(() => !!window.SAILY && !!window.CHART, null, { timeout: 15000 });
+
+    // Discoverability is a feature: the editor was once the last of six unlabelled squares behind a
+    // hamburger, and nobody found it. Check both ways in, by their labels.
+    await page.click('#tabs button[data-view=plan]'); await page.waitForTimeout(900);
+    const planBtn = await page.$('#btnPlanRoute');
+    if (!planBtn) errors.push('the Plan tab has no button to plan a route');
+    else {
+      const label = (await planBtn.textContent()).toLowerCase();
+      if (!/plan.*route/.test(label)) errors.push('the Plan tab button does not say what it does: ' + label);
+      await planBtn.click(); await page.waitForTimeout(1000);
+      if (!(await page.evaluate(() => document.body.classList.contains('editing')))) errors.push('the Plan tab button did not open the editor');
+      if (!(await page.evaluate(() => document.getElementById('view-nav').classList.contains('active')))) errors.push('the Plan tab button did not switch to the chart');
+      if (!(await page.evaluate(() => document.getElementById('startOverlay').classList.contains('hidden')))) errors.push('the editor opened behind the start overlay');
+      await page.evaluate(() => window.SAILY.stopEdit()); await page.waitForTimeout(500);
+    }
+    await page.click('#tabs button[data-view=nav]'); await page.waitForTimeout(500);
     await page.click('#btnPlanOnly').catch(() => {});
     await page.waitForTimeout(800);
-    await page.click('#btnMore'); await page.waitForTimeout(300);
+    await page.click('#btnMore'); await page.waitForTimeout(400);
+    const menu = await page.evaluate(() => [...document.querySelectorAll('#mapControls .more button')].map(b => b.innerText.replace(/\s+/g, ' ').trim()));
+    console.log('Map menu:', JSON.stringify(menu));
+    if (!menu.some(t => /plan a route/i.test(t))) errors.push('the map menu does not name "Plan a route": ' + JSON.stringify(menu));
     await page.click('#btnEdit'); await page.waitForTimeout(900);
     if (!(await page.evaluate(() => document.body.classList.contains('editing')))) errors.push('editor did not open');
     const start = await page.evaluate(() => window.SAILY.S.edit.wps.length);

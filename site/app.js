@@ -423,10 +423,15 @@
     return 'WP' + Date.now();
   }
   function startEdit() {
-    if (S.navigating) { toast('Stop navigation before planning a route'); return; }
+    if (S.navigating) {
+      if (!confirm('Stop navigating and plan a route?\n\nThe chart becomes an editor: tap it to add waypoints. Navigation resumes when you close the editor.')) return;
+      if (S.sim) stopSim(); else { S.navigating = false; }
+      $('hudSim').textContent = '';
+    }
     const base = S.route.waypoints.map(w => ({ id: w.id, name: w.name || w.id, lat: w.lat, lon: w.lon, radius: w.radius || 0.1, note: w.note || '' }));
     S.edit = { wps: base, sel: base.length - 1, history: [], name: S.route.name + ' (edited)', srcId: S.route.id };
     document.body.classList.add('editing');
+    $('startOverlay').classList.add('hidden');   // you cannot tap a chart that "Start navigation" is sitting on
     $('mapControls').classList.remove('open'); $('btnMore').classList.remove('on');  // the menu covers the chart you are drawing on
     editGroup.addTo(map);
     $('editPanel').classList.remove('hidden');
@@ -437,6 +442,7 @@
   function stopEdit() {
     S.edit = null;
     document.body.classList.remove('editing');
+    if (!S.started) $('startOverlay').classList.remove('hidden');
     editGroup.clearLayers(); map.removeLayer(editGroup);
     $('editPanel').classList.add('hidden'); $('editPanel').innerHTML = '';
     $('btnEdit').classList.remove('on');
@@ -1436,7 +1442,10 @@
     const el = $('planPage'); const r = S.route; const dep = new Date(S.settings.departure);
     const sp = S.settings.speed;
     let cum = 0;
-    let h = `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${esc(x.id)}" ${x.id === r.id ? 'checked' : ''}> ${x.id === 'planned' ? 'Drawn here' : x.recommended ? 'Recommended' : 'Alternative'}</label>`).join('')}</div>
+    // The obvious place to look for "plan a route" is the tab called Plan.
+    let h = `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${esc(x.id)}" ${x.id === r.id ? 'checked' : ''}> ${esc(x.short || x.id)}${x.recommended ? ' <span class="muted small">(recommended)</span>' : ''}${x.unverified ? ' <span class="muted small">(not verified)</span>' : ''}</label>`).join('')}</div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="btnPlanRoute">✎ Plan a new route on the chart</button></div>
+      <p class="muted small">Tap the chart to add waypoints and drag them to move. Every leg is measured against the coastline and the traffic scheme as you draw.</p>
       <p><b>${esc(r.name)}</b></p><p>${esc(r.summary || '')}</p>
       ${r.unverified ? `<p class="wxstale"><b>Not verified.</b> This route was drawn in the app and has legs within ${CLEAR_NM} nm of land. Check every one of them against a real chart before you follow it.</p>` : ''}
       <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (P.vessel.burnLph || 75))} L at a planning burn of ${P.vessel.burnLph || 75} L/h (${P.vessel.name || 'planning figure'}; tanks ${P.vessel.fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
@@ -1463,6 +1472,8 @@
     h += `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at ${esc(DEST_NAME)}.${P.sunNote ? ' ' + esc(P.sunNote) : ''}</p></div>`;
     el.innerHTML = h;
     const bp = $('btnPrint'); if (bp) bp.addEventListener('click', () => window.print());
+    const planBtn = $('btnPlanRoute');
+    if (planBtn) planBtn.addEventListener('click', () => { showView('nav'); startEdit(); });
     el.querySelectorAll('input[name=route]').forEach(i => i.addEventListener('change', () => { S.settings.routeId = i.value; S.settings.wp = 1; saveSettings(); S.route = P.routes.find(x => x.id === i.value); S.zone = {}; S.approached = {}; drawRoutes(); renderPlan(); if (S.pos) processFix(); }));
     if ($('gpxLink')) $('gpxLink').href = 'data:application/gpx+xml;charset=utf-8,' + encodeURIComponent(N.toGPX('Saily ' + r.id, r.waypoints));
     $('btnCopyWp').addEventListener('click', async () => { const txt = r.waypoints.map(w => `${w.id}\t${N.fmtDM(w.lat, w.lon)}\t${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`).join('\n'); try { await navigator.clipboard.writeText(txt); toast('Copied'); } catch (e) { toast('Copy failed'); } });

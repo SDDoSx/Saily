@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.15.1 (2026-09-08)
+The route editor was unfindable. It was the last of six unlabelled dark squares behind a hamburger on the
+chart, which is not a place anyone would look for "draw a route".
+- **A labelled button at the top of the Plan tab**: "Plan a new route on the chart". That is the tab called
+  Plan, which is where a person looks.
+- The map menu is a labelled list instead of a row of glyphs, with "Plan a route" first and highlighted.
+- Pressing it while navigating used to flash a toast and do nothing. It now asks, stops navigation and opens
+  the editor.
+- It also opened behind the start overlay, so the chart you were meant to tap was covered by "Start
+  navigation". The overlay gets out of the way, and comes back if you close the editor without starting.
+- The route radios on the Plan tab said "Recommended / Alternative / Alternative". They name the routes now.
+- e2e checks both ways in, by their labels, so this cannot quietly regress.
+
 ## 0.15.0 (2026-09-08)
 The loop closes: draw a route anywhere, have its chart built, and navigate on it, without a terminal.
 - **The route editor can build the chart for its own area.** Draw a route where Saily has no chart, press

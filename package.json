@@ -1,6 +1,6 @@
 {
   "name": "saily",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "Offline-capable GPS passage app for small craft: route guidance, traffic-separation-scheme and hazard alerts, marine weather go/no-go. Bundled passage: Sotogrande to Tangier across the Strait of Gibraltar.",
   "license": "MIT",
   "private": true,

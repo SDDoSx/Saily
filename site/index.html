@@ -99,7 +99,12 @@ main{flex:1;min-height:0;position:relative}
    underneath it, and the open menu row is nearly 300 px wide. Only the buttons should be clickable. */
 #mapControls{position:absolute;right:var(--s3);top:var(--s3);display:flex;flex-direction:column;gap:var(--s1);z-index:1000;align-items:flex-end;pointer-events:none}
 #mapControls button{pointer-events:auto}
-#mapControls .more{display:none;flex-direction:row;gap:var(--s1);pointer-events:none}
+/* A labelled list, not a row of glyphs: nobody can guess what a pencil in a dark square does. */
+#mapControls .more{display:none;flex-direction:column;gap:var(--s1);pointer-events:none;align-items:flex-end}
+#mapControls .more button{width:auto;min-width:44px;padding:0 var(--s4) 0 var(--s3);gap:var(--s3);justify-content:flex-start;font-size:var(--fs-small);font-weight:600}
+#mapControls .more .mi{font-size:var(--fs-lead);width:22px;text-align:center;flex:none}
+#mapControls .more .ml{white-space:nowrap}
+#mapControls .more #btnEdit{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 #mapControls.open .more{display:flex}
 #mapControls button,.mbtn{width:44px;height:44px;border-radius:var(--r2);border:1px solid var(--line);background:rgba(18,42,68,.9);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:var(--text);font-size:var(--fs-lead);display:flex;align-items:center;justify-content:center;box-shadow:var(--lift)}
 #mapControls button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
@@ -469,12 +474,12 @@ setTimeout(function () {
           <button id="btnRoute" title="Zoom to route">⤢</button>
           <button id="btnMore" title="Layers and themes">☰</button>
           <div class="more">
-            <button id="btnLayers" title="Base layer">▦</button>
-            <button id="btnChartOnly" title="Chart only (no tiles)">⛵</button>
-            <button id="btnDay" title="Daylight (glare) theme">☀</button>
-            <button id="btnNight" title="Night colours">☾</button>
-            <button id="btnBig" title="Big numbers (hide the chart)">A</button>
-            <button id="btnEdit" title="Plan a route on the chart">✎</button>
+            <button id="btnEdit" title="Plan a route on the chart"><span class="mi">✎</span><span class="ml">Plan a route</span></button>
+            <button id="btnLayers" title="Base layer"><span class="mi">▦</span><span class="ml">Base map</span></button>
+            <button id="btnChartOnly" title="Chart only (no tiles)"><span class="mi">⛵</span><span class="ml">Chart only</span></button>
+            <button id="btnDay" title="Daylight (glare) theme"><span class="mi">☀</span><span class="ml">Daylight</span></button>
+            <button id="btnNight" title="Night colours"><span class="mi">☾</span><span class="ml">Night</span></button>
+            <button id="btnBig" title="Big numbers (hide the chart)"><span class="mi">A</span><span class="ml">Big numbers</span></button>
           </div>
         </div>
         <div id="startOverlay">
