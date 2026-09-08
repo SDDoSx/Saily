@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.17.0 (2026-09-08)
+Give it two ends and the boat, and it works out the course, when to leave, and where to stop.
+- **Plan with weather.** Fetches a forecast grid over the whole passage area (Open-Meteo takes many
+  coordinates in one request, so it costs two), then tries a departure every four hours for the next
+  sixty and ranks them: how long the passage actually takes in those conditions, the worst it gets, whether
+  it arrives in the dark, and how many nights it needs. Roughly two seconds for the bundled crossing.
+- **The route bends around weather, not just land.** The cost of a step is the time it takes, and the time
+  depends on the conditions where you will be when you get there, so a forecast gale is routed around rather
+  than driven through. Straightening the path afterwards will not undo that detour, the same way it will not
+  undo a right-angle crossing of a traffic lane.
+- **A boat speed model.** A planing hull comes off the plane in a head sea and loses most of its speed; a
+  displacement hull barely notices until it is genuinely big; a sailing boat has a polar, cannot sail into
+  the eye of the wind, and motors when there is none. Current is added along the course and subtracted
+  against it. It is a shape that behaves correctly rather than a real polar, and the app says so.
+- **Multi-day passages.** A passage too long for one day, or one that would arrive after dark, is broken at
+  the last waypoint reached in daylight and resumes an hour after sunrise. The plan shows the days, the
+  stops, and why each stop is there.
+- Departure rows are tappable, so a different one can be taken without hunting for a button.
+
 ## 0.16.0 (2026-09-08)
 - **Suggest a course.** Put a waypoint at each end and press one button: `NAV.suggestRoute` grids the area,
   blocks land plus a clearance margin that widens with your draft, blocks the hazard circles, runs A* across

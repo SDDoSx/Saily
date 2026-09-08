@@ -32,6 +32,11 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
 - **Readable at any hour**: Automatic, Dark, Daylight (glare) and Night colours; night is red-amber on black so it does
   not spoil your night vision, switches itself at sunset with an undo toast, and dims further on request. Big-numbers
   mode drops the chart for the figures that matter, with a Chart button to bring it back. (Setup, Colours.)
+- **Plan with weather**: give it two ends and it fetches a forecast grid over the area, works out a course
+  for each departure over the next sixty hours, and ranks them — how long the passage really takes in those
+  conditions, the worst it gets, whether it arrives after dark, how many nights it needs. The course bends
+  around a forecast gale rather than driving through it, and a passage too long for one day is broken at a
+  stop reached in daylight.
 - **Suggest a course**: put a waypoint at each end and Saily works out the middle — around the land, clear by
   a margin that widens with your draft, around the charted hazards, and across a traffic separation scheme as
   near right angles as it can manage, which is what COLREG rule 10(c) asks for. It is a suggestion, checked

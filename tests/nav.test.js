@@ -287,3 +287,127 @@ test('suggestRoute on the bundled chart clears land on every leg', () => {
   assert.ok(total > 35 && total < 60, `a sane distance for this crossing: ${total.toFixed(1)} nm`);
   assert.ok(sug.waypoints.length >= 2 && sug.waypoints.length <= 14, `${sug.waypoints.length} waypoints`);
 });
+
+// --- boat speed and weather routing ------------------------------------------------------------------
+const PLANING = { kind: 'power', cruiseKn: 22, maxKn: 30 };
+const TRAWLER = { kind: 'power', cruiseKn: 8, maxKn: 10 };
+const SAILBOAT = { kind: 'sail', cruiseKn: 6, maxKn: 8 };
+const calm = { wind: 8, windDir: 270, gust: 11, wave: 0.2, waveDir: 270, wavePeriod: 6 };
+
+test('a planing hull comes off the plane in a head sea, a displacement hull barely notices', () => {
+  const headSea = { wind: 25, windDir: 180, gust: 33, wave: 1.8, waveDir: 180, wavePeriod: 5 };
+  const planingCalm = N.speedIn(PLANING, calm, 180), planingRough = N.speedIn(PLANING, headSea, 180);
+  const trawlerCalm = N.speedIn(TRAWLER, calm, 180), trawlerRough = N.speedIn(TRAWLER, headSea, 180);
+  assert.ok(planingRough < planingCalm * 0.5, `planing ${planingCalm}->${planingRough} kn`);
+  assert.ok(trawlerRough > trawlerCalm * 0.8, `displacement ${trawlerCalm}->${trawlerRough} kn`);
+  // and running before the same sea is far quicker than punching into it
+  assert.ok(N.speedIn(PLANING, headSea, 0) > planingRough * 2, 'downwind beats upwind');
+});
+
+test('a sailing boat needs wind, and cannot sail into the eye of it', () => {
+  assert.strictEqual(N.sailFactor(1, 90), 0, 'becalmed');
+  assert.strictEqual(N.sailFactor(15, 10), 0, 'in irons');
+  const close = N.sailFactor(15, 45), reach = N.sailFactor(15, 110), run = N.sailFactor(15, 180);
+  assert.ok(reach > close && reach > run, `reaching is best: close ${close}, reach ${reach}, run ${run}`);
+  assert.ok(N.sailFactor(25, 110) >= N.sailFactor(10, 110), 'more wind is not slower, up to a point');
+  assert.ok(N.sailFactor(45, 110) < N.sailFactor(25, 110), 'survival conditions slow it down again');
+  // in no wind it motors rather than stopping
+  assert.ok(N.speedIn(SAILBOAT, { wind: 1, windDir: 0, wave: 0.2, waveDir: 0 }, 90) > 4, 'the iron sail');
+});
+
+test('current is added along the course and subtracted against it', () => {
+  const c = { ...calm, current: 2, currentDir: 90 };
+  const withIt = N.sogIn(TRAWLER, c, 90), against = N.sogIn(TRAWLER, c, 270);
+  assert.ok(Math.abs(withIt - against - 4) < 0.3, `${withIt} vs ${against} kn`);
+});
+
+test('weatherCost is flat below caution and steep past no-go', () => {
+  const th = { windCaution: 14, windNoGo: 20, gustCaution: 22, gustNoGo: 30, waveCaution: 1.0, waveNoGo: 1.6 };
+  assert.strictEqual(N.weatherCost({ wind: 8, wave: 0.3 }, th), 1, 'calm costs nothing extra');
+  const caution = N.weatherCost({ wind: 17, wave: 0.3 }, th);
+  const nogo = N.weatherCost({ wind: 24, wave: 0.3 }, th);
+  assert.ok(caution > 1 && caution < 8, 'caution is discouraged: ' + caution);
+  assert.ok(nogo > caution * 2, 'no-go is effectively closed: ' + nogo);
+  assert.strictEqual(N.weatherCost(null, th), 1, 'no forecast, no penalty');
+});
+
+test('a route bends around a forecast gale instead of driving through it', () => {
+  // a gale sitting north of 36.05, calm south of it
+  const field = {
+    covers: () => true,
+    at: lat => (lat > 36.05
+      ? { wind: 34, windDir: 270, gust: 45, wave: 3.4, waveDir: 270, wavePeriod: 7 }
+      : { wind: 9, windDir: 270, gust: 13, wave: 0.5, waveDir: 270, wavePeriod: 6 }),
+  };
+  const th = { windCaution: 14, windNoGo: 20, gustCaution: 22, gustNoGo: 30, waveCaution: 1.0, waveNoGo: 1.6 };
+  const from = { lat: 36.20, lon: -5.60 }, to = { lat: 36.20, lon: -4.80 };
+  const opts = { boat: PLANING, th, cellNm: 0.25, clearNm: 0, padNm: 14 };
+  const straight = N.weatherRoute(from, to, [], { ...opts, field: null });
+  const around = N.weatherRoute(from, to, [], { ...opts, field });
+  assert.ok(straight && around, 'both routed');
+  assert.strictEqual(straight.waypoints.length, 2, 'with no forecast it goes straight there');
+  const south = Math.min(...around.waypoints.map(w => w.lat));
+  assert.ok(south < 36.05, `it went south of the gale: ${south.toFixed(3)}`);
+  assert.ok(around.distanceNm > straight.distanceNm * 1.2, 'the detour costs distance, deliberately');
+  assert.ok(around.hours > 0 && around.hours < 24, 'and reports a real passage time: ' + around.hours);
+});
+
+test('weatherRoute reports the passage time the conditions actually allow', () => {
+  const rough = { covers: () => true, at: () => ({ wind: 22, windDir: 180, gust: 28, wave: 1.9, waveDir: 180, wavePeriod: 5 }) };
+  const from = { lat: 36.0, lon: -5.4 }, to = { lat: 35.7, lon: -5.4 };   // due south, into it
+  const base = { boat: PLANING, th: {}, cellNm: 0.25, clearNm: 0, padNm: 6 };
+  const flat = N.weatherRoute(from, to, [], { ...base, field: null });
+  const slow = N.weatherRoute(from, to, [], { ...base, field: rough });
+  assert.ok(slow.hours > flat.hours * 1.8, `punching into it takes longer: ${flat.hours.toFixed(2)} h vs ${slow.hours.toFixed(2)} h`);
+  assert.ok(Math.abs(slow.distanceNm - flat.distanceNm) < 1, 'same water, different time');
+  assert.strictEqual(slow.worst.wave, 1.9, 'and says how bad it got');
+});
+
+test('a passage too long for one day is broken at a stop, in daylight', () => {
+  const wps = [
+    { id: 'A', lat: 36.0, lon: -5.4 }, { id: 'B', lat: 35.5, lon: -5.4 },
+    { id: 'C', lat: 35.0, lon: -5.4 }, { id: 'D', lat: 34.4, lon: -5.4 },
+  ];
+  const depart = new Date('2026-09-10T08:00:00Z');
+  const s = N.schedule(wps, { boat: SAILBOAT, departAt: depart, maxHoursPerDay: 10, sunAt: d => N.sunTimes(d, 35.5, -5.4) });
+  assert.ok(s.days.length >= 2, `a 96 nm passage at 6 kn is not one day: ${s.days.length}`);
+  assert.strictEqual(s.nights, s.days.length - 1);
+  assert.ok(s.stops.length >= 1, 'it names where to stop');
+  assert.ok(s.stops[0].reason, 'and why: ' + s.stops[0].reason);
+  // the next day starts in the morning, not in the middle of the night
+  const d2 = s.days[1].departAt;
+  assert.ok(d2.getTime() > s.days[0].arriveAt.getTime(), 'the second day starts after the first ends');
+  assert.ok((d2 - s.days[0].arriveAt) / 3600000 > 4, 'with a night in between');
+  assert.ok(Math.abs(s.totalNm - N.routeTotal(wps)) < 0.5, 'the distance is the route');
+});
+
+test('a short passage stays one day with no stops', () => {
+  const wps = [{ id: 'A', lat: 36.0, lon: -5.4 }, { id: 'B', lat: 35.9, lon: -5.4 }];
+  const s = N.schedule(wps, { boat: PLANING, departAt: new Date('2026-09-10T09:00:00Z'), maxHoursPerDay: 10 });
+  assert.strictEqual(s.days.length, 1);
+  assert.strictEqual(s.nights, 0);
+  assert.deepStrictEqual(s.stops, []);
+});
+
+test('planDepartures waits out a gale and says which departures are no-go', () => {
+  const t0 = Date.parse('2026-09-10T06:00:00Z');
+  const field = {
+    covers: () => true,
+    at: (lat, lon, when) => ((when.getTime() - t0) / 3600000 < 24
+      ? { wind: 26, windDir: 200, gust: 34, wave: 2.4, waveDir: 200, wavePeriod: 6 }
+      : { wind: 10, windDir: 250, gust: 14, wave: 0.6, waveDir: 250, wavePeriod: 7 }),
+  };
+  const th = { windCaution: 14, windNoGo: 20, gustCaution: 22, gustNoGo: 30, waveCaution: 1.0, waveNoGo: 1.6 };
+  const ranked = N.planDepartures({ lat: 36.28, lon: -5.27 }, { lat: 35.79, lon: -5.79 }, [], {
+    field, boat: PLANING, th, cellNm: 0.5, clearNm: 0, padNm: 8,
+    from: new Date(t0), windowHours: 48, everyHours: 6, maxHoursPerDay: 10,
+  });
+  assert.ok(ranked.length > 4, 'it tried a window of departures');
+  assert.strictEqual(ranked[0].level, 'ok', 'the best one is inside the limits');
+  assert.ok((ranked[0].departAt - t0) / 3600000 >= 24, 'and it waits for the gale to pass');
+  const galeOnes = ranked.filter(r => (r.departAt - t0) / 3600000 < 18);
+  assert.ok(galeOnes.length && galeOnes.every(r => r.level === 'nogo'), 'departures into the gale are no-go');
+  assert.ok(galeOnes[0].why && /wind/.test(galeOnes[0].why), 'and say why: ' + galeOnes[0].why);
+  // ranked really is ranked
+  for (let i = 1; i < ranked.length; i++) assert.ok(ranked[i].score >= ranked[i - 1].score, 'sorted by score');
+});

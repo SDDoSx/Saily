@@ -358,15 +358,37 @@
     return false;
   }
 
-  /** pull the path straight: keep a point only where the line of sight, or the crossing angle, breaks */
+  /** True when the straight line between two cells passes through conditions the search avoided.
+      Straightening a path is exactly what undoes a weather detour, so it has to be asked as well. */
+  function weatherWorsens(grid, a, b, costAt, limit) {
+    if (!costAt) return false;
+    const cap = limit === undefined ? 3 : limit;      // past caution, heading for no-go
+    const dx = Math.abs(b.ix - a.ix), dy = Math.abs(b.iy - a.iy);
+    const sx = a.ix < b.ix ? 1 : -1, sy = a.iy < b.iy ? 1 : -1;
+    let err = dx - dy, x = a.ix, y = a.iy;
+    for (let guard = 0; guard < dx + dy + 4; guard++) {
+      if (costAt(x, y) > cap) return true;
+      if (x === b.ix && y === b.iy) return false;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx) { err += dx; y += sy; }
+    }
+    return false;
+  }
+
+  /** pull the path straight: keep a point only where the line of sight, the crossing angle, or the
+      weather breaks */
   function simplifyPath(grid, cells, opts) {
     if (cells.length < 3) return cells.slice();
+    opts = opts || {};
     const out = [cells[0]];
     let anchor = 0;
     while (anchor < cells.length - 1) {
       let far = anchor + 1;
       for (let j = cells.length - 1; j > anchor; j--) {
-        if (clearLine(grid, cells[anchor], cells[j]) && !crossingWorsens(grid, cells[anchor], cells[j], opts && opts.maxAlong)) { far = j; break; }
+        if (clearLine(grid, cells[anchor], cells[j])
+          && !crossingWorsens(grid, cells[anchor], cells[j], opts.maxAlong)
+          && !weatherWorsens(grid, cells[anchor], cells[j], opts.costAt, opts.costLimit)) { far = j; break; }
       }
       out.push(cells[far]);
       anchor = far;
@@ -411,6 +433,308 @@
       blockedStart: !grid.free(a0.ix, a0.iy), blockedEnd: !grid.free(b0.ix, b0.iy),
       cells: cells.length, bbox,
     };
+  }
+
+  // ---------- how fast this boat actually goes in these conditions ----------
+  // Deliberately simple and deliberately pessimistic. A real polar comes from the builder or from your own
+  // log; this is a shape that behaves the right way -- a planing hull comes off the plane in a head sea, a
+  // displacement hull barely notices until it is bad, a sailing boat cannot sail into no wind or into the
+  // eye of it -- so that a route or a departure chosen with it is chosen for the right reasons.
+
+  /** relative angle between a course and a direction the weather is coming FROM, 0 = dead ahead */
+  function relFrom(courseDeg, fromDeg) { return Math.abs(angleDiff(fromDeg, courseDeg)); }
+
+  /** Sailing speed as a fraction of the boat's best, from true wind speed and true wind angle. */
+  function sailFactor(twsKn, twaDeg) {
+    const a = Math.abs(twaDeg);
+    if (twsKn < 3) return 0;                                   // becalmed
+    let ang;                                                   // how well the boat goes at this angle
+    if (a < 30) ang = 0;                                       // in irons
+    else if (a < 45) ang = 0.45 + (a - 30) / 15 * 0.3;         // close hauled, building
+    else if (a < 80) ang = 0.75 + (a - 45) / 35 * 0.2;
+    else if (a < 140) ang = 0.95 + (a - 80) / 60 * 0.05;       // reaching, best
+    else if (a < 170) ang = 1.0 - (a - 140) / 30 * 0.18;       // broad reach to run
+    else ang = 0.82 - (a - 170) / 10 * 0.07;                   // dead downwind, blanketed
+    let wind;                                                  // and how much wind there is to use
+    if (twsKn < 6) wind = (twsKn - 3) / 3 * 0.35;
+    else if (twsKn < 12) wind = 0.35 + (twsKn - 6) / 6 * 0.45;
+    else if (twsKn < 20) wind = 0.8 + (twsKn - 12) / 8 * 0.2;
+    else if (twsKn < 30) wind = 1.0;                           // reefed, still at hull speed
+    else wind = Math.max(0.5, 1.0 - (twsKn - 30) / 40);        // survival, slowing down
+    return Math.max(0, ang * wind);
+  }
+
+  /** Speed made good in these conditions, in knots, before current.
+      boat: {kind, cruiseKn, maxKn}; cond: {wind, windDir (from), wave, waveDir (from)} */
+  function speedIn(boat, cond, courseDeg) {
+    boat = boat || {};
+    const cruise = boat.cruiseKn || 8;
+    const wave = cond && cond.wave != null ? cond.wave : 0;
+    const headSea = cond && cond.waveDir != null && courseDeg != null
+      ? Math.max(0, Math.cos(toRad(relFrom(courseDeg, cond.waveDir)))) : 0.5;   // 1 dead on the nose
+    if (boat.kind === 'sail') {
+      const tws = cond && cond.wind != null ? cond.wind : 0;
+      const twa = cond && cond.windDir != null && courseDeg != null ? relFrom(courseDeg, cond.windDir) : 90;
+      const best = boat.maxKn || cruise * 1.3;
+      const sailing = best * sailFactor(tws, twa);
+      const motoring = cruise * 0.85;                       // the iron sail, when it beats sailing
+      let v = Math.max(sailing, motoring);
+      v *= Math.max(0.55, 1 - 0.22 * headSea * Math.max(0, wave - 0.8));   // punching into it
+      return Math.max(1.5, v);
+    }
+    if (boat.kind === 'displacement' || cruise <= 12) {
+      // a displacement hull holds its speed until the sea is genuinely big
+      const v = cruise * Math.max(0.55, 1 - 0.16 * headSea * Math.max(0, wave - 1.0) - 0.05 * Math.max(0, wave - 2.0));
+      return Math.max(2, v);
+    }
+    // planing: comes off the plane and the loss is steep once it does
+    const over = Math.max(0, wave - 0.5);
+    let v = cruise * Math.max(0.3, 1 - 0.55 * headSea * over - 0.12 * over);
+    if (wave > 1.6 && headSea > 0.5) v = Math.min(v, cruise * 0.45);   // no longer a planing passage
+    return Math.max(3, v);
+  }
+
+  /** Speed over the ground: the boat through the water, plus the along-course part of the current. */
+  function sogIn(boat, cond, courseDeg) {
+    const v = speedIn(boat, cond, courseDeg);
+    if (!cond || cond.current == null || cond.currentDir == null || courseDeg == null) return v;
+    // currentDir is the direction the water is going TOWARDS
+    const along = cond.current * Math.cos(toRad(angleDiff(cond.currentDir, courseDeg)));
+    return Math.max(0.5, v + along);
+  }
+
+  // ---------- routing through weather, not just around land ----------
+  // The same grid, but the cost of a step is the time it takes, and the time it takes depends on the
+  // conditions where you will be when you get there. A* over that produces a course that leans away from a
+  // forecast gale, and a passage time that is not the flat-water fantasy.
+
+  /** How much dearer a step is because the conditions there are past the boat's limits.
+      Beyond no-go it is effectively closed; between caution and no-go it is discouraged. */
+  function weatherCost(cond, th, boat) {
+    if (!cond) return 1;
+    th = th || {};
+    let worst = 0;
+    const bump = (v, caution, nogo) => {
+      if (v == null || caution == null || nogo == null || nogo <= caution) return;
+      if (v >= nogo) worst = Math.max(worst, 2 + Math.min(3, (v - nogo) / Math.max(1, nogo - caution)));
+      else if (v > caution) worst = Math.max(worst, (v - caution) / (nogo - caution));
+    };
+    bump(cond.wind, th.windCaution, th.windNoGo);
+    bump(cond.gust, th.gustCaution, th.gustNoGo);
+    bump(cond.wave, th.waveCaution, th.waveNoGo);
+    if (cond.wave != null && cond.wavePeriod != null && cond.wave >= 0.8 && cond.wavePeriod <= 4.5) worst = Math.max(worst, 0.5);
+    if (boat && boat.kind === 'sail' && cond.wind != null && cond.wind < 4) worst = Math.max(worst, 0.2);  // drifting
+    return 1 + 9 * worst;                      // a no-go cell costs about twenty times a calm one
+  }
+
+  /** Route from A to B leaving at a given time, through a forecast field.
+      opts: {field, boat, th, departAt, clearNm, cellNm, zones, hazards, maxHours}
+      Returns {waypoints, hours, arriveAt, worst, legs} or null. */
+  function weatherRoute(from, to, land, opts) {
+    opts = opts || {};
+    const field = opts.field;
+    const boat = opts.boat || {};
+    const th = opts.th || {};
+    const depart = opts.departAt ? new Date(opts.departAt) : new Date();
+    const pad = opts.padNm === undefined ? 4 : opts.padNm;
+    const padDeg = pad / 60;
+    const bbox = opts.bbox || [
+      Math.min(from.lat, to.lat) - padDeg, Math.min(from.lon, to.lon) - padDeg * 1.4,
+      Math.max(from.lat, to.lat) + padDeg, Math.max(from.lon, to.lon) + padDeg * 1.4];
+    const grid = buildGrid(bbox, land, opts);
+    const a0 = grid.toCell(from), b0 = grid.toCell(to);
+    const a = nearestFree(grid, a0.ix, a0.iy), b = nearestFree(grid, b0.ix, b0.iy);
+    if (!a || !b) return null;
+
+    const w = grid.w, n = grid.w * grid.h;
+    const start = a.iy * w + a.ix, goal = b.iy * w + b.ix;
+    const bestKn = Math.max(3, boat.maxKn || boat.cruiseKn || 8);
+    const hours = new Float64Array(n).fill(Infinity);
+    const came = new Int32Array(n).fill(-1);
+    const done = new Uint8Array(n);
+    const cellNm = grid.cellNm;
+    const h = i => { const dx = (i % w) - b.ix, dy = ((i / w) | 0) - b.iy; return Math.hypot(dx, dy) * cellNm / bestKn; };
+    const heap = [];
+    const push = (i, f) => { heap.push([f, i]); let c = heap.length - 1; while (c > 0) { const pI = (c - 1) >> 1; if (heap[pI][0] <= heap[c][0]) break; [heap[pI], heap[c]] = [heap[c], heap[pI]]; c = pI; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let pI = 0; for (;;) { const l = 2 * pI + 1, r = l + 1; let m = pI; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === pI) break; [heap[m], heap[pI]] = [heap[pI], heap[m]]; pI = m; } } return top; };
+    hours[start] = 0; push(start, h(start));
+    const maxHours = opts.maxHours || 96;
+    let guard = 0;
+    while (heap.length && guard++ < n * 4) {
+      const [, i] = pop();
+      if (done[i]) continue;
+      done[i] = 1;
+      if (i === goal) break;
+      if (hours[i] > maxHours) continue;
+      const ix = i % w, iy = (i / w) | 0;
+      const when = new Date(depart.getTime() + hours[i] * 3600000);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = ix + dx, ny = iy + dy;
+        if (!grid.free(nx, ny)) continue;
+        if (dx && dy && !(grid.free(ix + dx, iy) && grid.free(ix, iy + dy))) continue;
+        const j = ny * w + nx;
+        const distNm = ((dx && dy) ? Math.SQRT2 : 1) * cellNm;
+        const brg = norm360(toDeg(Math.atan2(dx, dy)));
+        const ll = grid.toLL(nx, ny);
+        const cond = field ? field.at(ll.lat, ll.lon, when) : null;
+        const sog = Math.max(0.5, sogIn(boat, cond, brg));
+        const cost = (distNm / sog) * weatherCost(cond, th, boat) * laneCost(grid, j, brg, opts.laneK);
+        const nh = hours[i] + cost;
+        if (nh < hours[j]) { hours[j] = nh; came[j] = i; push(j, nh + h(j)); }
+      }
+    }
+    if (!done[goal] && came[goal] < 0) return null;
+
+    const cells = [];
+    for (let i = goal; i >= 0; i = came[i]) { cells.push({ ix: i % w, iy: (i / w) | 0 }); if (i === start) break; }
+    cells.reverse();
+    // sample the conditions a shortcut would pass through, at roughly when the boat would be there
+    const totalH = hours[goal];
+    const cellTime = (ix, iy) => {
+      const frac = cells.length > 1 ? cells.findIndex(c => c.ix === ix && c.iy === iy) / (cells.length - 1) : 0;
+      return new Date(depart.getTime() + Math.max(0, frac) * totalH * 3600000);
+    };
+    const costAt = field ? (ix, iy) => {
+      const ll = grid.toLL(ix, iy);
+      return weatherCost(field.at(ll.lat, ll.lon, cellTime(ix, iy)), th, boat);
+    } : null;
+    const pulled = simplifyPath(grid, cells, Object.assign({}, opts, { costAt, costLimit: opts.costLimit }));
+    const mid = pulled.slice(1, -1).map(c => grid.toLL(c.ix, c.iy));
+    const pts = [{ lat: from.lat, lon: from.lon }, ...mid, { lat: to.lat, lon: to.lon }];
+    const kept = [pts[0]];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const prev = kept[kept.length - 1], next = pts[i + 1];
+      if (Math.abs(angleDiff(bearingDeg(prev, pts[i]), bearingDeg(pts[i], next))) > (opts.minTurnDeg || 8)) kept.push(pts[i]);
+    }
+    kept.push(pts[pts.length - 1]);
+    const waypoints = kept.map((p, i) => ({
+      id: i === 0 ? (opts.startId || 'START') : i === kept.length - 1 ? (opts.endId || 'FINISH') : 'WP' + i,
+      name: i === 0 ? (opts.startName || 'Start') : i === kept.length - 1 ? (opts.endName || 'Finish') : 'Waypoint ' + i,
+      lat: Math.round(p.lat * 1e5) / 1e5, lon: Math.round(p.lon * 1e5) / 1e5, radius: 0.1, note: '',
+    }));
+    // walk the kept waypoints for the numbers a person reads: time, and the worst it gets
+    const legsOut = [];
+    let t = depart.getTime(), worst = { wind: 0, gust: 0, wave: 0, when: null, where: null };
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const A = waypoints[i], B = waypoints[i + 1];
+      const brg = bearingDeg(A, B), distNm = distanceNm(A, B);
+      let remaining = distNm, legHours = 0, guard2 = 0;
+      while (remaining > 0.01 && guard2++ < 400) {
+        const frac = 1 - remaining / distNm;
+        const here = { lat: A.lat + (B.lat - A.lat) * frac, lon: A.lon + (B.lon - A.lon) * frac };
+        const cond = field ? field.at(here.lat, here.lon, new Date(t)) : null;
+        const sog = Math.max(0.5, sogIn(boat, cond, brg));
+        const stepNm = Math.min(remaining, Math.max(0.5, sog * 0.25));   // quarter-hour steps
+        const dh = stepNm / sog;
+        t += dh * 3600000; legHours += dh; remaining -= stepNm;
+        if (cond) {
+          if ((cond.wind || 0) > worst.wind) worst = { ...worst, wind: cond.wind, when: new Date(t), where: here };
+          if ((cond.gust || 0) > worst.gust) worst.gust = cond.gust;
+          if ((cond.wave || 0) > worst.wave) worst.wave = cond.wave;
+        }
+      }
+      legsOut.push({ from: A.id, to: B.id, distNm, brg, hours: legHours, arriveAt: new Date(t) });
+    }
+    return {
+      waypoints, legs: legsOut,
+      hours: (t - depart.getTime()) / 3600000,
+      departAt: depart, arriveAt: new Date(t),
+      distanceNm: routeTotal(waypoints), worst,
+    };
+  }
+
+  // ---------- planning a passage: when to leave, and where to stop on the way ----------
+
+  /** Split a route into days. A passage longer than a comfortable run, or one that would arrive in the
+      dark, gets broken at the last waypoint reached in daylight, which is where a stop belongs. */
+  function schedule(waypoints, opts) {
+    opts = opts || {};
+    const boat = opts.boat || {};
+    const field = opts.field || null;
+    const maxH = opts.maxHoursPerDay || 10;
+    const sunAt = opts.sunAt || (d => sunTimes(d, waypoints[0].lat, waypoints[0].lon));
+    const stops = new Set(opts.stops || []);
+    let t = new Date(opts.departAt || Date.now()).getTime();
+    const days = [];
+    let day = { index: 1, departAt: new Date(t), legs: [], distanceNm: 0, hours: 0 };
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const A = waypoints[i], B = waypoints[i + 1];
+      const brg = bearingDeg(A, B), distNm = distanceNm(A, B);
+      const cond = field ? field.at((A.lat + B.lat) / 2, (A.lon + B.lon) / 2, new Date(t)) : null;
+      const sog = Math.max(0.5, sogIn(boat, cond, brg));
+      const h = distNm / sog;
+      t += h * 3600000;
+      day.legs.push({ from: A.id, to: B.id, distNm, brg, hours: h, arriveAt: new Date(t), sog });
+      day.distanceNm += distNm; day.hours += h;
+      const arriving = new Date(t);
+      const sun = sunAt(arriving);
+      const dark = sun && sun.sunset && arriving > sun.sunset;
+      const tooLong = day.hours >= maxH;
+      const asked = stops.has(B.id);
+      const last = i === waypoints.length - 2;
+      if (!last && (asked || tooLong || dark)) {
+        day.stopAt = B.id;
+        day.reason = asked ? 'a stop you asked for' : dark ? 'it would be dark before the next one' : `${maxH} hours is a long enough day`;
+        day.arriveAt = arriving;
+        days.push(day);
+        // resume the next morning, an hour after sunrise
+        const nextSun = sunAt(new Date(t + 12 * 3600000));
+        const resume = nextSun && nextSun.sunrise ? new Date(nextSun.sunrise.getTime() + 3600000) : new Date(t + 12 * 3600000);
+        t = Math.max(t, resume.getTime());
+        day = { index: days.length + 1, departAt: new Date(t), legs: [], distanceNm: 0, hours: 0 };
+      }
+    }
+    day.arriveAt = new Date(t);
+    days.push(day);
+    return {
+      days, departAt: new Date(opts.departAt || Date.now()), arriveAt: new Date(t),
+      totalHours: days.reduce((a, d) => a + d.hours, 0),
+      totalNm: days.reduce((a, d) => a + d.distanceNm, 0),
+      nights: days.length - 1,
+      stops: days.filter(d => d.stopAt).map(d => ({ at: d.stopAt, reason: d.reason, arriveAt: d.arriveAt })),
+    };
+  }
+
+  /** Score a departure. Lower is better; level says what a person should read into it. */
+  function scoreDeparture(route, sched, th, opts) {
+    th = th || {}; opts = opts || {};
+    const w = route.worst || {};
+    let over = 0, level = 'ok', why = null;
+    const rate = (v, caution, nogo, name, unit) => {
+      if (v == null || caution == null || nogo == null) return;
+      if (v >= nogo) { over = Math.max(over, 2 + (v - nogo) / Math.max(1, nogo - caution)); if (level !== 'nogo') { level = 'nogo'; why = `${name} ${Math.round(v * 10) / 10}${unit}, past ${nogo}${unit}`; } }
+      else if (v > caution) { over = Math.max(over, (v - caution) / (nogo - caution)); if (level === 'ok') { level = 'caution'; why = `${name} ${Math.round(v * 10) / 10}${unit}, over ${caution}${unit}`; } }
+    };
+    rate(w.wind, th.windCaution, th.windNoGo, 'wind', ' kn');
+    rate(w.gust, th.gustCaution, th.gustNoGo, 'gusts', ' kn');
+    rate(w.wave, th.waveCaution, th.waveNoGo, 'waves', ' m');
+    const nightPenalty = (sched.nights || 0) * 0.4;
+    const arriveDark = opts.arriveDark ? 0.8 : 0;
+    return { score: sched.totalHours / 24 + over * 3 + nightPenalty + arriveDark, level, why, over };
+  }
+
+  /** Try a window of departures and return them ranked, with the route each one implies.
+      opts: {field, boat, th, from, everyHours, hours, land, ...routing options} */
+  function planDepartures(from, to, land, opts) {
+    opts = opts || {};
+    const every = opts.everyHours || 3;
+    const windowH = opts.windowHours || 72;
+    const t0 = new Date(opts.from || Date.now());
+    const out = [];
+    for (let h = 0; h <= windowH; h += every) {
+      const departAt = new Date(t0.getTime() + h * 3600000);
+      if (opts.field && !opts.field.covers(departAt)) break;
+      const route = weatherRoute(from, to, land, Object.assign({}, opts, { departAt }));
+      if (!route) continue;
+      const sched = schedule(route.waypoints, Object.assign({}, opts, { departAt }));
+      const sun = opts.sunAt ? opts.sunAt(sched.arriveAt) : sunTimes(sched.arriveAt, to.lat, to.lon);
+      const arriveDark = !!(sun && sun.sunset && (sched.arriveAt > sun.sunset || (sun.sunrise && sched.arriveAt < sun.sunrise)));
+      const sc = scoreDeparture(route, sched, opts.th, { arriveDark });
+      out.push({ departAt, route, schedule: sched, arriveDark, ...sc });
+    }
+    out.sort((a, b) => a.score - b.score);
+    return out;
   }
 
   /** legs for a waypoint list */
@@ -569,5 +893,7 @@
     pointInRing, pointInRings, legs, routeTotal, solve, ttgSeconds, makeSmoother, deltaSpeedCourse,
     projector, ringsXY, segToRingsXY, segHitsRingsXY, checkLegs,
     buildGrid, nearestFree, clearLine, astar, simplifyPath, suggestRoute, laneCost, crossingWorsens,
+    sailFactor, speedIn, sogIn, relFrom, weatherCost, weatherRoute, weatherWorsens,
+    schedule, scoreDeparture, planDepartures,
     fmtDM, fmtBrg, fmtNm, fmtDur, fmtTime, compass16, sunTimes, windVsCurrent, toGPX, trackGPX, courseAtNm, seaAspect };
 });

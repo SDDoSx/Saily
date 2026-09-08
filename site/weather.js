@@ -116,6 +116,67 @@
     return out;
   }
 
+  // ---------- a forecast over the whole area, not just at the route points ----------
+  // Routing round weather needs to know the weather where the route is not yet. Open-Meteo takes many
+  // coordinates in one request, so a grid over the passage costs two requests rather than two per point.
+
+  /** grid of sample positions over a bbox: coarse, because the models themselves are */
+  function fieldPoints(bbox, maxSide) {
+    const [s, w, n, e] = bbox;
+    const side = Math.max(2, Math.min(maxSide || 5, Math.ceil(Math.max(n - s, (e - w) * 0.8) / 0.35) + 1));
+    const lats = [], lons = [];
+    for (let i = 0; i < side; i++) {
+      lats.push(s + (n - s) * (side === 1 ? 0.5 : i / (side - 1)));
+      lons.push(w + (e - w) * (side === 1 ? 0.5 : i / (side - 1)));
+    }
+    const pts = [];
+    for (let iy = 0; iy < side; iy++) for (let ix = 0; ix < side; ix++) pts.push({ ix, iy, lat: lats[iy], lon: lons[ix] });
+    return { side, lats, lons, pts };
+  }
+
+  const r5 = v => Math.round(v * 1e4) / 1e4;
+
+  /** Fetch the field. Returns {bbox, side, from, hours, at(lat, lon, date)} or throws. */
+  async function fetchField(bbox, days, maxSide) {
+    const g = fieldPoints(bbox, maxSide);
+    const lat = g.pts.map(p => r5(p.lat)).join(',');
+    const lon = g.pts.map(p => r5(p.lon)).join(',');
+    const d = days || 4;
+    const fcU = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${FC_VARS}&wind_speed_unit=kn&timezone=UTC&forecast_days=${d}`;
+    const marU = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=${MARINE_VARS}&cell_selection=sea&timezone=UTC&forecast_days=${d}`;
+    const [fcRes, marRes] = await Promise.all([fetchJson(fcU, 25000), fetchJson(marU, 25000)]);
+    const fcA = Array.isArray(fcRes) ? fcRes : [fcRes];
+    const marA = Array.isArray(marRes) ? marRes : [marRes];
+    if (fcA.length !== g.pts.length) throw new Error(`the forecast came back for ${fcA.length} of ${g.pts.length} points`);
+
+    // rows per grid point, in the order they were asked for (the marine API snaps to a sea cell and
+    // returns different coordinates, so never match them back up by position)
+    const cells = g.pts.map((p, i) => ({ ...p, rows: mergeHourly(fcA[i], marA[i] || null) }));
+    const times = (cells[0] && cells[0].rows.map(r => r.time)) || [];
+    const t0 = times.length ? Date.parse(times[0] + 'Z') : Date.now();
+
+    function idx(date) {
+      const h = Math.round((date.getTime() - t0) / 3600000);
+      return Math.max(0, Math.min(times.length - 1, h));
+    }
+    return {
+      bbox, side: g.side, cells, times, from: new Date(t0),
+      hours: times.length,
+      covers(date) { const h = (date.getTime() - t0) / 3600000; return h >= -1 && h < times.length; },
+      /** conditions at a position and a time: nearest grid cell, nearest hour */
+      at(la, lo, date) {
+        let best = null, bd = Infinity;
+        for (const c of cells) {
+          const dy = c.lat - la, dx = (c.lon - lo) * 0.8;
+          const d2 = dy * dy + dx * dx;
+          if (d2 < bd) { bd = d2; best = c; }
+        }
+        if (!best) return null;
+        return best.rows[idx(date)] || null;
+      },
+    };
+  }
+
   /** build a weather data object from raw API responses {id: {fc, mar}} (used for embedded snapshots) */
   function fromRaw(raw, fetchedAt) {
     const out = { fetchedAt: fetchedAt || Date.now(), points: {}, errors: [], embedded: true };
@@ -300,5 +361,5 @@
 
   const WMO = { 0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 80: 'Showers', 81: 'Showers', 82: 'Violent showers', 95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Thunderstorm w/ hail' };
 
-  root.WX = { POINTS, DEFAULT_THRESHOLDS, KEYNAME, UNIT, pointsFromRoute, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, remainingPassage, abortCompare, coverageEnd, overall, nearestPoint, madridLocalIso, WMO, TZ };
+  root.WX = { POINTS, DEFAULT_THRESHOLDS, KEYNAME, UNIT, pointsFromRoute, fieldPoints, fetchField, fetchAll, fromRaw, load, save, rowAt, classify, passage, departureScan, remainingPassage, abortCompare, coverageEnd, overall, nearestPoint, madridLocalIso, WMO, TZ };
 })(typeof self !== 'undefined' ? self : this);

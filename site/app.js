@@ -491,6 +491,7 @@
     // Actions before detail: at the chart you want the buttons without scrolling past fourteen legs.
     h += `<div class="ebtns">
       <button class="btn primary" id="edAuto">Suggest a course</button>
+      <button class="btn primary" id="edPlan">Plan with weather</button>
       <button class="btn" id="edUndo">Undo</button>
       <button class="btn" id="edDel">Delete${sel ? ' ' + esc(sel.id) : ''}</button>
       <button class="btn" id="edIns">Insert before</button>
@@ -507,6 +508,7 @@
     const el = $('editPanel'); el.innerHTML = h;
     $('edUndo').addEventListener('click', editUndo);
     $('edAuto').addEventListener('click', suggestCourse);
+    $('edPlan').addEventListener('click', planWithWeather);
     $('edClose').addEventListener('click', stopEdit);
     $('edDel').addEventListener('click', () => {
       if (!E.wps.length) return;
@@ -528,6 +530,99 @@
     $('edJson').addEventListener('click', () => showEditJson(rows));
   }
   const round5 = v => Math.round(v * 1e5) / 1e5;
+
+  /** The whole thing: two ends, the boat, and the forecast. Works out a course that clears the land,
+      crosses the scheme squarely and leans away from the weather, then ranks when to leave. */
+  async function planWithWeather() {
+    const E = S.edit;
+    if (!E || E.wps.length < 2) { toast('Put a waypoint at each end first'); return; }
+    const from = E.wps[0], to = E.wps[E.wps.length - 1];
+    const boat = vesselOf();
+    const th = S.settings.th;
+    const el = $('editPanel');
+    const say = (title, detail) => { el.innerHTML = `<div class="ehead"><b>${esc(title)}</b></div><div class="hint">${esc(detail)}</div>`; };
+    const pad = 6 / 60;
+    const bbox = [Math.min(from.lat, to.lat) - pad, Math.min(from.lon, to.lon) - pad * 1.4,
+                  Math.max(from.lat, to.lat) + pad, Math.max(from.lon, to.lon) + pad * 1.4];
+    say('Getting the forecast', 'Wind, sea and current over the whole area, not just along the track.');
+    let field = null;
+    try { field = await W.fetchField(bbox, 4); }
+    catch (e) {
+      el.innerHTML = `<div class="ehead"><b>No forecast</b></div>
+        <div class="hint">${esc(String(e && e.message || e))}. A course can still be worked out without it.</div>
+        <div class="ebtns"><button class="btn primary" id="edAutoAnyway">Suggest a course anyway</button><button class="btn" id="edBack">Back</button></div>`;
+      $('edAutoAnyway').addEventListener('click', suggestCourse);
+      $('edBack').addEventListener('click', editRender);
+      return;
+    }
+    say('Trying departures', `${field.side}×${field.side} forecast points, ${field.hours} hours ahead. Working out a course for each departure and comparing them.`);
+    const zones = [];
+    for (const e of (C.tss.lanes || [])) if (e.flowDeg != null) zones.push({ rings: e.rings, flowDeg: e.flowDeg });
+    const draft = boat.draftM || 1.2;
+    const common = {
+      field, boat, th, zones, hazards: (S.dangers || P.hazards || []),
+      clearNm: Math.max(0.25, Math.min(0.6, 0.2 + draft * 0.1)),
+      startId: from.id, endId: to.id, startName: from.name, endName: to.name,
+      maxHoursPerDay: S.settings.maxHoursPerDay || 10,
+      sunAt: d => N.sunTimes(d, to.lat, to.lon),
+    };
+    await new Promise(r => setTimeout(r, 30));
+    let ranked = [];
+    try {
+      ranked = N.planDepartures(from, to, C.land, Object.assign({}, common, {
+        cellNm: 0.4, padNm: 6, from: new Date(), windowHours: 60, everyHours: 4,
+      }));
+    } catch (e) { ranked = []; }
+    if (!ranked.length) {
+      el.innerHTML = `<div class="ehead"><b>No course found</b></div>
+        <div class="hint">Nothing gets from one end to the other on this chart. The ends may be on different bodies of water, or outside the built area.</div>
+        <div class="ebtns"><button class="btn" id="edBack">Back</button></div>`;
+      $('edBack').addEventListener('click', editRender);
+      return;
+    }
+    E.plan = { ranked, common, from, to };
+    renderPlanOptions();
+  }
+
+  function renderPlanOptions() {
+    const E = S.edit, plan = E.plan;
+    const best = plan.ranked[0];
+    const fmtWhen = d => `${d.toDateString().slice(0, 3)} ${N.fmtTime(d, TZ_ES)}`;
+    const badge = l => `<span class="tag ${l === 'ok' ? 'ok' : l === 'caution' ? 'caution' : 'nogo'}">${l === 'ok' ? 'GO' : l === 'caution' ? 'CAUTION' : 'NO-GO'}</span>`;
+    const sched = best.schedule;
+    let h = `<div class="ehead"><b>Best departure</b><span class="muted small">${esc(vesselOf().label || vesselOf().name || 'your boat')}</span></div>`;
+    h += `<div class="verdictline ${best.level === 'ok' ? 'ok' : 'bad'}">${badge(best.level)} &nbsp;${esc(fmtWhen(best.departAt))} ${esc(TZL_FROM)}</div>`;
+    h += `<div class="etotals"><span><b>${N.fmtNm(best.route.distanceNm, 1)}</b> nm</span><span><b>${N.fmtDur(sched.totalHours * 3600)}</b> under way</span><span>arrive <b>${esc(fmtWhen(sched.arriveAt))}</b></span>${sched.nights ? `<span><b>${sched.nights}</b> night${sched.nights > 1 ? 's' : ''} on the way</span>` : ''}</div>`;
+    h += `<div class="hint">Worst on the way: wind ${Math.round(best.route.worst.wind)} kn, gusts ${Math.round(best.route.worst.gust)} kn, waves ${best.route.worst.wave.toFixed(1)} m.${best.why ? ' ' + esc(best.why) + '.' : ''}${best.arriveDark ? ' Arrives after dark.' : ''}</div>`;
+    if (sched.days.length > 1) {
+      h += `<div class="legs"><table><tr><th>Day</th><th>Leaves</th><th>Arrives</th><th>nm</th><th>Stop</th></tr>` +
+        sched.days.map(d => `<tr><td>${d.index}</td><td>${esc(fmtWhen(d.departAt))}</td><td>${esc(fmtWhen(d.arriveAt))}</td><td>${d.distanceNm.toFixed(1)}</td><td>${d.stopAt ? esc(d.stopAt) : '<span class="muted">arrive</span>'}</td></tr>`).join('') + `</table></div>`;
+    }
+    h += `<div class="ebtns"><button class="btn primary" id="edTake">Use this plan</button><button class="btn" id="edBack">Back to the chart</button></div>`;
+    h += `<h3 style="margin:14px 0 4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em">Other departures</h3>`;
+    h += `<p class="hint" style="margin:0 0 4px">Tap one to use it instead.</p>`;
+    h += `<div class="legs"><table><tr><th>Leave</th><th></th><th>Under way</th><th>Worst on the way</th></tr>` +
+      plan.ranked.slice(0, 12).map((r, i) => `<tr class="pick ${r.level === 'ok' ? '' : r.level === 'caution' ? 'caution' : 'nogo'}" data-take="${i}"><td>${esc(fmtWhen(r.departAt))}</td><td>${badge(r.level)}</td><td>${N.fmtDur(r.schedule.totalHours * 3600)}</td><td>${Math.round(r.route.worst.wind)} kn, ${r.route.worst.wave.toFixed(1)} m</td></tr>`).join('') + `</table></div>`;
+    const el = $('editPanel'); el.innerHTML = h;
+    $('edBack').addEventListener('click', editRender);
+    $('edTake').addEventListener('click', () => takePlan(0));
+    el.querySelectorAll('tr[data-take]').forEach(row => row.addEventListener('click', () => takePlan(+row.getAttribute('data-take'))));
+  }
+
+  function takePlan(i) {
+    const E = S.edit, plan = E.plan;
+    const chosen = plan.ranked[i] || plan.ranked[0];
+    editPush();
+    const mid = chosen.route.waypoints.slice(1, -1).map((w, k) => ({ id: 'WP' + (k + 1), name: 'Waypoint ' + (k + 1), lat: w.lat, lon: w.lon, radius: 0.1, note: '' }));
+    E.wps = [plan.from, ...mid, plan.to];
+    E.sel = E.wps.length - 1;
+    E.chosen = chosen;
+    S.settings.departure = chosen.departAt.toISOString();
+    S.plan = { schedule: chosen.schedule, level: chosen.level, why: chosen.why, worst: chosen.route.worst, madeAt: Date.now() };
+    saveSettings();
+    editRender();
+    toast(`Departure set to ${chosen.departAt.toDateString().slice(0, 3)} ${N.fmtTime(chosen.departAt, TZ_ES)}. Save the route to keep it.`, 6000);
+  }
 
   /** Work out the middle of the route: give it two ends and it finds a course that clears the land and
       crosses the traffic scheme the way rule 10(c) asks. It is a suggestion, checked like any other. */
