@@ -1,0 +1,53 @@
+{
+  "_": "Typical figures for common kinds of boat, to start from. These are archetypes by hull type and length, NOT a database of models: nobody should navigate on a number a piece of software guessed about their particular boat and year. Pick the nearest, then put your own cruise speed, burn and draft in, because those are the ones that decide fuel and ETA. Thresholds are conservative starting points for a cruising crew, not limits of the hull.",
+  "version": 1,
+  "boats": [
+    { "id": "rib-6m", "label": "RIB or open boat, 5–7 m", "kind": "power", "cruiseKn": 20, "maxKn": 35, "burnLph": 25, "draftM": 0.5,
+      "th": { "windCaution": 11, "windNoGo": 16, "gustCaution": 18, "gustNoGo": 24, "waveCaution": 0.6, "waveNoGo": 1.0, "currentCaution": 1.5 },
+      "note": "Wet and quickly overwhelmed. Short hops, good visibility, and turn back early." },
+
+    { "id": "dayboat-8m", "label": "Day cruiser, 7–9 m", "kind": "power", "cruiseKn": 20, "maxKn": 30, "burnLph": 35, "draftM": 0.8,
+      "th": { "windCaution": 13, "windNoGo": 18, "gustCaution": 20, "gustNoGo": 27, "waveCaution": 0.8, "waveNoGo": 1.2, "currentCaution": 1.8 },
+      "note": "Comfortable in a chop up to about a metre; slams beyond it." },
+
+    { "id": "planing-11m", "label": "Planing motor yacht, 10–12 m", "kind": "power", "cruiseKn": 22, "maxKn": 30, "burnLph": 75, "draftM": 1.0,
+      "th": { "windCaution": 14, "windNoGo": 20, "gustCaution": 22, "gustNoGo": 30, "waveCaution": 1.0, "waveNoGo": 1.6, "currentCaution": 2.0 },
+      "note": "Has to come off the plane in a head sea, so the passage takes far longer than the plan says." },
+
+    { "id": "planing-15m", "label": "Planing motor yacht, 14–16 m", "kind": "power", "cruiseKn": 24, "maxKn": 32, "burnLph": 160, "draftM": 1.3,
+      "th": { "windCaution": 17, "windNoGo": 24, "gustCaution": 26, "gustNoGo": 34, "waveCaution": 1.3, "waveNoGo": 2.0, "currentCaution": 2.5 },
+      "note": "" },
+
+    { "id": "flybridge-20m", "label": "Flybridge motor yacht, 18–22 m", "kind": "power", "cruiseKn": 22, "maxKn": 28, "burnLph": 320, "draftM": 1.6,
+      "th": { "windCaution": 20, "windNoGo": 28, "gustCaution": 30, "gustNoGo": 38, "waveCaution": 1.7, "waveNoGo": 2.6, "currentCaution": 3.0 },
+      "note": "" },
+
+    { "id": "trawler-12m", "label": "Displacement trawler, 11–13 m", "kind": "power", "cruiseKn": 8, "maxKn": 10, "burnLph": 12, "draftM": 1.4,
+      "th": { "windCaution": 18, "windNoGo": 25, "gustCaution": 27, "gustNoGo": 35, "waveCaution": 1.5, "waveNoGo": 2.4, "currentCaution": 2.0 },
+      "note": "Slow enough that a foul tide matters more than the wind: plan around the stream." },
+
+    { "id": "trawler-16m", "label": "Displacement trawler, 15–17 m", "kind": "power", "cruiseKn": 9, "maxKn": 11, "burnLph": 20, "draftM": 1.7,
+      "th": { "windCaution": 21, "windNoGo": 29, "gustCaution": 31, "gustNoGo": 40, "waveCaution": 1.9, "waveNoGo": 2.9, "currentCaution": 2.5 },
+      "note": "" },
+
+    { "id": "sail-8m", "label": "Cruising monohull, 7–9 m", "kind": "sail", "cruiseKn": 5, "maxKn": 7, "burnLph": 3, "draftM": 1.4,
+      "th": { "windCaution": 20, "windNoGo": 28, "gustCaution": 28, "gustNoGo": 36, "waveCaution": 1.2, "waveNoGo": 2.0, "currentCaution": 1.5 },
+      "note": "Wind is the engine, so the caution limits are about the crew and the sea, not the rig." },
+
+    { "id": "sail-11m", "label": "Cruising monohull, 10–12 m", "kind": "sail", "cruiseKn": 6, "maxKn": 8, "burnLph": 4, "draftM": 1.8,
+      "th": { "windCaution": 22, "windNoGo": 30, "gustCaution": 30, "gustNoGo": 40, "waveCaution": 1.5, "waveNoGo": 2.5, "currentCaution": 2.0 },
+      "note": "" },
+
+    { "id": "sail-14m", "label": "Cruising monohull, 13–15 m", "kind": "sail", "cruiseKn": 7, "maxKn": 9, "burnLph": 6, "draftM": 2.2,
+      "th": { "windCaution": 25, "windNoGo": 33, "gustCaution": 33, "gustNoGo": 44, "waveCaution": 2.0, "waveNoGo": 3.0, "currentCaution": 2.5 },
+      "note": "" },
+
+    { "id": "cat-12m", "label": "Cruising catamaran, 11–13 m", "kind": "sail", "cruiseKn": 7, "maxKn": 11, "burnLph": 6, "draftM": 1.2,
+      "th": { "windCaution": 22, "windNoGo": 30, "gustCaution": 30, "gustNoGo": 38, "waveCaution": 1.5, "waveNoGo": 2.4, "currentCaution": 2.0 },
+      "note": "Shallow draft and fast off the wind; slams between the hulls in a short steep head sea." },
+
+    { "id": "motorsailer-12m", "label": "Motorsailer, 11–13 m", "kind": "sail", "cruiseKn": 7, "maxKn": 9, "burnLph": 8, "draftM": 1.6,
+      "th": { "windCaution": 22, "windNoGo": 30, "gustCaution": 30, "gustNoGo": 40, "waveCaution": 1.6, "waveNoGo": 2.6, "currentCaution": 2.0 },
+      "note": "" }
+  ]
+}

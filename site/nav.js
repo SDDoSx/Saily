@@ -164,6 +164,255 @@
     return out;
   }
 
+  // ---------- automatic routing: a course from A to B that stays off the land ----------
+  // A grid of cells over the area, land (plus a clearance margin) marked unusable, A* across what is left,
+  // then the path pulled straight so it comes out as a handful of waypoints rather than hundreds of steps.
+  // The result is a suggestion. It is checked by checkLegs like any other route, and it is not a chart.
+
+  /** Mark the cells a boat cannot use: land, its clearance margin, and any hazard circles. */
+  function buildGrid(bbox, land, opts) {
+    opts = opts || {};
+    const cellNm = opts.cellNm || 0.25;
+    const clearNm = opts.clearNm === undefined ? 0.3 : opts.clearNm;
+    const lat0 = (bbox[0] + bbox[2]) / 2;
+    const proj = projector(lat0);
+    const [x0, y0] = proj.toXY([bbox[0], bbox[1]]);
+    const [x1, y1] = proj.toXY([bbox[2], bbox[3]]);
+    const w = Math.max(2, Math.ceil((x1 - x0) / cellNm));
+    const h = Math.max(2, Math.ceil((y1 - y0) / cellNm));
+    const blocked = new Uint8Array(w * h);
+
+    // rings carry a bounding box so most cells cost one comparison rather than a full crossing count
+    const rings = (land || []).map(r => {
+      let mnLat = Infinity, mxLat = -Infinity, mnLon = Infinity, mxLon = -Infinity;
+      for (const [la, lo] of r) {
+        if (la < mnLat) mnLat = la; if (la > mxLat) mxLat = la;
+        if (lo < mnLon) mnLon = lo; if (lo > mxLon) mxLon = lo;
+      }
+      return { r, mnLat, mxLat, mnLon, mxLon };
+    });
+    const cellLL = (ix, iy) => proj.toLL([x0 + (ix + 0.5) * cellNm, y0 + (iy + 0.5) * cellNm]);
+    for (let iy = 0; iy < h; iy++) {
+      for (let ix = 0; ix < w; ix++) {
+        const [la, lo] = cellLL(ix, iy);
+        for (const g of rings) {
+          if (la < g.mnLat || la > g.mxLat || lo < g.mnLon || lo > g.mxLon) continue;
+          if (pointInRing({ lat: la, lon: lo }, g.r)) { blocked[iy * w + ix] = 1; break; }
+        }
+      }
+    }
+    // grow the land by the clearance margin: a multi-source sweep outwards from every blocked cell
+    const margin = Math.ceil(clearNm / cellNm);
+    if (margin > 0) {
+      let front = [];
+      for (let i = 0; i < blocked.length; i++) if (blocked[i] === 1) front.push(i);
+      for (let step = 0; step < margin && front.length; step++) {
+        const next = [];
+        for (const i of front) {
+          const ix = i % w, iy = (i / w) | 0;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const nx = ix + dx, ny = iy + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const j = ny * w + nx;
+            if (!blocked[j]) { blocked[j] = 2; next.push(j); }   // 2 = margin, still unusable
+          }
+        }
+        front = next;
+      }
+    }
+    // Traffic separation schemes are not obstacles, they are rules: COLREG rule 10(c) says cross on a
+    // heading as nearly as practicable at right angles to the flow. Record each cell's flow bearing so the
+    // search can price a step through it by the angle it makes, rather than banning it or ignoring it.
+    const flow = new Int16Array(w * h).fill(-1);
+    for (const z of (opts.zones || [])) {
+      if (z.flowDeg === undefined || z.flowDeg === null) continue;
+      const zrings = (z.rings || []).map(r => {
+        let mnLat = Infinity, mxLat = -Infinity, mnLon = Infinity, mxLon = -Infinity;
+        for (const [la, lo] of r) { if (la < mnLat) mnLat = la; if (la > mxLat) mxLat = la; if (lo < mnLon) mnLon = lo; if (lo > mxLon) mxLon = lo; }
+        return { r, mnLat, mxLat, mnLon, mxLon };
+      });
+      for (let iy = 0; iy < h; iy++) for (let ix = 0; ix < w; ix++) {
+        const i = iy * w + ix;
+        if (flow[i] >= 0 || blocked[i]) continue;
+        const [la, lo] = cellLL(ix, iy);
+        for (const g of zrings) {
+          if (la < g.mnLat || la > g.mxLat || lo < g.mnLon || lo > g.mxLon) continue;
+          if (pointInRing({ lat: la, lon: lo }, g.r)) { flow[i] = Math.round(norm360(z.flowDeg)); break; }
+        }
+      }
+    }
+    for (const hz of (opts.hazards || [])) {
+      const rNm = hz.radiusNm || hz.radius || 0.15;
+      const cells = Math.ceil(rNm / cellNm);
+      const [hx, hy] = proj.toXY([hz.lat, hz.lon]);
+      const cx = Math.round((hx - x0) / cellNm - 0.5), cy = Math.round((hy - y0) / cellNm - 0.5);
+      for (let dy = -cells; dy <= cells; dy++) for (let dx = -cells; dx <= cells; dx++) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (dx * dx + dy * dy <= cells * cells) blocked[ny * w + nx] = 3;   // 3 = hazard
+      }
+    }
+    return {
+      w, h, cellNm, blocked, flow, proj, x0, y0,
+      toCell(ll) {
+        const [px, py] = proj.toXY([ll.lat, ll.lon]);
+        return { ix: Math.min(w - 1, Math.max(0, Math.round((px - x0) / cellNm - 0.5))),
+                 iy: Math.min(h - 1, Math.max(0, Math.round((py - y0) / cellNm - 0.5))) };
+      },
+      toLL(ix, iy) { const [la, lo] = cellLL(ix, iy); return { lat: la, lon: lo }; },
+      free(ix, iy) { return ix >= 0 && iy >= 0 && ix < w && iy < h && !blocked[iy * w + ix]; },
+    };
+  }
+
+  /** nearest usable cell to one that is blocked, so a start in a marina still routes */
+  function nearestFree(grid, ix, iy, maxRings) {
+    if (grid.free(ix, iy)) return { ix, iy };
+    for (let r = 1; r <= (maxRings || 40); r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (grid.free(ix + dx, iy + dy)) return { ix: ix + dx, iy: iy + dy };
+      }
+    }
+    return null;
+  }
+
+  /** true when every cell along a straight line between two cells is usable */
+  function clearLine(grid, a, b) {
+    const dx = Math.abs(b.ix - a.ix), dy = Math.abs(b.iy - a.iy);
+    const sx = a.ix < b.ix ? 1 : -1, sy = a.iy < b.iy ? 1 : -1;
+    let err = dx - dy, x = a.ix, y = a.iy;
+    for (let guard = 0; guard < dx + dy + 4; guard++) {
+      if (!grid.free(x, y)) return false;
+      if (x === b.ix && y === b.iy) return true;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx) { err += dx; y += sy; }
+    }
+    return grid.free(b.ix, b.iy);
+  }
+
+  /** How much dearer a step is because of the traffic scheme it passes through.
+      1 at right angles to the flow, up to 1 + k running along it, so the cheapest way across a lane is the
+      one the COLREGs ask for and the cheapest route overall spends the least time inside it. */
+  function laneCost(grid, i, stepBrg, k) {
+    const f = grid.flow ? grid.flow[i] : -1;
+    if (f < 0) return 1;
+    const along = Math.abs(Math.cos(toRad(angleDiff(stepBrg, f))));   // 1 parallel, 0 perpendicular
+    return 1 + (k === undefined ? 6 : k) * along;
+  }
+
+  /** A* over the usable cells; returns the cell path or null */
+  function astar(grid, from, to, opts) {
+    const w = grid.w, n = grid.w * grid.h;
+    const start = from.iy * w + from.ix, goal = to.iy * w + to.ix;
+    const g = new Float64Array(n).fill(Infinity);
+    const came = new Int32Array(n).fill(-1);
+    const done = new Uint8Array(n);
+    const h = i => { const dx = (i % w) - to.ix, dy = ((i / w) | 0) - to.iy; return Math.hypot(dx, dy); };
+    // a binary heap keyed by f; the grids here are small enough that this is comfortably fast
+    const heap = [];
+    const push = (i, f) => { heap.push([f, i]); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let p = 0; for (;;) { const l = 2 * p + 1, r = l + 1; let m = p; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === p) break; [heap[m], heap[p]] = [heap[p], heap[m]]; p = m; } } return top; };
+    g[start] = 0; push(start, h(start));
+    let guard = 0;
+    while (heap.length && guard++ < n * 4) {
+      const [, i] = pop();
+      if (done[i]) continue;
+      done[i] = 1;
+      if (i === goal) break;
+      const ix = i % w, iy = (i / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = ix + dx, ny = iy + dy;
+        if (!grid.free(nx, ny)) continue;
+        if (dx && dy && !(grid.free(ix + dx, iy) && grid.free(ix, iy + dy))) continue;   // no cutting corners
+        const j = ny * w + nx;
+        const step = (dx && dy) ? Math.SQRT2 : 1;
+        const brg = norm360(toDeg(Math.atan2(dx, dy)));
+        const ng = g[i] + step * laneCost(grid, j, brg, opts && opts.laneK);
+        if (ng < g[j]) { g[j] = ng; came[j] = i; push(j, ng + h(j)); }
+      }
+    }
+    if (!done[goal] && came[goal] < 0) return null;
+    const path = [];
+    for (let i = goal; i >= 0; i = came[i]) { path.push({ ix: i % w, iy: (i / w) | 0 }); if (i === start) break; }
+    return path.reverse();
+  }
+
+  /** True when the straight line between two cells would cross a lane at a worse angle than the path did.
+      Pulling a path straight is what turns a right-angle crossing back into a diagonal one. */
+  function crossingWorsens(grid, a, b, maxAlong) {
+    if (!grid.flow) return false;
+    const brg = norm360(toDeg(Math.atan2(b.ix - a.ix, b.iy - a.iy)));
+    const dx = Math.abs(b.ix - a.ix), dy = Math.abs(b.iy - a.iy);
+    const sx = a.ix < b.ix ? 1 : -1, sy = a.iy < b.iy ? 1 : -1;
+    let err = dx - dy, x = a.ix, y = a.iy;
+    for (let guard = 0; guard < dx + dy + 4; guard++) {
+      const f = grid.flow[y * grid.w + x];
+      if (f >= 0 && Math.abs(Math.cos(toRad(angleDiff(brg, f)))) > (maxAlong === undefined ? 0.35 : maxAlong)) return true;
+      if (x === b.ix && y === b.iy) return false;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx) { err += dx; y += sy; }
+    }
+    return false;
+  }
+
+  /** pull the path straight: keep a point only where the line of sight, or the crossing angle, breaks */
+  function simplifyPath(grid, cells, opts) {
+    if (cells.length < 3) return cells.slice();
+    const out = [cells[0]];
+    let anchor = 0;
+    while (anchor < cells.length - 1) {
+      let far = anchor + 1;
+      for (let j = cells.length - 1; j > anchor; j--) {
+        if (clearLine(grid, cells[anchor], cells[j]) && !crossingWorsens(grid, cells[anchor], cells[j], opts && opts.maxAlong)) { far = j; break; }
+      }
+      out.push(cells[far]);
+      anchor = far;
+    }
+    return out;
+  }
+
+  /** Suggest a route from `from` to `to` that stays clear of land.
+      Returns {waypoints, cellNm, clearNm, blockedStart, blockedEnd} or null when there is no way through. */
+  function suggestRoute(from, to, land, opts) {
+    opts = opts || {};
+    const pad = opts.padNm === undefined ? 4 : opts.padNm;
+    const padDeg = pad / 60;
+    const bbox = opts.bbox || [
+      Math.min(from.lat, to.lat) - padDeg, Math.min(from.lon, to.lon) - padDeg * 1.4,
+      Math.max(from.lat, to.lat) + padDeg, Math.max(from.lon, to.lon) + padDeg * 1.4];
+    const grid = buildGrid(bbox, land, opts);
+    const a0 = grid.toCell(from), b0 = grid.toCell(to);
+    const a = nearestFree(grid, a0.ix, a0.iy), b = nearestFree(grid, b0.ix, b0.iy);
+    if (!a || !b) return null;
+    const cells = astar(grid, a, b, opts);
+    if (!cells) return null;
+    const pulled = simplifyPath(grid, cells, opts);
+    // real endpoints at each end, the pulled corners in between
+    const mid = pulled.slice(1, -1).map(c => grid.toLL(c.ix, c.iy));
+    const pts = [{ lat: from.lat, lon: from.lon }, ...mid, { lat: to.lat, lon: to.lon }];
+    // drop a corner that adds almost nothing to the course
+    const kept = [pts[0]];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const prev = kept[kept.length - 1], next = pts[i + 1];
+      const turn = Math.abs(angleDiff(bearingDeg(prev, pts[i]), bearingDeg(pts[i], next)));
+      if (turn > (opts.minTurnDeg || 8)) kept.push(pts[i]);
+    }
+    kept.push(pts[pts.length - 1]);
+    return {
+      waypoints: kept.map((p, i) => ({
+        id: i === 0 ? (opts.startId || 'START') : i === kept.length - 1 ? (opts.endId || 'FINISH') : 'WP' + i,
+        name: i === 0 ? (opts.startName || 'Start') : i === kept.length - 1 ? (opts.endName || 'Finish') : 'Waypoint ' + i,
+        lat: Math.round(p.lat * 1e5) / 1e5, lon: Math.round(p.lon * 1e5) / 1e5, radius: 0.1, note: '',
+      })),
+      cellNm: grid.cellNm, clearNm: opts.clearNm === undefined ? 0.3 : opts.clearNm,
+      blockedStart: !grid.free(a0.ix, a0.iy), blockedEnd: !grid.free(b0.ix, b0.iy),
+      cells: cells.length, bbox,
+    };
+  }
+
   /** legs for a waypoint list */
   function legs(wps) {
     const out = [];
@@ -319,5 +568,6 @@
   return { R, NM, toRad, toDeg, norm360, angleDiff, distanceNm, bearingDeg, destination, crossTrackNm, alongTrackNm,
     pointInRing, pointInRings, legs, routeTotal, solve, ttgSeconds, makeSmoother, deltaSpeedCourse,
     projector, ringsXY, segToRingsXY, segHitsRingsXY, checkLegs,
+    buildGrid, nearestFree, clearLine, astar, simplifyPath, suggestRoute, laneCost, crossingWorsens,
     fmtDM, fmtBrg, fmtNm, fmtDur, fmtTime, compass16, sunTimes, windVsCurrent, toGPX, trackGPX, courseAtNm, seaAspect };
 });

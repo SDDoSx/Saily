@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.16.0 (2026-09-08)
+- **Suggest a course.** Put a waypoint at each end and press one button: `NAV.suggestRoute` grids the area,
+  blocks land plus a clearance margin that widens with your draft, blocks the hazard circles, runs A* across
+  what is left, and pulls the path straight into a handful of waypoints. The result is checked leg by leg
+  like any other route and is marked a suggestion, not a chart.
+- **It knows about traffic separation schemes.** A step through a lane is priced by the angle it makes with
+  the flow, so the cheapest way across is the one COLREG rule 10(c) asks for: as near right angles as
+  practicable. The straightening pass will not undo a square crossing to save a corner. On the bundled
+  crossing it turns a shallow diagonal through two lanes into a 72° crossing of one.
+- **Your boat** in Setup: pick the nearest kind and it sets cruise speed, fuel burn, draft and the weather
+  thresholds, then correct any of them. These are archetypes by hull type and length, not a database of
+  models and years, and the app says so: nobody should navigate on a number software guessed about their
+  particular boat.
+- Draft feeds the router: a deeper boat is given a wider berth off the land.
+
+### Fixed
+- **CARTO's keyless tiles now come stamped "API KEY REQUIRED" across the image**, and CARTO was the default
+  base map, so that watermark was on every screen. It is gone; OpenStreetMap's own tiles are the default.
+- The tile preload corridor was two hard-coded coordinate pairs in the Strait, so any other passage cached
+  the wrong sea. It follows the active route and the passage's places, and is capped so it cannot become a
+  bulk download of somebody else's tile server.
+- `boats.json` is part of the offline shell, so the boat list survives going offline.
+
 ## 0.15.1 (2026-09-08)
 The route editor was unfindable. It was the last of six unlabelled dark squares behind a hamburger on the
 chart, which is not a place anyone would look for "draw a route".

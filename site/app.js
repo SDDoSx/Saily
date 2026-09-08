@@ -22,6 +22,7 @@
   P.tz.to = P.tz.to || P.tz.from;
   P.sun = P.sun || lastWaypoint() || centreOf();
   P.vessel = P.vessel || {};
+
   const TZ_ES = P.tz.from.zone, TZ_MA = P.tz.to.zone, TZL_FROM = P.tz.from.label, TZL_TO = P.tz.to.label;
   // Settings, track and alert log are per passage: a route id or a waypoint index from another crossing
   // is meaningless here, and a track from the Strait does not belong on a Solent chart.
@@ -89,6 +90,13 @@
   function loadJson(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function saveJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
 
+  // The passage names the boat it was written for. The one at the helm is whatever the owner set.
+  S.boats = [];
+  const vesselOf = () => Object.assign({}, P.vessel, S.settings.boat || {});
+  fetch('boats.json', { cache: 'no-cache' })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { S.boats = (d && d.boats) || []; if (S.view === 'more') renderMore(); })
+    .catch(() => { });
   S.route = P.routes.find(r => r.id === S.settings.routeId) || P.routes[0];
   const WPS = () => S.route.waypoints;
   const DEST = () => WPS()[WPS().length - 1];
@@ -482,6 +490,7 @@
     else h += `<div class="verdictline ok">Every leg clears land by ${CLEAR_NM} nm or more${crossing.length ? `, ${crossing.length === 1 ? 'one crosses' : crossing.length + ' cross'} the scheme` : ''}</div>`;
     // Actions before detail: at the chart you want the buttons without scrolling past fourteen legs.
     h += `<div class="ebtns">
+      <button class="btn primary" id="edAuto">Suggest a course</button>
       <button class="btn" id="edUndo">Undo</button>
       <button class="btn" id="edDel">Delete${sel ? ' ' + esc(sel.id) : ''}</button>
       <button class="btn" id="edIns">Insert before</button>
@@ -497,6 +506,7 @@
     }
     const el = $('editPanel'); el.innerHTML = h;
     $('edUndo').addEventListener('click', editUndo);
+    $('edAuto').addEventListener('click', suggestCourse);
     $('edClose').addEventListener('click', stopEdit);
     $('edDel').addEventListener('click', () => {
       if (!E.wps.length) return;
@@ -518,6 +528,47 @@
     $('edJson').addEventListener('click', () => showEditJson(rows));
   }
   const round5 = v => Math.round(v * 1e5) / 1e5;
+
+  /** Work out the middle of the route: give it two ends and it finds a course that clears the land and
+      crosses the traffic scheme the way rule 10(c) asks. It is a suggestion, checked like any other. */
+  function suggestCourse() {
+    const E = S.edit;
+    if (!E || E.wps.length < 2) { toast('Put a waypoint at each end first, then press this'); return; }
+    const from = E.wps[0], to = E.wps[E.wps.length - 1];
+    const zones = [];
+    for (const e of (C.tss.lanes || [])) if (e.flowDeg != null) zones.push({ rings: e.rings, flowDeg: e.flowDeg });
+    for (const e of (C.tss.zones || [])) { const l = (C.tss.lanes || [])[0]; if (l && l.flowDeg != null) zones.push({ rings: e.rings, flowDeg: l.flowDeg }); }
+    const draft = vesselOf().draftM || 1.2;
+    const clearNm = Math.max(0.25, Math.min(0.6, 0.2 + draft * 0.1));   // deeper boat, wider berth
+    const el = $('editPanel');
+    el.innerHTML = `<div class="ehead"><b>Working out a course</b></div><div class="hint">Keeping ${clearNm.toFixed(2)} nm off the land and crossing the traffic scheme as near square as it can.</div>`;
+    setTimeout(() => {
+      let sug = null, err = null;
+      try {
+        sug = N.suggestRoute(from, to, C.land, {
+          clearNm, cellNm: 0.25, hazards: (S.dangers || P.hazards || []),
+          zones, startId: from.id, endId: to.id, startName: from.name, endName: to.name,
+        });
+      } catch (e) { err = String(e && e.message || e); }
+      if (!sug) {
+        el.innerHTML = `<div class="ehead"><b>No course found</b></div>
+          <div class="hint">${esc(err || 'Nothing gets from one end to the other without crossing land, at ' + clearNm.toFixed(2) + ' nm clearance. The two ends may be on different bodies of water, or outside the built chart.')}</div>
+          <div class="ebtns"><button class="btn" id="edBack">Back to the route</button></div>`;
+        $('edBack').addEventListener('click', editRender);
+        return;
+      }
+      editPush();
+      // keep the ends exactly where they were put; the suggestion supplies the middle
+      const mid = sug.waypoints.slice(1, -1).map((w, i) => ({ id: 'WP' + (i + 1), name: 'Waypoint ' + (i + 1), lat: w.lat, lon: w.lon, radius: 0.1, note: '' }));
+      E.wps = [from, ...mid, to];
+      E.sel = E.wps.length - 1;
+      editRender();
+      const rows = editCheck();
+      const bad = rows.filter(r => r.tooClose).length;
+      toast(bad ? `${E.wps.length} waypoints, but ${bad} leg(s) still run close to land: check them`
+                : `${E.wps.length} waypoints, ${N.fmtNm(rows.reduce((a, r) => a + r.dist, 0), 1)} nm, every leg clear`, 5000);
+    }, 30);
+  }
 
   // ---------- build a chart for an area that has none ----------
   // A browser cannot fetch and polygonise a coastline, so the optional chart service does it
@@ -770,7 +821,7 @@
     if (Date.now() - S.completeSince > 120000 && $('completeBar').classList.contains('hidden') && !S.completeShown) {
       S.completeShown = true;
       const t = S.trip; const hrs = t ? (Date.now() - t.startedAt) / 3600000 : 0;
-      $('completeBar').innerHTML = `<span><b>Passage complete.</b> ${t ? N.fmtNm(t.dist, 1) + ' nm in ' + N.fmtDur(hrs * 3600) + ', avg ' + (hrs > 0.02 ? (t.dist / hrs).toFixed(1) : '--') + ' kn, max ' + t.maxSog.toFixed(1) + ' kn, fuel about ' + Math.round(hrs * (P.vessel.burnLph || 75)) + ' L.' : ''}</span><button class="btn primary" id="btnStopNav">Stop</button><button class="btn" id="btnKeepGps">Keep GPS</button>${returnRoute() ? '<button class="btn" id="btnPlanReturn">Plan return</button>' : ''}`;
+      $('completeBar').innerHTML = `<span><b>Passage complete.</b> ${t ? N.fmtNm(t.dist, 1) + ' nm in ' + N.fmtDur(hrs * 3600) + ', avg ' + (hrs > 0.02 ? (t.dist / hrs).toFixed(1) : '--') + ' kn, max ' + t.maxSog.toFixed(1) + ' kn, fuel about ' + Math.round(hrs * (vesselOf().burnLph || 75)) + ' L.' : ''}</span><button class="btn primary" id="btnStopNav">Stop</button><button class="btn" id="btnKeepGps">Keep GPS</button>${returnRoute() ? '<button class="btn" id="btnPlanReturn">Plan return</button>' : ''}`;
       $('completeBar').classList.remove('hidden');
       $('btnStopNav').addEventListener('click', () => { S.navigating = false; stopGps(); try { S.wakeLock && S.wakeLock.release(); } catch (e) { } localStorage.removeItem('saily.nav.v1'); $('completeBar').classList.add('hidden'); toast('Navigation stopped; track kept'); });
       $('btnKeepGps').addEventListener('click', () => $('completeBar').classList.add('hidden'));
@@ -887,7 +938,7 @@
     const t = S.trip; const el = $('hudTrip'); if (!t) { el.textContent = ''; return; }
     const hrs = (Date.now() - t.startedAt) / 3600000;
     const avg = hrs > 0.02 ? t.dist / hrs : 0;
-    el.textContent = `run ${N.fmtNm(t.dist, 1)} nm · ${N.fmtDur(hrs * 3600)} · avg ${avg.toFixed(1)} · max ${t.maxSog.toFixed(1)} kn · fuel ~${Math.round(hrs * (P.vessel.burnLph || 75))} L`;
+    el.textContent = `run ${N.fmtNm(t.dist, 1)} nm · ${N.fmtDur(hrs * 3600)} · avg ${avg.toFixed(1)} · max ${t.maxSog.toFixed(1)} kn · fuel ~${Math.round(hrs * (vesselOf().burnLph || 75))} L`;
   }
   function tripUpdate(fix, prev) {
     if (!S.trip || S.sim) return;
@@ -1450,7 +1501,7 @@
       <p class="muted small">Tap the chart to add waypoints and drag them to move. Every leg is measured against the coastline and the traffic scheme as you draw.</p>
       <p><b>${esc(r.name)}</b></p><p>${esc(r.summary || '')}</p>
       ${r.unverified ? `<p class="wxstale"><b>Not verified.</b> This route was drawn in the app and has legs within ${CLEAR_NM} nm of land. Check every one of them against a real chart before you follow it.</p>` : ''}
-      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (P.vessel.burnLph || 75))} L at a planning burn of ${P.vessel.burnLph || 75} L/h (${P.vessel.name || 'planning figure'}; tanks ${P.vessel.fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
+      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (vesselOf().burnLph || 75))} L at a planning burn of ${vesselOf().burnLph || 75} L/h (${esc(vesselOf().name || vesselOf().label || 'planning figure')}; tanks ${vesselOf().fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
     h += `<div class="card"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
     r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
     h += `</table></div><p class="muted">Courses are true. Apply your compass variation (about 1° W here) and deviation if steering by compass.</p></div>`;
@@ -1495,6 +1546,15 @@
       <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${esc(r.id)}" ${r.id === s.routeId ? 'selected' : ''}>${r.id === 'planned' ? 'Drawn here' : r.recommended ? 'Recommended' : 'Alternative'} (${esc(r.short || r.id)})${r.unverified ? ' — not verified' : ''}</option>`).join('')}</select></label>
       <label class="field"><span>${esc(TZL_TO)} clock</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option>${TZ_OFFSETS.map(o => `<option value="${o.minutes}" ${String(s.maOffset) === String(o.minutes) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
       <div class="row" style="margin-top:12px"><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
+    const boat = s.boat || {};
+    h += `<div class="card"><h2>Your boat</h2>
+      <p class="muted small">Speed, fuel burn and the weather limits all come from here. Pick the nearest kind of boat to start from, then correct the numbers: yours are the ones that decide the ETA and the fuel.</p>
+      <label class="field"><span>Kind of boat</span><select id="setBoat"><option value="">Custom / as the passage was written</option>${S.boats.map(b => `<option value="${esc(b.id)}" ${boat.id === b.id ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
+      ${boat.note ? `<p class="muted small">${esc(boat.note)}</p>` : ''}
+      <label class="field"><span>Cruise speed (kn)</span><input type="number" id="setSpeed2" min="2" max="60" step="0.5" value="${s.speed}"></label>
+      <label class="field"><span>Fuel burn at cruise (L/h)</span><input type="number" id="setBurn" min="0" max="2000" step="1" value="${vesselOf().burnLph || ''}"></label>
+      <label class="field"><span>Draft (m)</span><input type="number" id="setDraft" min="0" max="8" step="0.1" value="${vesselOf().draftM || ''}"></label>
+      <div class="muted small">Picking a kind of boat also sets the weather thresholds below. Change any of them afterwards and your value wins.</div></div>`;
     h += `<div class="card"><h2>Alerts and sound</h2>
       <label class="field"><span>Spoken alerts</span><input type="checkbox" id="setVoice" ${s.voice ? 'checked' : ''}></label>
       <label class="field"><span>Alert beeps</span><input type="checkbox" id="setSound" ${s.sound ? 'checked' : ''}></label>
@@ -1554,6 +1614,23 @@
     });
     $('setDep').addEventListener('change', () => { try { s.departure = fromLocal(TZ_ES, $('setDep').value).toISOString(); saveSettings(); } catch (e) { } });
     $('setRoute').addEventListener('change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = P.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
+    const bsel = $('setBoat');
+    if (bsel) bsel.addEventListener('change', () => {
+      const b = S.boats.find(x => x.id === bsel.value);
+      if (!b) { s.boat = null; saveSettings(); renderMore(); return; }
+      s.boat = { id: b.id, label: b.label, kind: b.kind, cruiseKn: b.cruiseKn, maxKn: b.maxKn, burnLph: b.burnLph, draftM: b.draftM, note: b.note };
+      s.speed = b.cruiseKn;
+      s.th = Object.assign({}, W.DEFAULT_THRESHOLDS, b.th);
+      saveSettings(); renderMore(); drawRoutes(); if (S.solution) updateHud(S.solution);
+      toast(b.label + ': ' + b.cruiseKn + ' kn, limits set');
+    });
+    const numOverride = (id, field) => { const el = $(id); if (!el) return; el.addEventListener('change', () => {
+      const v = parseFloat(el.value); if (!isFinite(v)) return;
+      s.boat = Object.assign({}, s.boat || {}); s.boat[field] = v;
+      if (field === 'cruiseKn') s.speed = v;
+      saveSettings(); if (S.solution) updateHud(S.solution);
+    }); };
+    numOverride('setSpeed2', 'cruiseKn'); numOverride('setBurn', 'burnLph'); numOverride('setDraft', 'draftM');
     $('setVoice').addEventListener('change', () => { s.voice = $('setVoice').checked; saveSettings(); });
     $('setAutoZoom').addEventListener('change', () => { s.autoZoom = $('setAutoZoom').checked; saveSettings(); });
     $('setTheme').addEventListener('change', () => { s.theme = $('setTheme').value; saveSettings(); applyTheme(); });

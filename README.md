@@ -32,6 +32,13 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
 - **Readable at any hour**: Automatic, Dark, Daylight (glare) and Night colours; night is red-amber on black so it does
   not spoil your night vision, switches itself at sunset with an undo toast, and dims further on request. Big-numbers
   mode drops the chart for the figures that matter, with a Chart button to bring it back. (Setup, Colours.)
+- **Suggest a course**: put a waypoint at each end and Saily works out the middle — around the land, clear by
+  a margin that widens with your draft, around the charted hazards, and across a traffic separation scheme as
+  near right angles as it can manage, which is what COLREG rule 10(c) asks for. It is a suggestion, checked
+  leg by leg like anything you draw yourself.
+- **Your boat**: pick the nearest kind of boat and it sets cruise speed, burn, draft and the weather limits.
+  Archetypes by hull and length, not a database of models: correct them to yours, because those are the
+  numbers the ETA and the fuel come from.
 - **Plan a route on the chart**: draw waypoints by tapping, drag them to move. Every leg is measured against
   the coastline and the traffic scheme as you go, by the same check the chart builder runs before a passage
   ships, so a leg that shaves a headland is flagged before you follow it. Export it as passage JSON for a pull

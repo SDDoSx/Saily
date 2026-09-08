@@ -191,3 +191,99 @@ test('checkLegs matches shapely on every leg of the bundled routes', () => {
   assert.strictEqual(compared, fixture.legs.length, 'every fixture leg was checked');
   assert.ok(compared >= 42, 'the bundled routes still have their legs');
 });
+
+// --- automatic routing ------------------------------------------------------------------------------
+// Synthetic geometry, so the behaviour is pinned by what the router must do rather than by one coastline.
+const SQUARE = (s, w, n, e) => [[n, w], [n, e], [s, e], [s, w], [n, w]];
+
+test('open water routes straight there', () => {
+  const r = N.suggestRoute({ lat: 36.0, lon: -5.0 }, { lat: 36.0, lon: -4.6 }, [], { cellNm: 0.5, clearNm: 0 });
+  assert.ok(r, 'a route was found');
+  assert.strictEqual(r.waypoints.length, 2, 'nothing to go around: start and finish only');
+  assert.strictEqual(r.waypoints[0].id, 'START');
+  assert.strictEqual(r.waypoints[1].id, 'FINISH');
+});
+
+test('an island in the way is routed around, not through', () => {
+  const island = [SQUARE(35.95, -4.85, 36.05, -4.75)];
+  const from = { lat: 36.0, lon: -5.0 }, to = { lat: 36.0, lon: -4.6 };
+  const r = N.suggestRoute(from, to, island, { cellNm: 0.25, clearNm: 0.3 });
+  assert.ok(r, 'a way round was found');
+  assert.ok(r.waypoints.length > 2, 'it had to turn: ' + r.waypoints.length + ' waypoints');
+  const legs = N.checkLegs(r.waypoints, island, [], { clearNm: 0.25, lat0: 36 });
+  assert.deepStrictEqual(legs.filter(l => l.tooClose).map(l => `${l.from}>${l.to}`), [], 'no leg runs into the island');
+  // and it is not a silly detour
+  assert.ok(N.routeTotal(r.waypoints) < N.distanceNm(from, to) * 1.6, N.routeTotal(r.waypoints) + ' nm');
+});
+
+test('a start inside a harbour still routes', () => {
+  // the start sits inside the land polygon, as a berth does; the router must leave from the nearest water
+  const land = [SQUARE(35.90, -5.10, 36.10, -4.90)];
+  const r = N.suggestRoute({ lat: 36.0, lon: -5.0 }, { lat: 36.0, lon: -4.5 }, land, { cellNm: 0.25, clearNm: 0.2 });
+  assert.ok(r, 'a route was still produced');
+  assert.strictEqual(r.blockedStart, true, 'it knows the start was not in open water');
+  assert.strictEqual(r.waypoints[0].lat, 36.0, 'the first waypoint is still where you asked to leave from');
+});
+
+test('no way through is reported, not faked', () => {
+  // a wall from edge to edge of the search box
+  const wall = [SQUARE(30.0, -4.8, 40.0, -4.7)];
+  const r = N.suggestRoute({ lat: 36.0, lon: -5.0 }, { lat: 36.0, lon: -4.5 }, wall, { cellNm: 0.5, clearNm: 0.2, padNm: 2 });
+  assert.strictEqual(r, null, 'a route that does not exist must come back null');
+});
+
+test('a gap is found and used', () => {
+  const wall = [SQUARE(36.02, -4.8, 40.0, -4.7), SQUARE(30.0, -4.8, 35.98, -4.7)];  // a gap at 36.00
+  const r = N.suggestRoute({ lat: 36.0, lon: -5.0 }, { lat: 36.0, lon: -4.5 }, wall, { cellNm: 0.1, clearNm: 0 });
+  assert.ok(r, 'the gap was found');
+  const legs = N.checkLegs(r.waypoints, wall, [], { clearNm: 0.02, lat0: 36 });
+  assert.deepStrictEqual(legs.filter(l => l.tooClose).map(l => `${l.from}>${l.to}`), []);
+});
+
+test('a traffic lane is crossed nearer to right angles than a diagonal would be', () => {
+  // a west-going lane (flow 270) lying across the track; a straight line would cut it at a shallow angle
+  const lane = { rings: [SQUARE(35.90, -5.20, 36.00, -4.60)], flowDeg: 270 };
+  const from = { lat: 36.20, lon: -5.15 }, to = { lat: 35.75, lon: -4.70 };
+  // perpendicularity, not the raw angle: 1.0 is dead across the flow, 0 is straight along it
+  const perp = deg => Math.abs(Math.sin(deg * Math.PI / 180));
+  const naive = perp(N.angleDiff(N.bearingDeg(from, to), 270));
+  const r = N.suggestRoute(from, to, [], { cellNm: 0.25, clearNm: 0, zones: [lane], laneK: 8 });
+  assert.ok(r, 'a route was found');
+  const legs = N.checkLegs(r.waypoints, [], [{ id: 'lane', rings: lane.rings }], { lat0: 36 });
+  const crossing = legs.filter(l => l.crosses.includes('lane'));
+  assert.ok(crossing.length, 'something crosses the lane');
+  const best = Math.max(...crossing.map(l => perp(N.angleDiff(l.brg, 270))));
+  assert.ok(best > naive + 0.1,
+    `crossed at ${(Math.asin(best) * 180 / Math.PI).toFixed(0)}° from the flow line; a straight course would be ${(Math.asin(naive) * 180 / Math.PI).toFixed(0)}°`);
+  assert.ok(best > 0.85, `rule 10(c) wants as near right angles as practicable; perpendicularity ${best.toFixed(2)}`);
+});
+
+test('laneCost is cheapest across the flow and dearest along it', () => {
+  const grid = { flow: [270], w: 1 };
+  assert.strictEqual(N.laneCost({ flow: [-1], w: 1 }, 0, 0, 6), 1, 'no lane, no penalty');
+  const across = N.laneCost(grid, 0, 180, 6);   // due south across a west-going lane
+  const along = N.laneCost(grid, 0, 270, 6);    // straight down it
+  assert.ok(across < 1.01, 'crossing at right angles costs nothing extra: ' + across);
+  assert.ok(along > 6.9, 'running along the lane is heavily penalised: ' + along);
+});
+
+test('suggestRoute on the bundled chart clears land on every leg', () => {
+  const chartPath = path.join(__dirname, '..', 'site', 'passages', 'strait-of-gibraltar', 'chart-data.js');
+  if (!fs.existsSync(chartPath)) { console.log('skipped: no chart'); return; }
+  const C = loadGlobalScript('site/passages/strait-of-gibraltar/chart-data.js').CHART;
+  const P = loadGlobalScript('site/passages/strait-of-gibraltar/passage.js').PASSAGE;
+  const r = P.routes.find(x => x.id === 'tarifa');
+  const from = r.waypoints[0], to = r.waypoints[r.waypoints.length - 1];
+  const zones = (C.tss.lanes || []).map(e => ({ rings: e.rings, flowDeg: e.flowDeg }));
+  const sug = N.suggestRoute(from, to, C.land, { cellNm: 0.25, clearNm: 0.3, hazards: P.hazards, zones });
+  assert.ok(sug, 'the Strait can be routed automatically');
+  const areas = [];
+  for (const g of ['lanes', 'zones', 'precautionary']) for (const e of (C.tss[g] || [])) areas.push({ id: e.id, rings: e.rings });
+  const legs = N.checkLegs(sug.waypoints, C.land, areas, {
+    clearNm: 0.25, lat0: (C.meta.bbox[0] + C.meta.bbox[2]) / 2, harbourIds: ['START', 'FINISH'],
+  });
+  assert.deepStrictEqual(legs.filter(l => l.tooClose).map(l => `${l.from}>${l.to}`), [], 'no suggested leg runs into land');
+  const total = N.routeTotal(sug.waypoints);
+  assert.ok(total > 35 && total < 60, `a sane distance for this crossing: ${total.toFixed(1)} nm`);
+  assert.ok(sug.waypoints.length >= 2 && sug.waypoints.length <= 14, `${sug.waypoints.length} waypoints`);
+});
