@@ -1,0 +1,5 @@
+# The chart service runs the same build the command line does, so it needs the build dependencies.
+-r ../tools/requirements.txt
+
+# Production WSGI server. Not needed for `python3 -m server`, which uses the standard library.
+gunicorn>=21.2

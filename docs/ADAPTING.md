@@ -18,8 +18,13 @@ it on the device; "Passage JSON" gives you the block to paste into a passage fil
    - `weatherPoints`: where Open-Meteo is sampled, with `routeNm` (distance from departure) for the passage check.
    - `thresholds`: go/caution/no-go limits for your boat.
    - `checklist`, `cards` (briefing HTML), `weatherNotes`.
-2. Fetch the OpenStreetMap inputs for the bbox and build the chart, two commands (`pip install -r tools/requirements.txt`
+2. Fetch the OpenStreetMap inputs for the bbox and build the chart (`pip install -r tools/requirements.txt`
    first, it needs shapely):
+   ```
+   python3 tools/build_area.py passages/<your-id>.json site/passages/<your-id>
+   ```
+   That is the two steps below as one, and it is exactly what the optional chart service runs if you would
+   rather POST the passage to `docs/BACKEND.md` than install shapely:
    ```
    python3 tools/fetch_osm.py passages/<your-id>.json <scratch>
    python3 tools/build_chart.py <scratch> "" passages/<your-id>.json

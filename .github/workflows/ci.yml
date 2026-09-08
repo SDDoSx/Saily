@@ -24,6 +24,8 @@ jobs:
         run: pip install -r tools/requirements.txt && python3 tools/validate_passage.py --strict && python3 tests/build/test_validate_passage.py
       - name: Chart pipeline golden test (fetch_osm polygonisation + build_chart)
         run: python3 tests/build/test_build_chart.py
+      - name: Chart service (request limits, WSGI routing, job state machine; no network)
+        run: python3 tests/server/test_service.py
       - name: Install Playwright
         run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
       - name: End-to-end smoke test

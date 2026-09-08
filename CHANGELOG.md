@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.14.0 (2026-09-08)
+- **Chart service** (`server/`): the one job a browser cannot do. POST a passage, it fetches the coastline from
+  Overpass and builds `chart-data.js` and `passage.js`, as a job you poll. A plain WSGI application with no
+  framework, no database and no queue: `python3 -m server` on a laptop, `gunicorn server.wsgi:app` behind
+  anything, or one container that runs as-is on Fly, Render, Railway, Cloud Run or a Pi. `docs/BACKEND.md`.
+- The service is a convenience, never a dependency. `tools/build_area.py` runs the same build locally, and it
+  is what the service runs in a subprocess, so the two cannot drift.
+- Guarded to be safe to expose: a bounding-box cap in square degrees, queue and concurrency limits, a body
+  size cap, a build timeout, https-only Overpass mirrors, server-generated job ids, and the same
+  `validate_passage.py` the build and CI run, before a job is created. Jobs are swept after a day.
+- `tests/server/test_service.py` covers the request limits, the WSGI routing, CORS, path traversal and the job
+  state machine, without touching the network. It runs in CI.
+
 ## 0.13.0 (2026-09-07)
 Routes can be drawn in the app and are checked there, so making one no longer means running Python.
 - **Route editor** on the chart: tap to add a waypoint, drag to move, insert, delete, rename, undo. Every leg

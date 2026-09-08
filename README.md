@@ -42,6 +42,18 @@ Puerto Sotogrande → Tanja Marina Bay (Tangier). Runs in Safari on iPhone and M
   bundled. No place name appears anywhere in the app code. Add a directory and a catalogue line and the app offers your
   passage, with its own settings, track and offline cache. See `docs/ADAPTING.md`.
 
+## Building a chart for a new area
+Everything above works with no server. The one exception is a **new area**, where a coastline has to be fetched
+from OpenStreetMap and polygonised. Either run it yourself:
+
+```
+python3 tools/build_area.py passages/my-passage.json site/passages/my-passage
+```
+
+or run the small chart service and let the build happen there: `pip install -r server/requirements.txt` then
+`python3 -m server`, or `docker build -f server/Dockerfile -t saily-chart-service .`. It is one container with
+no database, deployable to any host that runs one. See [docs/BACKEND.md](docs/BACKEND.md).
+
 ## Deploy (GitHub Pages)
 The workflow `.github/workflows/pages.yml` publishes `site/` on every push to `main` or this branch.
 GitHub Pages must exist first, and the workflow token cannot create it:

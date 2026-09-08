@@ -16,6 +16,10 @@ site/nav.js       pure geodesy: distance, bearing, cross-track, along-track, sol
 site/weather.js   Open-Meteo forecast + marine client, hourly merge, thresholds, passage check, tide extremes
 site/app.js       state, GPS, alerts (beeps + prioritised speech), map layers, HUD, pages, preload, simulation
 site/sw.js        service worker: shell cache-first, tiles cache-first, forecast network-first with stale marker
+
+server/           optional, and only for building a chart for a NEW area: a WSGI service that runs the same
+                  tools/build_area.py a person would run at a terminal, as a job. Nothing else needs it, and
+                  the app never requires it to be up. docs/BACKEND.md
 ```
 
 ## Data flow at sea

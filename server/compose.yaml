@@ -1,0 +1,17 @@
+# docker compose -f server/compose.yaml up --build
+services:
+  chart-service:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    ports: ["8787:8787"]
+    volumes:
+      - saily-jobs:/jobs
+    environment:
+      # Where the app is served from. Set this to your own origin instead of * once you know it.
+      SAILY_ALLOW_ORIGIN: "*"
+      SAILY_MAX_BBOX_DEG2: "4.0"
+      SAILY_MAX_RUNNING: "1"
+    restart: unless-stopped
+volumes:
+  saily-jobs:
