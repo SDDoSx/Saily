@@ -8,3 +8,6 @@ package-lock.json
 
 # the chart service keeps its jobs here
 .jobs/
+
+# stray output from a test script with an unset scratch path
+undefined/
