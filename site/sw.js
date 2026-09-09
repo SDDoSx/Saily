@@ -1,5 +1,5 @@
 /* Saily service worker: offline app shell, tile cache, weather cache. */
-const VERSION = 'saily-9eb822cb';
+const VERSION = 'saily-1b87a1db';
 const SHELL = 'shell-' + VERSION;
 const TILES = 'tiles-v1';
 const DATA = 'data-v1';

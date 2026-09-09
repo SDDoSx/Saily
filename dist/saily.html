@@ -2323,6 +2323,9 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
       }
       n++; if (onProgress) onProgress(n, POINTS.length);
     }
+    // how much of the forecast is actually current matters before a passage: "fetched just now" is
+    // misleading when two of five points quietly came from the cache.
+    out.freshCount = fresh; out.staleCount = staleCount; out.pointCount = POINTS.length;
     if (fresh === 0) { out.stale = true; out.fetchedAt = (previous && previous.fetchedAt) || Math.min(...Object.values(out.points).map(x => x.fetchedAt || 0), now); }
     if (Object.keys(out.points).length && fresh > 0) save(out);
     return out;
@@ -3701,10 +3704,12 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     if (S.navigating && arrived) {
       S.holdToast = false;
       if (sol.k >= wps.length - 1) {
-        if (!S.arrivedFinal) { S.arrivedFinal = true; alert('arrived', 'info', `Arrived at ${sol.wp.name}. ${sol.wp.note}`); }
+        if (!S.arrivedFinal) { S.arrivedFinal = true; legClose('arrived'); alert('arrived', 'info', `Arrived at ${sol.wp.name}. ${sol.wp.note}`); }
       } else {
+        legClose('reached');
         S.settings.wp = sol.k + 1; S.manualWp = false; saveSettings(); S.approached = {}; S.wpChangedAt = pos.t || Date.now();
         const nxt = N.solve(pos, wps, S.settings.wp);
+        legOpen(sol.wp.id, nxt.wp.id);
         alert('wp' + sol.k, 'info', `Waypoint ${sol.wp.id} reached. New course ${N.fmtBrg(nxt.brg)}, ${N.fmtNm(nxt.dist)} miles to ${nxt.wp.id}. ${sol.wp.note}`);
         drawRoutes(); sol = nxt;
       }
@@ -3799,6 +3804,7 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     if (prev) { const d = N.distanceNm(prev, fix); if (d < 0.5) S.trip.dist += d; }
     if (S.sog !== null && S.sog > S.trip.maxSog) S.trip.maxSog = S.sog;
     if (S.trip.n++ % 20 === 0) saveJson('saily.trip.v1', S.trip);
+    legTick(prev, fix);
   }
   // ----- helm actions -----
   const mobLine = L.polyline([], { pane: 'route', color: '#ff4757', weight: 3, dashArray: '6 4', interactive: false });
@@ -4180,6 +4186,69 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     $('hudSim').textContent = '';
   }
 
+  // ---------- what actually happened, against what was predicted ----------
+  // The app tells you 22 kn and 1h58. Whether that was true is the single most useful thing a passage can
+  // tell you, and until it is written down it is only a feeling. Every completed leg is recorded with the
+  // speed the boat actually made, the speed the model expected in those conditions, and the conditions
+  // themselves -- so "we were slow" can be told apart from "the cruise speed is wrong".
+  const LOG_PASSAGES = 'saily.passages.v1' + suffix;
+  function loadPassages() { return loadJson(LOG_PASSAGES, []) || []; }
+  function condNow() {
+    const d = S.wx; if (!d || !S.pos) return null;
+    const pt = W.nearestPoint ? W.nearestPoint(d, S.pos) : null;
+    const row = pt ? W.rowAt(pt, new Date()) : null;
+    if (!row) return null;
+    return { wind: row.wind, windDir: row.windDir, gust: row.gust, wave: row.wave, waveDir: row.waveDir,
+             wavePeriod: row.wavePeriod, current: row.current, currentDir: row.currentDir };
+  }
+  /** open the record for the leg now being steered */
+  function legOpen(fromId, toId) {
+    if (!S.navigating || S.sim) return;
+    S.legNow = { from: fromId, to: toId, startedAt: Date.now(), startPos: S.pos ? { lat: S.pos.lat, lon: S.pos.lon } : null,
+                 dist: 0, sogSum: 0, sogN: 0, cond: condNow() };
+  }
+  /** close it, and keep the comparison */
+  function legClose(reason) {
+    const L = S.legNow; S.legNow = null;
+    if (!L || !L.startedAt) return;
+    const hours = (Date.now() - L.startedAt) / 3600000;
+    if (hours < 0.002 || L.dist < 0.05) return;          // too short to say anything about
+    const actualKn = L.dist / hours;
+    const boat = vesselOf();
+    // This becomes calibration data, and calibration data decides cruise speed, every ETA and the fuel
+    // figure. A leg is only worth keeping if the boat could actually have sailed it: a GPS jump, a phone
+    // that slept through the middle of it, or a waypoint skipped by hand all produce numbers that would
+    // quietly poison all three. Drop them rather than average them in.
+    const ceiling = (boat.maxKn || (boat.cruiseKn || 8) * 1.6) * 1.4;
+    if (!(actualKn > 0.3 && actualKn < ceiling)) return;
+    const brg = L.startPos && S.pos ? N.bearingDeg(L.startPos, S.pos) : null;
+    const predictedKn = L.cond && brg !== null ? N.sogIn(boat, L.cond, brg) : (S.settings.speed || null);
+    const rec = {
+      from: L.from, to: L.to, startedAt: L.startedAt, endedAt: Date.now(), reason: reason || 'reached',
+      distNm: Math.round(L.dist * 100) / 100, hours: Math.round(hours * 1000) / 1000,
+      actualKn: Math.round(actualKn * 10) / 10,
+      meanSogKn: L.sogN ? Math.round(L.sogSum / L.sogN * 10) / 10 : null,
+      predictedKn: predictedKn === null ? null : Math.round(predictedKn * 10) / 10,
+      plannedKn: S.settings.speed || null,
+      brg: brg === null ? null : Math.round(brg),
+      cond: L.cond,
+    };
+    const all = loadPassages();
+    let cur = all.find(x => x.id === S.passageRunId);
+    if (!cur) { cur = { id: S.passageRunId, startedAt: L.startedAt, route: S.route && S.route.id, boat: vesselOf().label || vesselOf().name || null, legs: [] }; all.unshift(cur); }
+    cur.legs.push(rec);
+    cur.endedAt = rec.endedAt;
+    saveJson(LOG_PASSAGES, all.slice(0, 12));            // a dozen passages is plenty to calibrate from
+  }
+  /** accumulate along the leg being steered */
+  function legTick(prev, fix) {
+    const L = S.legNow; if (!L || !prev) return;
+    const d = N.distanceNm(prev, fix);
+    if (d < 0.5) L.dist += d;                            // ignore a jump
+    if (S.sog !== null && S.sog > 0.2) { L.sogSum += S.sog; L.sogN++; }
+    if (!L.cond) L.cond = condNow();                     // the forecast may have arrived after we set off
+  }
+
   // ---------- start ----------
   function begin(mode) {
     // A route drawn in the app that failed the land check is not a verified route. Say so, every time,
@@ -4189,7 +4258,9 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     ensureAudio(); S.started = true; requestWakeLock();
     $('startOverlay').classList.add('hidden');
     S.arrivedFinal = false;
-    if (mode === 'nav') { S.navigating = true; if (Math.abs(Date.now() - new Date(S.settings.departure).getTime()) > 30 * 60000) { S.settings.departure = new Date().toISOString(); saveSettings(); } if (!S.trip) { S.trip = loadJson('saily.trip.v1', null); if (!S.trip || Date.now() - S.trip.startedAt > 12 * 3600000) S.trip = { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 }; } startGps(); speak('Navigation started. Route ' + (S.route.short || S.route.id) + '.', 'info'); }
+    if (mode === 'nav') { S.navigating = true; S.passageRunId = S.passageRunId || ('run-' + Date.now()); if (Math.abs(Date.now() - new Date(S.settings.departure).getTime()) > 30 * 60000) { S.settings.departure = new Date().toISOString(); saveSettings(); } if (!S.trip) { S.trip = loadJson('saily.trip.v1', null); if (!S.trip || Date.now() - S.trip.startedAt > 12 * 3600000) S.trip = { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 }; } startGps(); speak('Navigation started. Route ' + (S.route.short || S.route.id) + '.', 'info');
+      const wpsNow = WPS(); const k = Math.min(S.settings.wp, wpsNow.length - 1);
+      legOpen(wpsNow[Math.max(0, k - 1)].id, wpsNow[k].id); }
     else if (mode === 'sim') { S.navigating = true; startSim(S.settings.wp); }
     else { S.navigating = false; startGps(); }
     renderMore();
@@ -4198,6 +4269,7 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
   $('btnPlanOnly').addEventListener('click', () => begin('look'));
   $('btnStartSim').addEventListener('click', () => begin('sim'));
   function setWp(k, why) {
+    legClose('skipped'); S.legNow = null;   // not a leg the boat sailed; do not calibrate from it
     const before = S.settings.wp; S.settings.wp = Math.max(1, Math.min(WPS().length - 1, k)); S.manualWp = true; S.approached = {}; S.arrivedFinal = false; S.wpChangedAt = (S.pos && S.pos.t) || Date.now(); saveSettings(); drawRoutes(); if (S.pos) processFix();
     toast((why || 'Active waypoint') + ': ' + WPS()[S.settings.wp].id, 6000, { label: 'Undo', fn: () => { S.settings.wp = before; S.manualWp = true; saveSettings(); drawRoutes(); if (S.pos) processFix(); } });
   }
@@ -4271,7 +4343,7 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     const live = !!(S.navigating && S.solution && S.solution.remaining != null);
     const mode = live && S.wxMode !== 'plan' ? 'now' : 'plan';
     let h = `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Forecast along the route</h2><span class="row" style="gap:6px"><span class="tag ${age.level === 'ok' ? 'ok' : age.level === 'warn' ? 'caution' : 'nogo'}">${d ? 'fetched ' + age.text : 'NO FORECAST'}</span><button class="btn" id="btnWxRefresh">Refresh</button></span></div>
-      <p class="muted">${d ? `Open-Meteo, ${N.fmtTime(new Date(d.fetchedAt), TZ_ES)} ES${cov ? ', hourly data to ' + cov.slice(5, 10).replace('-', '/') + ' ' + cov.slice(11) + ' ES' : ''}.` : 'No forecast stored yet. Go online and tap Refresh.'} Wind at 10 m in knots, waves = significant height, current = surface (includes tide). Thresholds in Setup, Boat.</p>
+      <p class="muted">${d ? `Open-Meteo, ${N.fmtTime(new Date(d.fetchedAt), TZ_ES)} ES${cov ? ', hourly data to ' + cov.slice(5, 10).replace('-', '/') + ' ' + cov.slice(11) + ' ES' : ''}.` : 'No forecast stored yet. Go online and tap Refresh.'} Wind at 10 m in knots, waves = significant height, current = surface (includes tide). Thresholds in Setup, Boat.${d && d.staleCount ? ` <b>${d.staleCount} of ${d.pointCount} points came from the cache, not the network.</b>` : ''}</p>
       ${d && (age.stale || age.level === 'bad') ? `<p class="wxstale">${age.stale ? 'Offline: this is the stored forecast.' : 'This forecast is more than 3 hours old.'}${P.weatherVhf ? ' Check the VHF bulletin: ' + P.weatherVhf : ''}</p>` : ''}</div>`;
     if (d) {
       const dep = new Date(S.settings.departure);
@@ -4353,6 +4425,7 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
       { id: 'route', label: 'Route' },
       { id: 'ready', label: 'Before you go' },
       { id: 'brief', label: 'Briefing' },
+      { id: 'log', label: 'Log' },
     ];
     const psec = PSECT.some(x => x.id === S.settings.planSection) ? S.settings.planSection : 'route';
     const pshow = id => psec === id;
@@ -4388,6 +4461,47 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     h += pshow('ready') ? `<div class="card"><h2>Offline</h2><p class="muted small">Do this on wifi before leaving. Stores the app, the forecast and the map tiles for the whole route, about 15 to 40 MB. The chart, route, traffic scheme and hazards are built in and always work offline.</p>
       <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
       <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted small">${preloadStatusText()}</div><div id="storeText" class="muted small"></div></div>` : '';
+    if (pshow('log')) {
+      const runs = loadPassages();
+      if (!runs.length) {
+        h += `<div class="card"><h2>Passage log</h2>
+          <p class="muted">Nothing recorded yet. Once you navigate for real, every leg you complete is written down here: how fast the boat actually went, how fast this app expected it to go in those conditions, and what the conditions were.</p>
+          <p class="muted small">That comparison is what corrects your boat profile, and the route planner and the departure ranking both read it. The demo simulation is deliberately not recorded.</p></div>`;
+      } else {
+        for (const run of runs) {
+          const legs = run.legs || [];
+          const nm = legs.reduce((a, l) => a + l.distNm, 0);
+          const hrs = legs.reduce((a, l) => a + l.hours, 0);
+          const avg = hrs > 0.01 ? nm / hrs : null;
+          // the same legs the calibration would use: only ones the boat actually sailed to the waypoint,
+          // weighted by distance, so a long leg says more about the boat than a hop out of the marina
+          const withPred = legs.filter(l => l.predictedKn > 0 && l.reason === 'reached' && l.distNm > 0.3);
+          const predNm = withPred.reduce((a, l) => a + l.distNm, 0);
+          const ratio = predNm > 0 ? withPred.reduce((a, l) => a + (l.actualKn / l.predictedKn) * l.distNm, 0) / predNm : null;
+          const when = new Date(run.startedAt);
+          h += `<div class="card wide"><h2>${esc(when.toDateString())}</h2>
+            <div class="etotals"><span><b>${N.fmtNm(nm, 1)}</b> nm</span><span><b>${N.fmtDur(hrs * 3600)}</b> under way</span>${avg ? `<span>average <b>${avg.toFixed(1)}</b> kn</span>` : ''}${run.boat ? `<span class="muted">${esc(run.boat)}</span>` : ''}</div>`;
+          if (ratio) {
+            const pct = Math.round((ratio - 1) * 100);
+            const close = Math.abs(pct) <= 8;
+            h += `<div class="verdictline ${close ? 'ok' : 'bad'}">${close
+              ? `The speed model matched what the boat did, within ${Math.abs(pct)}%.`
+              : `The boat went ${pct > 0 ? pct + '% faster' : Math.abs(pct) + '% slower'} than predicted.`}</div>`;
+            if (!close) h += `<div class="ebtns"><button class="btn primary" data-cal="${esc(run.id)}">Correct my cruise speed from this</button></div>`;
+          }
+          h += `<div class="legs"><table><tr><th>Leg</th><th>nm</th><th>Took</th><th>Made</th><th>Expected</th><th>Wind</th><th>Sea</th></tr>` +
+            legs.map(l => {
+              const off = l.predictedKn > 0 && l.reason === 'reached' ? l.actualKn / l.predictedKn : null;
+              const cls = off === null ? '' : Math.abs(off - 1) > 0.2 ? 'caution' : '';
+              return `<tr class="${cls}"><td>${esc(l.from)}→${esc(l.to)}${l.reason === 'skipped' ? ' <span class="muted">(skipped)</span>' : ''}</td><td>${l.distNm.toFixed(1)}</td><td>${N.fmtDur(l.hours * 3600)}</td><td><b>${l.actualKn.toFixed(1)}</b> kn</td><td>${l.predictedKn ? l.predictedKn.toFixed(1) + ' kn' : '<span class="muted">—</span>'}</td><td>${l.cond && l.cond.wind != null ? Math.round(l.cond.wind) + ' kn' : '<span class="muted">—</span>'}</td><td>${l.cond && l.cond.wave != null ? l.cond.wave.toFixed(1) + ' m' : '<span class="muted">—</span>'}</td></tr>`;
+            }).join('') + `</table></div>
+            <p class="muted small">"Expected" is what the speed model gave for those conditions on that heading. A leg is flagged when the two are more than 20% apart, which usually means the cruise speed needs correcting, or the sea was worse than the forecast said.</p></div>`;
+        }
+        h += `<div class="card"><h2>Keeping the log</h2>
+          <div class="row"><button class="btn" id="btnLogCopy">Copy as text</button><button class="btn danger" id="btnLogClear">Clear the log</button></div>
+          <p class="muted small">Kept on this device only, last twelve passages. The simulation is never recorded.</p></div>`;
+      }
+    }
     h += pshow('ready') ? `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at ${esc(DEST_NAME)}.${P.sunNote ? ' ' + esc(P.sunNote) : ''}</p></div>` : '';
     el.innerHTML = h;
     const bp = $('btnPrint'); if (bp) bp.addEventListener('click', () => window.print());
@@ -4395,6 +4509,34 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     if (planBtn) planBtn.addEventListener('click', () => { showView('nav'); startEdit(); });
     // the preload and ready-for-sea cards moved here from Setup, so their wiring lives here too
     const onPlan = (id, ev, fn) => { const b = $(id); if (b) b.addEventListener(ev, fn); };
+    // calibrating from a real passage: the boat's own numbers beat an archetype every time
+    el.querySelectorAll('[data-cal]').forEach(b => b.addEventListener('click', () => {
+      const run = loadPassages().find(x => x.id === b.getAttribute('data-cal'));
+      if (!run) return;
+      const legs = (run.legs || []).filter(l => l.predictedKn > 0 && l.distNm > 0.3 && l.reason === 'reached');
+      if (!legs.length) { toast('Not enough of that passage was recorded to correct anything'); return; }
+      // weight by distance: a long leg says more about the boat than a hop out of the marina
+      const nm = legs.reduce((a, l) => a + l.distNm, 0);
+      const ratio = legs.reduce((a, l) => a + (l.actualKn / l.predictedKn) * l.distNm, 0) / nm;
+      const now = S.settings.speed || 8;
+      const next = Math.round(now * ratio * 10) / 10;
+      if (!confirm(`Over ${N.fmtNm(nm, 1)} nm this boat made ${(ratio * 100 - 100).toFixed(0)}% ${ratio > 1 ? 'more' : 'less'} speed than the model expected.\n\nChange the cruise speed from ${now} to ${next} kn?\n\nThe route planner, the departure ranking and every ETA use this.`)) return;
+      S.settings.speed = next;
+      S.settings.boat = Object.assign({}, S.settings.boat || {}, { cruiseKn: next, calibratedAt: Date.now(), calibratedFrom: run.id });
+      saveSettings(); renderPlan(); if (S.solution) updateHud(S.solution);
+      toast(`Cruise speed is now ${next} kn, from your own passage.`, 6000);
+    }));
+    onPlan('btnLogClear', 'click', () => {
+      if (!confirm('Clear every recorded passage from this device?')) return;
+      saveJson(LOG_PASSAGES, []); renderPlan(); toast('Passage log cleared');
+    });
+    onPlan('btnLogCopy', 'click', async () => {
+      const runs = loadPassages();
+      const txt = runs.map(r => `${new Date(r.startedAt).toISOString()}  ${r.route || ''}  ${r.boat || ''}\n` +
+        (r.legs || []).map(l => `  ${l.from}->${l.to}\t${l.distNm} nm\t${N.fmtDur(l.hours * 3600)}\tmade ${l.actualKn} kn\texpected ${l.predictedKn || '-'} kn\twind ${l.cond && l.cond.wind != null ? Math.round(l.cond.wind) : '-'} kn\tsea ${l.cond && l.cond.wave != null ? l.cond.wave : '-'} m`).join('\n')).join('\n\n');
+      try { await navigator.clipboard.writeText(txt); toast('Passage log copied'); }
+      catch (e) { toast('Could not copy: ' + String(e && e.message || e)); }
+    });
     el.querySelectorAll('.subnav button[data-psec]').forEach(b => b.addEventListener('click', () => {
       S.settings.planSection = b.getAttribute('data-psec'); saveSettings(); renderPlan();
       const view = el.closest('.view'); if (view) view.scrollTop = 0;
@@ -4712,7 +4854,6 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
   // ---------- ready for sea: self-test with one-tap fixes ----------
   async function readyChecks() {
     const rows = [];
-    const dot = (ok, warn) => ok ? 'ok' : warn ? 'warn' : 'bad';
     // 1 offline shell
     let shell = { ok: false, text: 'service worker not controlling', fix: 'reload' };
     try {
@@ -4764,7 +4905,7 @@ window.PASSAGE = {"id":"strait-of-gibraltar","version":1,"name":"Sotogrande to T
     $('hudDtg').innerHTML = S.route.total + '<small> nm</small>';
   }
   window.SAILY = { S, map, processFix, startSim, stopSim, alert, preload, refreshWeather, onFix, wxVerdictNow, applyTheme, resolveTheme,
-    startEdit, stopEdit, editRender, editCheck, editPush, saveSettings };
+    startEdit, stopEdit, editRender, editCheck, editPush, saveSettings, tileUrls, preloadStatusText };
   } catch (err) {
     const o = document.getElementById('startOverlay');
     if (o) o.innerHTML = '<h1>Saily</h1><p><b>The app failed to start.</b></p><p class="muted">' + String(err && err.message || err) + '</p><button class="bigbtn" onclick="location.reload()">Reload</button>';
