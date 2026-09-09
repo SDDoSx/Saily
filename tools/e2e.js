@@ -136,7 +136,7 @@ const OUT = path.join(__dirname, 'out');
   await run('sections', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
     await page.waitForFunction(() => !!window.SAILY, null, { timeout: 15000 });
     await page.waitForTimeout(900);
-    for (const [tab, expect] of [['plan', ['Route', 'Before you go', 'Briefing']], ['more', ['Boat', 'Alerts', 'Display', 'Data', 'About']]]) {
+    for (const [tab, expect] of [['plan', ['Route', 'Before you go', 'Briefing', 'Log']], ['more', ['Boat', 'Alerts', 'Display', 'Data', 'About']]]) {
       await page.click(`#tabs button[data-view=${tab}]`);
       await page.waitForTimeout(900);
       const secs = await page.evaluate(() => [...document.querySelectorAll('.view.active .subnav button')].map(b => b.textContent.trim()));
@@ -212,7 +212,46 @@ const OUT = path.join(__dirname, 'out');
     await page.evaluate(() => window.AIS.disconnect());
   });
 
-  // 5. Route editor: the leg check has to catch a route drawn over land, or drawing one here is worse
+  // 5. The passage log is calibration data: it sets cruise speed, and through it every ETA and the fuel
+  //    figure. A leg the boat could not have sailed -- a GPS jump, a slept-through phone, a skipped
+  //    waypoint -- must never reach it.
+  await run('passagelog', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
+    await page.waitForFunction(() => !!window.SAILY, null, { timeout: 15000 });
+    await page.waitForTimeout(800);
+    const seeded = await page.evaluate(() => {
+      localStorage.setItem('saily.passages.v1', JSON.stringify([{
+        id: 'run-e2e', startedAt: Date.now() - 3600000, endedAt: Date.now(), route: 'tarifa', boat: 'test boat',
+        legs: [
+          { from: 'A', to: 'B', distNm: 9.9, hours: 0.66, actualKn: 15.0, predictedKn: 21.0, reason: 'reached', cond: { wind: 18, wave: 1.4 } },
+          { from: 'B', to: 'C', distNm: 5.8, hours: 0.36, actualKn: 16.1, predictedKn: 21.5, reason: 'reached', cond: { wind: 15, wave: 1.1 } },
+          { from: 'C', to: 'D', distNm: 4.0, hours: 0.02, actualKn: 200, predictedKn: 21.0, reason: 'skipped', cond: null },
+        ],
+      }]));
+      return true;
+    });
+    if (!seeded) errors.push('could not seed the passage log');
+    await page.click('#tabs button[data-view=plan]'); await page.waitForTimeout(800);
+    await page.click('.view.active .subnav button:text-is("Route")'); await page.waitForTimeout(500);
+    await page.click('.view.active .subnav button:text-is("Log")'); await page.waitForTimeout(1000);
+    const txt = await page.evaluate(() => document.querySelector('.view.active').innerText);
+    if (!/slower than predicted/.test(txt)) errors.push('the log did not report the shortfall: ' + txt.slice(0, 160));
+    if (!/skipped/.test(txt)) errors.push('a skipped leg is not marked as such');
+
+    // calibrate: the 200 kn skipped leg must not drag the answer upwards
+    const before = await page.evaluate(() => window.SAILY.S.settings.speed);
+    page.on('dialog', d => d.accept());
+    const cal = await page.$('[data-cal]');
+    if (!cal) errors.push('no calibration offered for a passage that missed its prediction');
+    else {
+      await cal.click(); await page.waitForTimeout(1200);
+      const after = await page.evaluate(() => window.SAILY.S.settings.speed);
+      console.log(`Passage log: cruise speed ${before} -> ${after} kn from the recorded legs`);
+      if (!(after < before)) errors.push(`calibration should have slowed the boat down: ${before} -> ${after}`);
+      if (after > 20) errors.push(`the skipped 200 kn leg leaked into the calibration: ${after} kn`);
+    }
+  });
+
+  // 6. Route editor: the leg check has to catch a route drawn over land, or drawing one here is worse
   //    than useless. Also checks the JSON it exports is the shape a passage file expects.
   await run('editor', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
     await page.waitForFunction(() => !!window.SAILY && !!window.CHART, null, { timeout: 15000 });

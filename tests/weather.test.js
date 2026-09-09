@@ -234,3 +234,28 @@ test('pointsFromRoute samples a route when the passage names no weather points',
   assert.deepStrictEqual(WX.pointsFromRoute({}, 5), []);
   assert.deepStrictEqual(WX.pointsFromRoute({ routes: [{ waypoints: [{ id: 'X', lat: 0, lon: 0 }] }] }, 5), []);
 });
+
+test('fetchAll reports how much of the forecast is actually fresh', async () => {
+  // "fetched just now" is misleading when some points quietly came from the cache
+  const realFetch = global.fetch;
+  let call = 0;
+  global.fetch = async () => {
+    call++;
+    const stale = call > 4;                       // the later points come back stale
+    return {
+      ok: true,
+      headers: { get: k => (k === 'X-Saily-Cache' && stale ? 'stale' : null) },
+      json: async () => ({ latitude: 36, longitude: -5.5, utc_offset_seconds: 0,
+        hourly: { time: ['2026-09-09T00:00'], wind_speed_10m: [10], wind_direction_10m: [270] },
+        daily: { sunrise: ['2026-09-09T07:00'], sunset: ['2026-09-09T20:00'] } }),
+    };
+  };
+  try {
+    const out = await WX.fetchAll(1);
+    assert.strictEqual(typeof out.freshCount, 'number');
+    assert.strictEqual(typeof out.staleCount, 'number');
+    assert.strictEqual(out.pointCount, WX.POINTS.length);
+    assert.ok(out.freshCount + out.staleCount <= out.pointCount * 2, 'counts are sane');
+    assert.ok(out.staleCount > 0, 'the stale responses were counted: ' + out.staleCount);
+  } finally { global.fetch = realFetch; }
+});

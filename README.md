@@ -82,6 +82,10 @@ GitHub Pages must exist first, and the workflow token cannot create it:
 Any static host works too: `site/` is plain files, and `tools/out/saily-standalone.html` (built by
 `tools/build_single.py`) is a single self-contained file with the chart and a forecast snapshot embedded.
 
+## First time out
+Read [docs/SEA-TRIAL.md](docs/SEA-TRIAL.md): what to do the day before, what to watch for, and what the app
+records so the trip calibrates your boat profile afterwards.
+
 ## Use on the boat
 1. On wifi, open the site in Safari, tap Share → **Add to Home Screen**, then open it from the icon
    (keeps the cache, fullscreen; wake lock works on iOS 18.4+).

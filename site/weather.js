@@ -111,6 +111,9 @@
       }
       n++; if (onProgress) onProgress(n, POINTS.length);
     }
+    // how much of the forecast is actually current matters before a passage: "fetched just now" is
+    // misleading when two of five points quietly came from the cache.
+    out.freshCount = fresh; out.staleCount = staleCount; out.pointCount = POINTS.length;
     if (fresh === 0) { out.stale = true; out.fetchedAt = (previous && previous.fetchedAt) || Math.min(...Object.values(out.points).map(x => x.fetchedAt || 0), now); }
     if (Object.keys(out.points).length && fresh > 0) save(out);
     return out;

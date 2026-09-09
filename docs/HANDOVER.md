@@ -25,7 +25,7 @@ Branch: `main`. Deploy by pushing `main`: `.github/workflows/pages.yml` publishe
 | `python3 tests/server/test_service.py` | all pass |
 | `python3 tools/validate_passage.py --strict` | 0 errors, 0 warnings |
 | `node tools/check_route.js …` | every leg clears land |
-| `npx eslint .` | 0 errors, 2 warnings (unused `dot` in app.js, `staleCount` in weather.js) |
+| `npx eslint .` | clean |
 
 **Local gotchas.** `tools/serve.js` binds 8080 and `e2e.js` binds 8123; a stale server makes either hang with
 no output — `lsof -ti :8080 | xargs kill -9` first. Python needs shapely and jsonschema
@@ -49,24 +49,24 @@ together.
 - **Planning**: `planDepartures` ranks a departure every four hours over the next sixty by passage time,
   worst conditions, dark arrival and nights needed. `schedule` breaks a long passage at a stop reached in
   daylight.
+- **Passage log** (Plan, Log): every completed leg with actual against predicted speed and the conditions,
+  and a one-button calibration of cruise speed from a real passage. Legs the boat could not plausibly have
+  sailed are dropped; the simulation is never recorded. This is what the sea trial is for.
 - **Chart service** (`server/`): the one thing a browser cannot do — fetch a coastline from Overpass and
   polygonise it. Optional; `tools/build_area.py` does the same locally, and GitHub Actions does it with
   nothing to host (`docs/BACKEND.md`).
 
 ## Next steps, in order
 
-1. **Sea trial.** Nothing here has been on the water. Every guard, the router, the speed model and the
-   planner are verified in simulation against a replay harness. That is the gap.
-2. **Make the trial produce something.** The app logs alerts and a track but never records predicted versus
-   actual — it says 22 kn and 1h58 and nothing captures that you did 18 kn and took 2h30. That comparison
-   is what would calibrate the boat profile the router and planner depend on. Small, well-defined.
-3. **Signal K** for AIS from a real receiver, depth and wind off the boat's own network. Shore-fed AIS dies
+1. **Sea trial, planned for the weekend of 12–14 September 2026.** Nothing here has been on the water. Every
+   guard, the router, the speed model and the planner are verified in simulation only. `docs/SEA-TRIAL.md`
+   is the preparation and what to do with the result.
+2. **Signal K** for AIS from a real receiver, depth and wind off the boat's own network. Shore-fed AIS dies
    offshore, which is where it matters.
-4. Course-up chart. Deliberately not attempted: Leaflet has no rotation and a CSS transform on the map pane
+3. Course-up chart. Deliberately not attempted: Leaflet has no rotation and a CSS transform on the map pane
    breaks hit-testing. It needs a real plugin or a canvas renderer, and half-doing it in a safety app is
    worse than not doing it.
-5. Clear the two eslint warnings, or give `staleCount` the use it was written for.
-6. `tools/fetch_wx.py`, `tools/build_passage.py` and `tools/dev.js` have no tests.
+4. `tools/fetch_wx.py`, `tools/build_passage.py` and `tools/dev.js` have no tests.
 
 ## Conventions
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.20.0 (2026-09-09)
+Preparing for the first time on the water.
+- **Passage log** (Plan, Log). Every completed leg is recorded with the distance, the time, the speed the
+  boat actually made, the speed the model expected in those conditions, and the conditions themselves. The
+  comparison is the point: it tells "we were slow because of a head sea" apart from "the cruise speed is
+  simply wrong".
+- **Calibrate from a real passage.** If the boat missed the prediction, one button corrects the cruise speed
+  from what it actually did, weighted by leg distance. That number feeds the route planner, the departure
+  ranking, every ETA and the fuel estimate.
+- **Only legs the boat could have sailed are kept.** A GPS jump, a phone that slept through the middle of a
+  leg, or a waypoint skipped by hand are dropped rather than averaged in: calibration data that lies is
+  worse than none. The simulation is never recorded.
+- **The forecast says how much of it is real.** `fetchAll` counted stale points and threw the number away;
+  the Weather tab now says when points came from the cache rather than the network, because "fetched just
+  now" is misleading otherwise.
+- `docs/SEA-TRIAL.md`: what to do the day before, what to watch, and what to do with the log afterwards.
+- eslint is clean: the last two warnings were an unfinished feature (now finished, above) and a helper that
+  had been superseded.
+
 ## 0.19.0 (2026-09-09)
 Information architecture: what belongs where, rather than more styling.
 - **Setup was thirteen cards in one scroll** -- a filing cabinet with no drawers. It is five named sections
