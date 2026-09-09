@@ -777,7 +777,7 @@
   ],
   "checklist": [
     "Weather checked in the app for the whole passage window (wind, gusts, waves, wind vs current), and Spanish forecast (AEMET Estrecho) or Windy cross-checked.",
-    "Preload done in Setup while on wifi: app shell, forecast, map tiles. Airplane-mode test: app opens and shows the chart.",
+    "Preload done on wifi (Plan, Before you go): app shell, forecast, map tiles. Airplane-mode test: app opens and shows the chart.",
     "Phone at 100 %, charging cable and power bank on deck; phone mounted with a clear sky view; auto-lock off (the app requests wake lock, but check).",
     "Route loaded in the boat plotter too (GPX or keyed in); paper copy of waypoints and contacts.",
     "Fuel: full tanks, at least 30 % reserve after the planned burn; engine checks done (oil, coolant, belts, raw water strainers).",

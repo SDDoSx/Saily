@@ -1,73 +1,76 @@
-# Handover (2026-09-07)
+# Handover (2026-09-09)
 
-Branch: `main` (the working branch `claude/marine-nav-app-yacht-erflpd` points at the same commit). Deploy by
-pushing `main`: `.github/workflows/pages.yml` publishes `site/` to **https://sddosx.github.io/Saily/**.
+Branch: `main`. Deploy by pushing `main`: `.github/workflows/pages.yml` publishes `site/` to
+**https://sddosx.github.io/Saily/**. The working branch `claude/marine-nav-app-yacht-erflpd` tracks it.
 
 ## Live
 
-- **GitHub Pages: https://sddosx.github.io/Saily/** — the URL to add to the Home Screen. Verified in a browser:
-  chart, service worker controlling, forecast for all five points, no console errors.
-- Claude artifact (single file, forecast embedded):
-  https://claude.ai/code/artifact/a5c6333e-2d58-474f-9b47-a16309f9d55b. The artifact viewer blocks
-  page-initiated downloads, so GPX and track export are dead there; they work on Pages.
-- Gap analysis and roadmap, written this session:
-  https://claude.ai/code/artifact/4eeca0aa-86ed-498e-a307-0712ad85e1bf
+- **https://sddosx.github.io/Saily/** — the URL to add to the Home Screen.
+- Single-file build, forecast embedded: https://claude.ai/code/artifact/a5c6333e-2d58-474f-9b47-a16309f9d55b
+  (the artifact viewer blocks page-initiated downloads, so GPX export is dead there; it works on Pages).
+- Gap analysis and roadmap: https://claude.ai/code/artifact/4eeca0aa-86ed-498e-a307-0712ad85e1bf
 
-## State of the tree
+## State
 
-Clean. Verified on macOS with node 22.14 and a python venv holding shapely and jsonschema:
+0.19.0, tree clean. Verified on macOS with node 22.14 and a python venv holding shapely and jsonschema:
 
 | check | result |
 | --- | --- |
-| `node tools/unit.js` | 22/22 |
-| `node --test tests/*.test.js` | 54/54 |
-| `python3 tests/build/test_build_chart.py` | 9/9 |
-| `python3 tests/build/test_validate_passage.py` | 11/11 |
-| `python3 tools/validate_passage.py --strict` | 0 errors, 0 warnings |
+| `node tools/unit.js` | 44/44 |
+| `node --test tests/*.test.js` | 79/79 |
 | `node tools/e2e.js` | 0 errors |
-| `node tools/replay.js` | 9/9 route-speed runs PASS, 0 land-ahead |
+| `node tools/replay.js` | 9/9 route-speed runs, 0 land-ahead |
+| `python3 tests/build/test_build_chart.py` | 10/10 |
+| `python3 tests/build/test_catalogue.py` | 16/16 |
+| `python3 tests/server/test_service.py` | all pass |
+| `python3 tools/validate_passage.py --strict` | 0 errors, 0 warnings |
+| `node tools/check_route.js …` | every leg clears land |
 | `npx eslint .` | 0 errors, 2 warnings (unused `dot` in app.js, `staleCount` in weather.js) |
 
-**Local gotcha:** `tools/serve.js` binds port 8080. A stale server from an earlier run makes `e2e.js` and
-`replay.js` hang with no output, because their own server cannot bind and never prints a port. If either
-hangs, `lsof -ti :8080 | xargs kill -9` first.
+**Local gotchas.** `tools/serve.js` binds 8080 and `e2e.js` binds 8123; a stale server makes either hang with
+no output — `lsof -ti :8080 | xargs kill -9` first. Python needs shapely and jsonschema
+(`pip install -r tools/requirements.txt`); node needs `npm install && npx playwright install chromium`.
 
-## What was done this session
+## What this app does now
 
-Three pieces, all deployed. `docs/../CHANGELOG.md` 0.12.0 has the full list.
+Draw or auto-generate a route, have it checked against land and the traffic scheme, plan when to leave from
+a real forecast, and navigate it with spoken alerts. `npm run dev` runs the app and the chart service
+together.
 
-1. **AIS**: the key was never used — a separate "Enable AIS targets" checkbox, defaulted off, gated the
-   connection, and every failure after that was silent. Pasting a key now switches it on, and the status line
-   says exactly what happened.
-2. **Interface**: rebuilt on design tokens. The helm is one instrument, not eight identical cards; Setup is
-   seven sections with the prose collapsed; the weather verdict stopped repeating itself.
-3. **Passages**: `site/passages/index.json` is a catalogue, `site/boot.js` picks one at boot, and no place name
-   is left in the app code. Adding a passage is a directory plus a catalogue line (`docs/ADAPTING.md` step 5).
+- **Routing** (`site/nav.js`): `checkLegs` is a port of the Python builder's own leg check, pinned to
+  shapely's answer on all 42 bundled legs by `tests/nav.test.js` against a fixture the build regenerates.
+  `suggestRoute` is A* around land; `weatherRoute` costs a step by the *time* it takes in the conditions
+  forecast for where you will be when you get there, so it routes around weather. Both price a step through
+  a traffic lane by its angle to the flow, so crossings come out near square (COLREG rule 10(c)), and the
+  path straightener refuses to undo either a square crossing or a weather detour.
+- **Boat** (`site/boats.json`): archetypes by hull type and length, not a model database. `speedIn` is a
+  shape that behaves correctly — a planing hull comes off the plane in a head sea, a displacement hull
+  barely notices, a sailing boat has a polar and motors in no wind. It is not a measured polar and says so.
+- **Planning**: `planDepartures` ranks a departure every four hours over the next sixty by passage time,
+  worst conditions, dark arrival and nights needed. `schedule` breaks a long passage at a stop reached in
+  daylight.
+- **Chart service** (`server/`): the one thing a browser cannot do — fetch a coastline from Overpass and
+  polygonise it. Optional; `tools/build_area.py` does the same locally, and GitHub Actions does it with
+  nothing to host (`docs/BACKEND.md`).
 
-Four latent bugs came out of that work, all of which would only have bitten a *second* passage: zone alerts
-were keyed by the Strait's own zone ids and silently skipped anything else; `weather.js` loaded before the
-passage and used the Strait's sample points and thresholds regardless; its fallback was five fixed
-coordinates in the Strait; and the service worker registered on an event that had already fired, so the app
-would have stopped working offline.
+## Next steps, in order
 
-## Next steps
-
-The roadmap artifact above has the reasoning. In order:
-
-1. **Sea trial.** Nothing here has been on the water. The replay harness simulates the guards, not a real GPS.
-2. **Phase 2 — make a passage without Python.** Draw waypoints on the map, run the existing land-clearance
-   check in the browser, export the passage JSON. This is what stops other people contributing passages.
-3. **Course-up chart.** Deliberately not attempted: Leaflet has no rotation, and a CSS transform on the map
-   pane breaks hit-testing. It needs a real plugin or a canvas renderer, and half-doing it in a safety app is
+1. **Sea trial.** Nothing here has been on the water. Every guard, the router, the speed model and the
+   planner are verified in simulation against a replay harness. That is the gap.
+2. **Make the trial produce something.** The app logs alerts and a track but never records predicted versus
+   actual — it says 22 kn and 1h58 and nothing captures that you did 18 kn and took 2h30. That comparison
+   is what would calibrate the boat profile the router and planner depend on. Small, well-defined.
+3. **Signal K** for AIS from a real receiver, depth and wind off the boat's own network. Shore-fed AIS dies
+   offshore, which is where it matters.
+4. Course-up chart. Deliberately not attempted: Leaflet has no rotation and a CSS transform on the map pane
+   breaks hit-testing. It needs a real plugin or a canvas renderer, and half-doing it in a safety app is
    worse than not doing it.
-4. **Phase 4 — Signal K**, for AIS from a real receiver and depth under the keel.
 5. Clear the two eslint warnings, or give `staleCount` the use it was written for.
-6. `tools/fetch_wx.py` and `tools/build_passage.py` have no tests.
+6. `tools/fetch_wx.py`, `tools/build_passage.py` and `tools/dev.js` have no tests.
 
 ## Conventions
 
-Commit trailers: `Co-Authored-By:` the model and `Claude-Session:` the session URL. No model names in code or
-commit subjects. Do not create a PR unless asked. Local dev needs `npm install && npx playwright install
-chromium` and `pip install -r tools/requirements.txt`. Chart-build scratch data (coast.json, harbours.json,
-land_*.json) lives in the session scratchpad; a fresh session must re-fetch with `tools/fetch_osm.py`
-(Overpass mirrors are flaky; kumi.systems answered).
+Commit trailers: `Co-Authored-By:` the model and `Claude-Session:` the session URL. No model names in code
+or commit subjects. Do not create a PR unless asked. Chart-build scratch data lives in the session
+scratchpad; a fresh session must re-fetch with `tools/fetch_osm.py` (Overpass mirrors are flaky;
+kumi.systems answers).

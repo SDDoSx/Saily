@@ -131,7 +131,40 @@ const OUT = path.join(__dirname, 'out');
     await page.click('#tabs button[data-view=plan]'); await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(OUT, 'desktop-plan.png'), fullPage: true });
   });
-  // 3. AIS over a mocked WebSocket. aisstream sends BINARY frames of UTF-8 JSON: read naively, event.data
+  // 3. Setup and Plan show one section at a time, and their listeners have to tolerate a card that is
+  //    not on the page. Walk every section of both and insist nothing throws.
+  await run('sections', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
+    await page.waitForFunction(() => !!window.SAILY, null, { timeout: 15000 });
+    await page.waitForTimeout(900);
+    for (const [tab, expect] of [['plan', ['Route', 'Before you go', 'Briefing']], ['more', ['Boat', 'Alerts', 'Display', 'Data', 'About']]]) {
+      await page.click(`#tabs button[data-view=${tab}]`);
+      await page.waitForTimeout(900);
+      const secs = await page.evaluate(() => [...document.querySelectorAll('.view.active .subnav button')].map(b => b.textContent.trim()));
+      if (JSON.stringify(secs) !== JSON.stringify(expect)) errors.push(`[${tab}] sections are ${JSON.stringify(secs)}, expected ${JSON.stringify(expect)}`);
+      for (const name of secs) {
+        await page.click(`.view.active .subnav button:text-is("${name}")`);
+        await page.waitForTimeout(600);
+        const cards = await page.evaluate(() => [...document.querySelectorAll('.view.active .card h2')].map(h => h.textContent.trim()));
+        if (!cards.length) errors.push(`[${tab}] section "${name}" rendered no cards`);
+        const on = await page.evaluate(() => (document.querySelector('.view.active .subnav button.on') || {}).textContent);
+        if ((on || '').trim() !== name) errors.push(`[${tab}] section "${name}" did not become current`);
+      }
+    }
+    // the pre-departure cards moved from Setup to Plan and must still work there
+    await page.click('#tabs button[data-view=plan]'); await page.waitForTimeout(700);
+    await page.click('.view.active .subnav button:text-is("Before you go")'); await page.waitForTimeout(2200);
+    const ready = await page.evaluate(() => { const c = document.getElementById('readyCard'); return c ? c.textContent : null; });
+    if (!ready) errors.push('the ready-for-sea card is not on Plan');
+    else if (/checking/.test(ready)) errors.push('the ready-for-sea card never filled in on Plan');
+    if (!(await page.$('#btnPreloadAll'))) errors.push('the offline preload card is not on Plan');
+    // and the weather thresholds are now part of Your boat
+    await page.click('#tabs button[data-view=more]'); await page.waitForTimeout(700);
+    await page.click('.view.active .subnav button:text-is("Boat")'); await page.waitForTimeout(700);
+    if (!(await page.$('#thWindC'))) errors.push('the weather thresholds are not in Setup, Boat');
+    console.log('Sections: both tabs walked, pre-departure cards on Plan, thresholds with the boat');
+  });
+
+  // 4. AIS over a mocked WebSocket. aisstream sends BINARY frames of UTF-8 JSON: read naively, event.data
   //    arrives as a Blob, JSON.parse throws, and every ship silently disappears. Prove a binary frame lands.
   await run('ais', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
     let subscription = null;
@@ -149,8 +182,11 @@ const OUT = path.join(__dirname, 'out');
     await page.waitForFunction(() => !!window.AIS && !!window.SAILY, null, { timeout: 15000 });
     await page.waitForTimeout(1200);
     // Drive it the way a user does: paste the key into Setup. That must switch AIS on by itself.
+    // AIS lives in the Data section now, so go there the way a person would.
     await page.click('#tabs button[data-view=more]');
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(700);
+    await page.click('.view.active .subnav button:text-is("Data")');
+    await page.waitForTimeout(700);
     await page.fill('#setAisKey', 'e2e-mock-key');
     await page.$eval('#setAisKey', el => el.blur());
     await page.waitForTimeout(2500);
@@ -176,7 +212,7 @@ const OUT = path.join(__dirname, 'out');
     await page.evaluate(() => window.AIS.disconnect());
   });
 
-  // 4. Route editor: the leg check has to catch a route drawn over land, or drawing one here is worse
+  // 5. Route editor: the leg check has to catch a route drawn over land, or drawing one here is worse
   //    than useless. Also checks the JSON it exports is the shape a passage file expects.
   await run('editor', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, async (page) => {
     await page.waitForFunction(() => !!window.SAILY && !!window.CHART, null, { timeout: 15000 });

@@ -1512,7 +1512,7 @@
     const live = !!(S.navigating && S.solution && S.solution.remaining != null);
     const mode = live && S.wxMode !== 'plan' ? 'now' : 'plan';
     let h = `<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Forecast along the route</h2><span class="row" style="gap:6px"><span class="tag ${age.level === 'ok' ? 'ok' : age.level === 'warn' ? 'caution' : 'nogo'}">${d ? 'fetched ' + age.text : 'NO FORECAST'}</span><button class="btn" id="btnWxRefresh">Refresh</button></span></div>
-      <p class="muted">${d ? `Open-Meteo, ${N.fmtTime(new Date(d.fetchedAt), TZ_ES)} ES${cov ? ', hourly data to ' + cov.slice(5, 10).replace('-', '/') + ' ' + cov.slice(11) + ' ES' : ''}.` : 'No forecast stored yet. Go online and tap Refresh.'} Wind at 10 m in knots, waves = significant height, current = surface (includes tide). Thresholds in Setup.</p>
+      <p class="muted">${d ? `Open-Meteo, ${N.fmtTime(new Date(d.fetchedAt), TZ_ES)} ES${cov ? ', hourly data to ' + cov.slice(5, 10).replace('-', '/') + ' ' + cov.slice(11) + ' ES' : ''}.` : 'No forecast stored yet. Go online and tap Refresh.'} Wind at 10 m in knots, waves = significant height, current = surface (includes tide). Thresholds in Setup, Boat.</p>
       ${d && (age.stale || age.level === 'bad') ? `<p class="wxstale">${age.stale ? 'Offline: this is the stored forecast.' : 'This forecast is more than 3 hours old.'}${P.weatherVhf ? ' Check the VHF bulletin: ' + P.weatherVhf : ''}</p>` : ''}</div>`;
     if (d) {
       const dep = new Date(S.settings.departure);
@@ -1590,41 +1590,64 @@
     const el = $('planPage'); const r = S.route; const dep = new Date(S.settings.departure);
     const sp = S.settings.speed;
     let cum = 0;
+    const PSECT = [
+      { id: 'route', label: 'Route' },
+      { id: 'ready', label: 'Before you go' },
+      { id: 'brief', label: 'Briefing' },
+    ];
+    const psec = PSECT.some(x => x.id === S.settings.planSection) ? S.settings.planSection : 'route';
+    const pshow = id => psec === id;
+    let h = `<nav class="subnav" role="tablist">${PSECT.map(x => `<button role="tab" aria-selected="${x.id === psec}" class="${x.id === psec ? 'on' : ''}" data-psec="${esc(x.id)}">${esc(x.label)}</button>`).join('')}</nav>`;
     // The obvious place to look for "plan a route" is the tab called Plan.
-    let h = `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${esc(x.id)}" ${x.id === r.id ? 'checked' : ''}> ${esc(x.short || x.id)}${x.recommended ? ' <span class="muted small">(recommended)</span>' : ''}${x.unverified ? ' <span class="muted small">(not verified)</span>' : ''}</label>`).join('')}</div>
+    h += pshow('route') ? `<div class="card"><h2>Route</h2><div class="row">${P.routes.map(x => `<label class="row" style="gap:6px"><input type="radio" name="route" value="${esc(x.id)}" ${x.id === r.id ? 'checked' : ''}> ${esc(x.short || x.id)}${x.recommended ? ' <span class="muted small">(recommended)</span>' : ''}${x.unverified ? ' <span class="muted small">(not verified)</span>' : ''}</label>`).join('')}</div>
       <div class="row" style="margin-top:12px"><button class="btn primary" id="btnPlanRoute">✎ Plan a new route on the chart</button></div>
       <p class="muted small">Tap the chart to add waypoints and drag them to move. Every leg is measured against the coastline and the traffic scheme as you draw.</p>
       <p><b>${esc(r.name)}</b></p><p>${esc(r.summary || '')}</p>
       ${r.unverified ? `<p class="wxstale"><b>Not verified.</b> This route was drawn in the app and has legs within ${CLEAR_NM} nm of land. Check every one of them against a real chart before you follow it.</p>` : ''}
-      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (vesselOf().burnLph || 75))} L at a planning burn of ${vesselOf().burnLph || 75} L/h (${esc(vesselOf().name || vesselOf().label || 'planning figure')}; tanks ${vesselOf().fuelL || '?'} L). Leave with full tanks.</div></div></div>`;
-    h += `<div class="card wide"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
-    r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
-    h += `</table></div><p class="muted">Courses are true. Apply your compass variation (about 1° W here) and deviation if steering by compass.</p></div>`;
-    h += `<div class="card wide"><h2>Waypoints</h2><div class="tbl"><table><tr><th>ID</th><th>Position</th><th>Note</th></tr>${r.waypoints.map(w => `<tr><td><b>${w.id}</b><br><span class="muted">${w.name}</span></td><td>${N.fmtDM(w.lat, w.lon)}<br><span class="muted">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</span></td><td style="white-space:normal;min-width:220px">${w.note}</td></tr>`).join('')}</table></div>
-      <div class="row" style="margin-top:8px">${SINGLE ? '' : `<a class="btn" id="gpxLink" download="saily-${r.id}.gpx">Download GPX for the plotter</a>`}<button class="btn" id="btnCopyWp">Copy waypoints (ID, lat/lon)</button></div></div>`;
-    for (const c of (P.cards || [])) h += c.html;
-    h += `<div class="card"><h2>Departure checklist</h2><div class="check">${CHECKLIST.map((c, i) => `<label><input type="checkbox" data-ck="${i}" ${S.settings.checklist[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>`;
+      <div class="kv"><div>Distance</div><div>${r.total} nm</div><div>At ${sp} kn</div><div>${N.fmtDur(r.total / sp * 3600)}</div><div>Departure</div><div>${bothTimes(dep)} · ${dep.toDateString()}</div><div>ETA ${esc(DEST_NAME)}</div><div>${bothTimes(new Date(dep.getTime() + r.total / sp * 3600000))}</div><div>Fuel estimate</div><div>${Math.round(r.total / sp * (vesselOf().burnLph || 75))} L at a planning burn of ${vesselOf().burnLph || 75} L/h (${esc(vesselOf().name || vesselOf().label || 'planning figure')}; tanks ${vesselOf().fuelL || '?'} L). Leave with full tanks.</div></div></div>` : '';
+    if (pshow('route')) h += `<div class="card wide"><h2>Legs</h2><div class="tbl"><table><tr><th>#</th><th>From</th><th>To</th><th>Course</th><th>Dist</th><th>Leg</th><th>ETA (ES)</th></tr>`;
+    if (pshow('route')) r.legs.forEach((l, i) => { cum += l.dist; h += `<tr><td>${i + 1}</td><td>${l.from}</td><td>${l.to}</td><td>${N.fmtBrg(l.brg)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtDur(l.dist / sp * 3600)}</td><td>${N.fmtTime(new Date(dep.getTime() + cum / sp * 3600000), TZ_ES)}</td></tr>`; });
+    if (pshow('route')) h += `</table></div><p class="muted">Courses are true. Apply your compass variation (about 1° W here) and deviation if steering by compass.</p></div>`;
+    h += pshow('route') ? `<div class="card wide"><h2>Waypoints</h2><div class="tbl"><table><tr><th>ID</th><th>Position</th><th>Note</th></tr>${r.waypoints.map(w => `<tr><td><b>${w.id}</b><br><span class="muted">${w.name}</span></td><td>${N.fmtDM(w.lat, w.lon)}<br><span class="muted">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</span></td><td style="white-space:normal;min-width:220px">${w.note}</td></tr>`).join('')}</table></div>
+      <div class="row" style="margin-top:8px">${SINGLE ? '' : `<a class="btn" id="gpxLink" download="saily-${r.id}.gpx">Download GPX for the plotter</a>`}<button class="btn" id="btnCopyWp">Copy waypoints (ID, lat/lon)</button></div></div>` : '';
+    if (pshow('brief')) for (const c of (P.cards || [])) h += c.html;
+    h += pshow('ready') ? `<div class="card"><h2>Departure checklist</h2><div class="check">${CHECKLIST.map((c, i) => `<label><input type="checkbox" data-ck="${i}" ${S.settings.checklist[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>` : '';
     // pilotage card: paper backup (print / save as PDF)
     const variation = P.variationDeg != null ? P.variationDeg : -1;
     const near = (lat, lon, maxNm) => { let best = Infinity, from = null; for (const l of r.legs) { const A = r.waypoints.find(w => w.id === l.from), B = r.waypoints.find(w => w.id === l.to); const al = N.alongTrackNm({ lat, lon }, A, B); const d = al < 0 ? N.distanceNm({ lat, lon }, A) : al > l.dist ? N.distanceNm({ lat, lon }, B) : Math.abs(N.crossTrackNm({ lat, lon }, A, B)); if (d < best) { best = d; from = l.from; } } return best <= maxNm ? { d: best, from } : null; };
     const hazRows = (S.dangers || P.hazards).map(hz => ({ hz, n: near(hz.lat, hz.lon, 0.6 + hz.radius) })).filter(x => x.n).map(x => `<tr><td>${x.hz.name}</td><td>${N.fmtDM(x.hz.lat, x.hz.lon)}</td><td>${N.fmtNm(x.n.d)} nm off leg from ${x.n.from}</td></tr>`).join('');
     const lightRows = C.aids.filter(x => x.light && (x.type.startsWith('light') || x.type.startsWith('beacon') || x.type.startsWith('buoy'))).map(x => ({ x, n: near(x.lat, x.lon, 2) })).filter(o => o.n).slice(0, 24).map(o => `<tr><td>${o.x.name || o.x.type.replace(/_/g, ' ')}</td><td>${o.x.light}</td><td>${N.fmtDM(o.x.lat, o.x.lon)}</td></tr>`).join('');
     let cum2 = 0;
-    h += `<div class="card print-card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Pilotage card (paper backup)</h2><button class="btn" id="btnPrint">Print / save as PDF</button></div>
+    h += pshow('brief') ? `<div class="card print-card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Pilotage card (paper backup)</h2><button class="btn" id="btnPrint">Print / save as PDF</button></div>
       <p class="muted">Courses true and magnetic (variation ${variation}°). Times at ${sp} kn from ${bothTimes(dep)}, ${dep.toDateString()}.</p>
       <div class="tbl"><table><tr><th>#</th><th>To</th><th>°T</th><th>°M</th><th>nm</th><th>ETA ${TZL_FROM}</th><th>ETA ${TZL_TO}</th><th>Instruction</th></tr>${r.legs.map((l, i) => { cum2 += l.dist; const w = r.waypoints.find(x => x.id === l.to); const at = new Date(dep.getTime() + cum2 / sp * 3600000); return `<tr><td>${i + 1}</td><td><b>${l.to}</b><br><span class="muted">${N.fmtDM(w.lat, w.lon)}</span></td><td>${N.fmtBrg(l.brg)}</td><td>${N.fmtBrg(l.brg - variation)}</td><td>${l.dist.toFixed(1)}</td><td>${N.fmtTime(at, TZ_ES)}</td><td>${fmtMA(at)}</td><td style="white-space:normal;min-width:200px">${(w.note || '').split(/(?<=[.!?])\s/)[0]}</td></tr>`; }).join('')}</table></div>
       <h3>Dangers near the route</h3><div class="tbl"><table><tr><th>Name</th><th>Position</th><th>Where</th></tr>${hazRows || '<tr><td colspan="3">none within 0.6 nm</td></tr>'}</table></div>
       <h3>Lights within 2 nm of the route</h3><div class="tbl"><table><tr><th>Name</th><th>Character</th><th>Position</th></tr>${lightRows || '<tr><td colspan="3">none charted</td></tr>'}</table></div>
-      <h3>Radio</h3><p>${Object.values(P.places).map(pl => `${pl.name}: VHF ${pl.vhf}${pl.phone ? ', ' + pl.phone : ''}`).join(' · ')} · Distress VHF 16 / DSC 70</p></div>`;
+      <h3>Radio</h3><p>${Object.values(P.places).map(pl => `${pl.name}: VHF ${pl.vhf}${pl.phone ? ', ' + pl.phone : ''}`).join(' · ')} · Distress VHF 16 / DSC 70</p></div>` : '';
     const sun = N.sunTimes(new Date(), P.sun.lat, P.sun.lon);
-    h += `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at ${esc(DEST_NAME)}.${P.sunNote ? ' ' + esc(P.sunNote) : ''}</p></div>`;
+    h += pshow('ready') ? `<div class="card"><h2>Ready for sea</h2><div id="readyCard" class="muted">checking…</div></div>` : '';
+    h += pshow('ready') ? `<div class="card"><h2>Offline</h2><p class="muted small">Do this on wifi before leaving. Stores the app, the forecast and the map tiles for the whole route, about 15 to 40 MB. The chart, route, traffic scheme and hazards are built in and always work offline.</p>
+      <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
+      <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted small">${preloadStatusText()}</div><div id="storeText" class="muted small"></div></div>` : '';
+    h += pshow('ready') ? `<div class="card"><h2>Daylight today</h2><p>Sunrise ${sun.sunrise ? bothTimes(sun.sunrise) : '--'} · Sunset ${sun.sunset ? bothTimes(sun.sunset) : '--'} at ${esc(DEST_NAME)}.${P.sunNote ? ' ' + esc(P.sunNote) : ''}</p></div>` : '';
     el.innerHTML = h;
     const bp = $('btnPrint'); if (bp) bp.addEventListener('click', () => window.print());
     const planBtn = $('btnPlanRoute');
     if (planBtn) planBtn.addEventListener('click', () => { showView('nav'); startEdit(); });
+    // the preload and ready-for-sea cards moved here from Setup, so their wiring lives here too
+    const onPlan = (id, ev, fn) => { const b = $(id); if (b) b.addEventListener(ev, fn); };
+    el.querySelectorAll('.subnav button[data-psec]').forEach(b => b.addEventListener('click', () => {
+      S.settings.planSection = b.getAttribute('data-psec'); saveSettings(); renderPlan();
+      const view = el.closest('.view'); if (view) view.scrollTop = 0;
+    }));
+    onPlan('btnPreloadAll', 'click', () => preload(true, true));
+    onPlan('btnPreloadWx', 'click', () => preload(true, false));
+    onPlan('btnPreloadTiles', 'click', () => preload(false, true));
+    if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { const st = $('storeText'); if (st) st.textContent = `Storage used: ${(e.usage / 1048576).toFixed(1)} MB of ${(e.quota / 1048576).toFixed(0)} MB available.`; }).catch(() => { });
+    renderReady();
     el.querySelectorAll('input[name=route]').forEach(i => i.addEventListener('change', () => { S.settings.routeId = i.value; S.settings.wp = 1; saveSettings(); S.route = P.routes.find(x => x.id === i.value); S.zone = {}; S.approached = {}; drawRoutes(); renderPlan(); if (S.pos) processFix(); }));
     if ($('gpxLink')) $('gpxLink').href = 'data:application/gpx+xml;charset=utf-8,' + encodeURIComponent(N.toGPX('Saily ' + r.id, r.waypoints));
-    $('btnCopyWp').addEventListener('click', async () => { const txt = r.waypoints.map(w => `${w.id}\t${N.fmtDM(w.lat, w.lon)}\t${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`).join('\n'); try { await navigator.clipboard.writeText(txt); toast('Copied'); } catch (e) { toast('Copy failed'); } });
+    onPlan('btnCopyWp', 'click', async () => { const txt = r.waypoints.map(w => `${w.id}\t${N.fmtDM(w.lat, w.lon)}\t${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`).join('\n'); try { await navigator.clipboard.writeText(txt); toast('Copied'); } catch (e) { toast('Copy failed'); } });
     el.querySelectorAll('input[data-ck]').forEach(i => i.addEventListener('change', () => { S.settings.checklist[i.dataset.ck] = i.checked; saveSettings(); }));
   }
   const CHECKLIST = P.checklist || [];
@@ -1632,36 +1655,52 @@
   // ---------- setup / more ----------
   function renderMore() {
     const el = $('morePage'); const s = S.settings;
-    // Ordered by what matters at sea: the passage first, then what you hear, then what you see.
+    // Thirteen cards in one scroll is a filing cabinet with no drawers. Setup shows one section at a
+    // time; the cards are unchanged, and every listener below tolerates its own card being absent.
+    const SECTIONS = [
+      { id: 'boat', label: 'Boat' },
+      { id: 'alerts', label: 'Alerts' },
+      { id: 'display', label: 'Display' },
+      { id: 'data', label: 'Data' },
+      { id: 'about', label: 'About' },
+    ];
+    const sec = SECTIONS.some(x => x.id === s.setupSection) ? s.setupSection : 'boat';
+    const show = id => sec === id;
     const cat = window.SAILY_PASSAGES || [];
-    let h = `<div class="card"><h2>Passage</h2>
+    let h = `<nav class="subnav" role="tablist">${SECTIONS.map(x => `<button role="tab" aria-selected="${x.id === sec}" class="${x.id === sec ? 'on' : ''}" data-sec="${esc(x.id)}">${esc(x.label)}</button>`).join('')}</nav>`;
+    h += show('boat') ? `<div class="card"><h2>Passage</h2>
       ${cat.length > 1 ? `<label class="field"><span>Passage</span><select id="setPassage">${cat.map(c => `<option value="${esc(c.id)}" ${c.id === PID ? 'selected' : ''}>${esc(c.title || c.name || c.id)}</option>`).join('')}</select></label>` : ''}
       <label class="field"><span>Planned cruise speed (kn)</span><input type="number" id="setSpeed" min="5" max="40" step="1" value="${s.speed}"></label>
       <label class="field"><span>Planned departure (${TZL_FROM})</span><input type="datetime-local" id="setDep" value="${toLocalInput(TZ_ES, new Date(s.departure))}"></label>
       <label class="field"><span>Route</span><select id="setRoute">${P.routes.map(r => `<option value="${esc(r.id)}" ${r.id === s.routeId ? 'selected' : ''}>${r.id === 'planned' ? 'Drawn here' : r.recommended ? 'Recommended' : 'Alternative'} (${esc(r.short || r.id)})${r.unverified ? ' — not verified' : ''}</option>`).join('')}</select></label>
       <label class="field"><span>${esc(TZL_TO)} clock</span><select id="setMa"><option value="auto" ${s.maOffset === 'auto' ? 'selected' : ''}>Automatic (phone time zone data)</option>${TZ_OFFSETS.map(o => `<option value="${o.minutes}" ${String(s.maOffset) === String(o.minutes) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
-      <div class="row" style="margin-top:12px"><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn" id="btnResetWp">Restart route from WP 1</button></div></div>` : '';
     const boat = s.boat || {};
-    h += `<div class="card"><h2>Your boat</h2>
+    h += show('boat') ? `<div class="card"><h2>Your boat</h2>
       <p class="muted small">Speed, fuel burn and the weather limits all come from here. Pick the nearest kind of boat to start from, then correct the numbers: yours are the ones that decide the ETA and the fuel.</p>
       <label class="field"><span>Kind of boat</span><select id="setBoat"><option value="">Custom / as the passage was written</option>${S.boats.map(b => `<option value="${esc(b.id)}" ${boat.id === b.id ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
       ${boat.note ? `<p class="muted small">${esc(boat.note)}</p>` : ''}
       <label class="field"><span>Cruise speed (kn)</span><input type="number" id="setSpeed2" min="2" max="60" step="0.5" value="${s.speed}"></label>
       <label class="field"><span>Fuel burn at cruise (L/h)</span><input type="number" id="setBurn" min="0" max="2000" step="1" value="${vesselOf().burnLph || ''}"></label>
       <label class="field"><span>Draft (m)</span><input type="number" id="setDraft" min="0" max="8" step="0.1" value="${vesselOf().draftM || ''}"></label>
-      <div class="muted small">Picking a kind of boat also sets the weather thresholds below. Change any of them afterwards and your value wins.</div></div>`;
-    h += `<div class="card"><h2>Alerts and sound</h2>
+      <h3>Weather limits</h3>
+      <p class="muted small">Caution and no-go for this boat. The passage verdict, the departure ranking and the route all use these; change any and your value wins.</p>
+      <label class="field"><span>Wind caution / no-go (kn)</span><span class="row"><input type="number" id="thWindC" value="${s.th.windCaution}"><input type="number" id="thWindN" value="${s.th.windNoGo}"></span></label>
+      <label class="field"><span>Gust caution / no-go (kn)</span><span class="row"><input type="number" id="thGustC" value="${s.th.gustCaution}"><input type="number" id="thGustN" value="${s.th.gustNoGo}"></span></label>
+      <label class="field"><span>Wave caution / no-go (m)</span><span class="row"><input type="number" step="0.1" id="thWaveC" value="${s.th.waveCaution}"><input type="number" step="0.1" id="thWaveN" value="${s.th.waveNoGo}"></span></label>
+      <label class="field"><span>Current caution (kn)</span><input type="number" step="0.1" id="thCur" value="${s.th.currentCaution}"></label></div>` : '';
+    h += show('alerts') ? `<div class="card"><h2>Alerts and sound</h2>
       <label class="field"><span>Spoken alerts</span><input type="checkbox" id="setVoice" ${s.voice ? 'checked' : ''}></label>
       <label class="field"><span>Alert beeps</span><input type="checkbox" id="setSound" ${s.sound ? 'checked' : ''}></label>
       <div class="row" style="margin-top:12px"><button class="btn" id="btnTestAlert">Test alert</button></div>
-      <details class="help"><summary>How alerts behave</summary><p>Danger alerts never interrupt one another and repeat only when something changes. The banner has a Quiet button that silences a repeating alert without switching sound off. Sound plays through the iPhone silent switch.</p></details></div>`;
-    h += `<div class="card"><h2>Display</h2>
+      <details class="help"><summary>How alerts behave</summary><p>Danger alerts never interrupt one another and repeat only when something changes. The banner has a Quiet button that silences a repeating alert without switching sound off. Sound plays through the iPhone silent switch.</p></details></div>` : '';
+    h += show('display') ? `<div class="card"><h2>Display</h2>
       <label class="field"><span>Colours</span><select id="setTheme"><option value="auto" ${(s.theme || 'auto') === 'auto' ? 'selected' : ''}>Automatic (night after sunset)</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option><option value="day" ${s.theme === 'day' ? 'selected' : ''}>Daylight (glare)</option><option value="night" ${s.theme === 'night' ? 'selected' : ''}>Night (red)</option></select></label>
       <label class="field"><span>Night dimmer (${Math.round((s.dim || 0) * 100)}%)</span><input type="range" id="setDim" min="0" max="85" step="5" value="${Math.round((s.dim || 0) * 100)}"></label>
       <label class="field"><span>Big numbers (hide the chart)</span><input type="checkbox" id="setBigHud" ${s.bigHud ? 'checked' : ''}></label>
       <label class="field"><span>Auto-zoom the chart to the next waypoint</span><input type="checkbox" id="setAutoZoom" ${s.autoZoom !== false ? 'checked' : ''}></label>
-      <details class="help"><summary>About night colours</summary><p>Night is red-amber on black so it does not spoil your night vision, and the chart is tinted to match. On Automatic it switches itself at sunset and back at sunrise, with an undo toast either way.</p></details></div>`;
-    h += `<div class="card"><h2>Ships (AIS)</h2>
+      <details class="help"><summary>About night colours</summary><p>Night is red-amber on black so it does not spoil your night vision, and the chart is tinted to match. On Automatic it switches itself at sunset and back at sunrise, with an undo toast either way.</p></details></div>` : '';
+    h += show('data') ? `<div class="card"><h2>Ships (AIS)</h2>
       <label class="field"><span>aisstream.io API key</span><input type="text" id="setAisKey" value="${esc(s.aisKey || '')}" placeholder="paste key here" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
       <label class="field"><span>Show live ships</span><input type="checkbox" id="setAisOn" ${s.aisOn ? 'checked' : ''}></label>
       <label class="field"><span>Show demo ships in the simulation</span><input type="checkbox" id="setAisDemo" ${s.aisDemo !== false ? 'checked' : ''}></label>
@@ -1670,9 +1709,9 @@
       <details class="help"><summary>Getting a key, and what it can and cannot do</summary>
       <p><b>This needs mobile data and it is not a lookout.</b> Coverage comes from volunteer shore receivers: not every ship, up to a minute late, and nothing at all once you lose signal offshore. A real AIS receiver on the boat, or the plotter's own AIS, is the only version of this that works out there. Treat what you see here as a hint about traffic, never as the traffic.</p>
       <p>aisstream.io gives a free key: sign in with GitHub, no payment. Paste it above and the app streams ships in the passage area, draws them with their course, works out the closest point of approach (CPA) and the time to it (TCPA), and raises a danger alert when a ship will pass within 0.5 nm in the next 12 minutes.</p>
-      <p>Nothing showing? The status line says why. "connected" with no messages for a minute usually means the key was refused; "rejected" prints what the server said. Live AIS pauses while the demo simulation runs.</p></details></div>`;
+      <p>Nothing showing? The status line says why. "connected" with no messages for a minute usually means the key was refused; "rejected" prints what the server said. Live AIS pauses while the demo simulation runs.</p></details></div>` : '';
     const devs = deviceList();
-    h += `<div class="card"><h2>Charts for new areas</h2>
+    h += show('data') ? `<div class="card"><h2>Charts for new areas</h2>
       <p class="muted small">The app draws and checks routes on its own. Building a chart for an area it has none for means fetching a coastline from OpenStreetMap, which a browser cannot do; a small service does it. Leave this empty and the feature is simply not offered.</p>
       <label class="field"><span>Chart service URL</span><input type="text" id="setChartService" value="${esc(s.chartService || '')}" placeholder="https://… or http://localhost:8787" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
       <div class="row" style="margin-top:12px"><button class="btn" id="btnChartSvcTest">Test the service</button></div>
@@ -1680,26 +1719,23 @@
       ${devs.length ? `<h3>Built on this device</h3>${devs.map(d => `<label class="field"><span>${esc(d.title || d.id)}<br><span class="muted small">${esc(d.id)} · ${new Date(d.savedAt || 0).toLocaleDateString()}</span></span><button class="btn danger" data-forget="${esc(d.id)}" style="flex:none">Delete</button></label>`).join('')}` : ''}
       <details class="help"><summary>How to build one</summary>
       <p>Draw the route first: map menu, the pencil, tap the chart. Then <b>Passage JSON</b> → <b>Build a chart for this area</b>. Saily sends the area around your route to the service, which fetches the coastline and builds the chart, and the passage then appears in the picker above like any other.</p>
-      <p>Run the service on your own machine with <code>npm run dev</code>, or deploy the container in <code>server/</code>. A chart built this way comes from OpenStreetMap and is ODbL: attribution and share-alike apply.</p></details></div>`;
-    h += `<div class="card"><h2>Chart layers</h2>
+      <p>Run the service on your own machine with <code>npm run dev</code>, or deploy the container in <code>server/</code>. A chart built this way comes from OpenStreetMap and is ODbL: attribution and share-alike apply.</p></details></div>` : '';
+    h += show('display') ? `<div class="card"><h2>Chart layers</h2>
       <label class="field"><span>OpenSeaMap buoys and lights</span><input type="checkbox" id="setSeamark" ${s.seamark ? 'checked' : ''}></label>
       <label class="field"><span>Depth shading (EMODnet, online only)</span><input type="checkbox" id="setDepth" ${s.depth ? 'checked' : ''}></label>
-      <details class="help"><summary>What the depth layer is worth</summary><p>EMODnet bathymetry is a gridded model of about 100 m cells: fine for seeing banks and the shelf, useless for the last metres in a harbour. Charted rocks, wrecks and obstructions from OpenStreetMap are drawn as red asterisks with a 0.1 nm alarm circle, and the app warns when land or rocks lie on your heading within four minutes at your speed.</p></details></div>`;
-    h += `<div class="card"><h2>Weather thresholds</h2><p class="muted small">Caution and no-go limits for this boat. The passage verdict on the Weather tab uses these.</p>
-      <label class="field"><span>Wind caution / no-go (kn)</span><span class="row"><input type="number" id="thWindC" value="${s.th.windCaution}" style="width:70px"><input type="number" id="thWindN" value="${s.th.windNoGo}" style="width:70px"></span></label>
-      <label class="field"><span>Gust caution / no-go (kn)</span><span class="row"><input type="number" id="thGustC" value="${s.th.gustCaution}" style="width:70px"><input type="number" id="thGustN" value="${s.th.gustNoGo}" style="width:70px"></span></label>
-      <label class="field"><span>Wave caution / no-go (m)</span><span class="row"><input type="number" step="0.1" id="thWaveC" value="${s.th.waveCaution}" style="width:70px"><input type="number" step="0.1" id="thWaveN" value="${s.th.waveNoGo}" style="width:70px"></span></label>
-      <label class="field"><span>Current caution (kn)</span><input type="number" step="0.1" id="thCur" value="${s.th.currentCaution}" style="width:70px"></label></div>`;
-    h += `<div class="card"><h2>Offline</h2><p class="muted small">Do this on wifi before leaving. Stores the app, the forecast and the map tiles for the whole route, about 15 to 40 MB. The chart, route, traffic scheme and hazards are built in and always work offline.</p>
-      <div class="row"><button class="btn primary" id="btnPreloadAll">Preload everything</button><button class="btn" id="btnPreloadWx">Forecast only</button><button class="btn" id="btnPreloadTiles">Map tiles only</button></div>
-      <div class="progress"><div id="preProg"></div></div><div id="preText" class="muted small">${preloadStatusText()}</div><div id="storeText" class="muted small"></div></div>`;
-    h += `<div class="card"><h2>Ready for sea</h2><div id="readyCard" class="muted">checking…</div></div>`;
-    h += `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div>
-      <details class="help"><summary>Installing it properly</summary><p>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload <b>there</b>: the Home Screen app has its own storage, separate from Safari's.</p></details></div>`;
-    h += `<div class="card"><h2>Alert log</h2><div class="log">${esc(S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}${l.n > 1 ? ' (x' + l.n + ')' : ''}`).join('\n') || 'none yet')}</div><div class="row" style="margin-top:12px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>`;
-    h += `<div class="card"><h2>About</h2><p class="muted small">Saily is a passage aid, not a chart plotter. Data: ${esc(C.meta.sources.join('; '))}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). <b>Not for navigation without official charts, a proper lookout and the COLREGs.</b></p></div>`;
+      <details class="help"><summary>What the depth layer is worth</summary><p>EMODnet bathymetry is a gridded model of about 100 m cells: fine for seeing banks and the shelf, useless for the last metres in a harbour. Charted rocks, wrecks and obstructions from OpenStreetMap are drawn as red asterisks with a 0.1 nm alarm circle, and the app warns when land or rocks lie on your heading within four minutes at your speed.</p></details></div>` : '';
+    h += show('about') ? `<div class="card"><h2>Status</h2><div class="kv"><div>Service worker</div><div id="swText">${SINGLE ? 'single-file build: no service worker (save the page or add to Home Screen; the chart, route and hazards are built in)' : (navigator.serviceWorker && navigator.serviceWorker.controller ? 'active (offline ready)' : 'not yet active: reload once online')}</div><div>Wake lock</div><div>${S.wakeLock ? 'held (screen stays on)' : ('wakeLock' in navigator ? 'not held' : 'not supported: disable auto-lock in iPhone Settings, Display')}</div><div>Simulation</div><div class="row"><button class="btn" id="btnSim">${S.sim ? 'Stop simulation' : 'Start simulation (demo)'}</button></div></div>
+      <details class="help"><summary>Installing it properly</summary><p>iPhone: Safari share button, "Add to Home Screen". Mac: Safari File menu, "Add to Dock". Then open it from the icon and run the preload <b>there</b>: the Home Screen app has its own storage, separate from Safari's.</p></details></div>` : '';
+    h += show('about') ? `<div class="card"><h2>Alert log</h2><div class="log">${esc(S.log.slice(0, 40).map(l => `${N.fmtTime(new Date(l.t), TZ_ES)} [${l.level}] ${l.text}${l.n > 1 ? ' (x' + l.n + ')' : ''}`).join('\n') || 'none yet')}</div><div class="row" style="margin-top:12px"><button class="btn" id="btnClearLog">Clear log</button><button class="btn" id="btnClearTrack">Clear track</button>${SINGLE ? '' : '<a class="btn" id="btnTrackGpx" download="saily-track.gpx">Export track (GPX)</a>'}<button class="btn danger" id="btnReset">Reset app data</button></div></div>` : '';
+    h += show('about') ? `<div class="card"><h2>About</h2><p class="muted small">Saily is a passage aid, not a chart plotter. Data: ${esc(C.meta.sources.join('; '))}. Weather: Open-Meteo (CC BY 4.0). Map tiles: OpenStreetMap, Esri, OpenSeaMap. Positions from the phone GPS (WGS84). <b>Not for navigation without official charts, a proper lookout and the COLREGs.</b></p></div>` : '';
     el.innerHTML = h;
-    const num = (id, f) => $(id).addEventListener('change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
+    // Setup renders one section at a time, so a card's controls may not be on the page: attach politely.
+    const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); return el; };
+    el.querySelectorAll('.subnav button[data-sec]').forEach(b => b.addEventListener('click', () => {
+      s.setupSection = b.getAttribute('data-sec'); saveSettings(); renderMore();
+      const page = el.closest('.view'); if (page) page.scrollTop = 0;
+    }));
+    const num = (id, f) => on(id, 'change', () => { const v = parseFloat($(id).value); if (isFinite(v)) { f(v); saveSettings(); if (S.solution) updateHud(S.solution); } });
     num('setSpeed', v => { s.speed = v; });
     const psel = $('setPassage');
     if (psel) psel.addEventListener('change', () => {
@@ -1707,8 +1743,8 @@
       try { localStorage.setItem(PASSAGE_KEY, psel.value); } catch (e) { }
       location.reload();
     });
-    $('setDep').addEventListener('change', () => { try { s.departure = fromLocal(TZ_ES, $('setDep').value).toISOString(); saveSettings(); } catch (e) { } });
-    $('setRoute').addEventListener('change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = P.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
+    on('setDep', 'change', () => { try { s.departure = fromLocal(TZ_ES, $('setDep').value).toISOString(); saveSettings(); } catch (e) { } });
+    on('setRoute', 'change', () => { s.routeId = $('setRoute').value; s.wp = 1; S.route = P.routes.find(x => x.id === s.routeId); S.zone = {}; S.approached = {}; saveSettings(); drawRoutes(); if (S.pos) processFix(); });
     const bsel = $('setBoat');
     if (bsel) bsel.addEventListener('change', () => {
       const b = S.boats.find(x => x.id === bsel.value);
@@ -1726,13 +1762,13 @@
       saveSettings(); if (S.solution) updateHud(S.solution);
     }); };
     numOverride('setSpeed2', 'cruiseKn'); numOverride('setBurn', 'burnLph'); numOverride('setDraft', 'draftM');
-    $('setVoice').addEventListener('change', () => { s.voice = $('setVoice').checked; saveSettings(); });
-    $('setAutoZoom').addEventListener('change', () => { s.autoZoom = $('setAutoZoom').checked; saveSettings(); });
-    $('setTheme').addEventListener('change', () => { s.theme = $('setTheme').value; saveSettings(); applyTheme(); });
-    $('setDim').addEventListener('input', () => { s.dim = Number($('setDim').value) / 100; saveSettings(); applyTheme(); $('setDim').previousElementSibling.textContent = `Night dimmer (${Math.round(s.dim * 100)}%)`; });
-    $('setBigHud').addEventListener('change', () => { s.bigHud = $('setBigHud').checked; saveSettings(); applyTheme(); });
+    on('setVoice', 'change', () => { s.voice = $('setVoice').checked; saveSettings(); });
+    on('setAutoZoom', 'change', () => { s.autoZoom = $('setAutoZoom').checked; saveSettings(); });
+    on('setTheme', 'change', () => { s.theme = $('setTheme').value; saveSettings(); applyTheme(); });
+    on('setDim', 'input', () => { s.dim = Number($('setDim').value) / 100; saveSettings(); applyTheme(); $('setDim').previousElementSibling.textContent = `Night dimmer (${Math.round(s.dim * 100)}%)`; });
+    on('setBigHud', 'change', () => { s.bigHud = $('setBigHud').checked; saveSettings(); applyTheme(); });
     const aisRefresh = () => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); };
-    $('setAisOn').addEventListener('change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); aisRefresh(); setTimeout(aisRefresh, 1500); });
+    on('setAisOn', 'change', () => { s.aisOn = $('setAisOn').checked; saveSettings(); aisApply(); aisRefresh(); setTimeout(aisRefresh, 1500); });
     // A pasted key is the whole intent: switch AIS on with it rather than making the user find a second control.
     const aisKeyChanged = () => {
       const v = $('setAisKey').value.trim();
@@ -1741,19 +1777,19 @@
       if (v && !s.aisOn) { s.aisOn = true; $('setAisOn').checked = true; toast('AIS switched on'); }
       saveSettings(); aisApply(); aisRefresh(); setTimeout(aisRefresh, 2000);
     };
-    $('setAisKey').addEventListener('change', aisKeyChanged);
-    $('setAisKey').addEventListener('blur', aisKeyChanged);
-    $('setAisKey').addEventListener('paste', () => setTimeout(aisKeyChanged, 0));
-    $('btnAisTest').addEventListener('click', () => {
+    on('setAisKey', 'change', aisKeyChanged);
+    on('setAisKey', 'blur', aisKeyChanged);
+    on('setAisKey', 'paste', () => setTimeout(aisKeyChanged, 0));
+    on('btnAisTest', 'click', () => {
       aisKeyChanged();
       if (!(s.aisKey || '').trim()) { toast('Paste a key first'); return; }
       if (S.sim) { toast('Stop the demo simulation first'); return; }
       aisApply();
-      $('aisStatus').innerHTML = 'testing…';
+      const st0 = $('aisStatus'); if (st0) st0.innerHTML = 'testing…';
       let n = 0; const iv = setInterval(() => { aisRefresh(); if (++n > 12) clearInterval(iv); }, 2500);
     });
-    $('setAisDemo').addEventListener('change', () => { s.aisDemo = $('setAisDemo').checked; saveSettings(); });
-    $('setDepth').addEventListener('change', () => { s.depth = $('setDepth').checked; saveSettings(); applyBase(); });
+    on('setAisDemo', 'change', () => { s.aisDemo = $('setAisDemo').checked; saveSettings(); });
+    on('setDepth', 'change', () => { s.depth = $('setDepth').checked; saveSettings(); applyBase(); });
     const svc = $('setChartService');
     if (svc) svc.addEventListener('change', () => { s.chartService = svc.value.trim(); saveSettings(); $('chartSvcStatus').textContent = s.chartService ? 'not checked yet' : 'no service set'; });
     const svcTest = $('btnChartSvcTest');
@@ -1779,23 +1815,23 @@
       renderMore();
     }));
     if (!S.aisStatusTimer) S.aisStatusTimer = setInterval(() => { const el = $('aisStatus'); if (el) el.innerHTML = aisStatusText(); }, 5000);
-    $('setSound').addEventListener('change', () => { s.sound = $('setSound').checked; saveSettings(); });
-    $('setSeamark').addEventListener('change', () => { s.seamark = $('setSeamark').checked; saveSettings(); applyBase(); });
-    $('setMa').addEventListener('change', () => { s.maOffset = $('setMa').value; saveSettings(); tickClocks(); if (S.solution) updateHud(S.solution); });
+    on('setSound', 'change', () => { s.sound = $('setSound').checked; saveSettings(); });
+    on('setSeamark', 'change', () => { s.seamark = $('setSeamark').checked; saveSettings(); applyBase(); });
+    on('setMa', 'change', () => { s.maOffset = $('setMa').value; saveSettings(); tickClocks(); if (S.solution) updateHud(S.solution); });
     num('thWindC', v => s.th.windCaution = v); num('thWindN', v => s.th.windNoGo = v); num('thGustC', v => s.th.gustCaution = v); num('thGustN', v => s.th.gustNoGo = v);
     num('thWaveC', v => s.th.waveCaution = v); num('thWaveN', v => s.th.waveNoGo = v); num('thCur', v => s.th.currentCaution = v);
-    $('btnTestAlert').addEventListener('click', () => { ensureAudio(); alert('test', 'warn', 'Test alert. Ships come from your left. Steer 180.', {}); });
-    $('btnResetWp').addEventListener('click', () => { s.wp = 1; S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Route restarted'); });
-    $('btnPreloadAll').addEventListener('click', () => preload(true, true));
-    $('btnPreloadWx').addEventListener('click', () => preload(true, false));
-    $('btnPreloadTiles').addEventListener('click', () => preload(false, true));
-    $('btnSim').addEventListener('click', () => { if (S.sim) { stopSim(); } else { ensureAudio(); S.started = true; S.navigating = true; $('startOverlay').classList.add('hidden'); startSim(s.wp); showView('nav'); } renderMore(); });
-    $('btnClearLog').addEventListener('click', () => { S.log = []; saveJson(LOG_KEY, []); renderMore(); });
+    on('btnTestAlert', 'click', () => { ensureAudio(); alert('test', 'warn', 'Test alert. Ships come from your left. Steer 180.', {}); });
+    on('btnResetWp', 'click', () => { s.wp = 1; S.approached = {}; S.arrivedFinal = false; saveSettings(); drawRoutes(); if (S.pos) processFix(); toast('Route restarted'); });
+    on('btnPreloadAll', 'click', () => preload(true, true));
+    on('btnPreloadWx', 'click', () => preload(true, false));
+    on('btnPreloadTiles', 'click', () => preload(false, true));
+    on('btnSim', 'click', () => { if (S.sim) { stopSim(); } else { ensureAudio(); S.started = true; S.navigating = true; $('startOverlay').classList.add('hidden'); startSim(s.wp); showView('nav'); } renderMore(); });
+    on('btnClearLog', 'click', () => { S.log = []; saveJson(LOG_KEY, []); renderMore(); });
     if ($('btnTrackGpx')) $('btnTrackGpx').href = 'data:application/gpx+xml;charset=utf-8,' + encodeURIComponent(N.trackGPX('Saily track', S.track));
-    $('btnClearTrack').addEventListener('click', () => { S.track = []; track.setLatLngs([]); saveJson(TRACK_KEY, []); S.trip = S.navigating ? { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 } : null; saveJson('saily.trip.v1', S.trip); toast('Track and trip log cleared'); });
-    $('btnReset').addEventListener('click', () => { if (confirm('Reset all settings, track and log?')) { localStorage.clear(); location.reload(); } });
+    on('btnClearTrack', 'click', () => { S.track = []; track.setLatLngs([]); saveJson(TRACK_KEY, []); S.trip = S.navigating ? { startedAt: Date.now(), dist: 0, maxSog: 0, n: 0 } : null; saveJson('saily.trip.v1', S.trip); toast('Track and trip log cleared'); });
+    on('btnReset', 'click', () => { if (confirm('Reset all settings, track and log?')) { localStorage.clear(); location.reload(); } });
     renderReady();
-    if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { $('storeText').textContent = `Storage used: ${(e.usage / 1048576).toFixed(1)} MB of ${(e.quota / 1048576).toFixed(0)} MB available.`; }).catch(() => { });
+    if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { const st = $('storeText'); if (st) st.textContent = `Storage used: ${(e.usage / 1048576).toFixed(1)} MB of ${(e.quota / 1048576).toFixed(0)} MB available.`; }).catch(() => { });
   }
   function preloadStatusText() {
     const p = loadJson('saily.preload.v1', null);

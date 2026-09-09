@@ -221,6 +221,17 @@ body.editing #mapWrap{min-height:40vh}
 .wxdot.ok{background:var(--ok);display:block}.wxdot.caution{background:var(--warn);display:block}.wxdot.nogo{background:var(--danger);display:block}
 .wxdot.old{opacity:.45}
 
+/* ---------- a section nav inside a page ----------
+   Setup is thirteen cards. One flat scroll makes you hunt; five named sections make you choose. */
+.subnav{display:flex;gap:var(--s1);overflow-x:auto;overscroll-behavior-x:contain;margin:0 0 var(--s5);
+  padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.subnav::-webkit-scrollbar{display:none}
+.subnav button{flex:0 0 auto;padding:9px var(--s5);border-radius:999px;border:1px solid var(--line);
+  background:transparent;color:var(--muted);font-family:var(--cond);font-weight:600;font-size:var(--fs-small);
+  letter-spacing:.04em;min-height:40px;transition:background .12s,color .12s,border-color .12s}
+.subnav button:hover{color:var(--text);border-color:var(--muted)}
+.subnav button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+
 /* ---------- pages ---------- */
 .page{padding:var(--s4);max-width:900px;margin:0 auto;padding-bottom:calc(var(--sab) + var(--s6))}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);padding:var(--s4) var(--s4) var(--s4);margin-bottom:var(--s4)}
@@ -477,6 +488,7 @@ body.bighud .bigonly{display:block}
   .page > .card{break-inside:avoid;margin:0 0 var(--s5)}
   /* column-span only works on a block, so this must not be inline-block */
   .page > .card.wide{column-span:all;display:block}
+  .page > .subnav{column-span:all}
   #hud{width:min(34vw,420px)}
 }
 

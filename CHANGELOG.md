@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.19.0 (2026-09-09)
+Information architecture: what belongs where, rather than more styling.
+- **Setup was thirteen cards in one scroll** -- a filing cabinet with no drawers. It is five named sections
+  now (Boat, Alerts, Display, Data, About), one at a time, and it remembers which one you were in. Each is
+  around one screen instead of thirteen.
+- **Plan was doing three different jobs at once**: choosing a route, getting ready to leave, and the
+  briefing you read at sea. Three sections: Route, Before you go, Briefing.
+- **Things moved to where they belong.** Weather thresholds are part of Your boat, because they are the
+  boat's limits and the router, the departure ranking and the passage verdict all read them. Ready for sea
+  and the offline preload moved from Setup to Plan, Before you go: they are things you do before leaving,
+  not settings.
+- Every listener in both tabs now tolerates its card not being on the page, and e2e walks all eight
+  sections and insists nothing throws.
+
 ## 0.18.0 (2026-09-08)
 A proper pass over the interface, rather than another round of patches.
 - **Type.** IBM Plex, self-hosted: the condensed cut carries labels and headings where width is scarce, the
